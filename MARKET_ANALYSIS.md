@@ -28,15 +28,19 @@ Anbieter von Kinderkursen und -aktivitäten im DACH-Raum:
 
 | Plattform | Fokus | Stärken | Schwächen | Preismodell |
 |-----------|-------|---------|-----------|-------------|
-| **Eversports** | Sport & Fitness (AT/DACH) | Starke Marke in AT, gute App | Fokus auf Erwachsene, Kids nebensächlich | Ab 59€/Monat + Provision |
-| **Sawyer** (US) | Kids Activities | Sehr gute UX, starke Eltern-App | Nur USA/UK, kein DACH | 0-199$/Monat + 2-5% |
-| **ActivityHero** (US) | Kids Activities Marketplace | Großer Marktplatz | Nur USA, keine DE-Features | Provision 5-15% |
-| **Amilia** (CA) | Community Activities | Sehr umfangreich, Non-Profit-Support | Komplex, teuer, kein DACH-Fokus | Ab 100$/Monat |
-| **Jackrabbit Class** (US) | Dance/Gym/Swim Schools | Branchenführer für Tanzschulen | Veraltet, keine DE-Lokalisierung | Ab 59$/Monat |
-| **iClassPro** (US) | Class-Based Businesses | Gutes Check-In, Abrechnung | Nur USA, altmodische UI | Ab 129$/Monat |
-| **Pike13** (US) | Fitness & Kids | Multi-Location, gute Reports | Enterprise-Preis, kein DE | Ab 100$/Monat |
-| **Bookeo** | Generisch | Günstig, flexibel | Nicht Kids-spezifisch, keine DE-Features | Ab 15€/Monat |
-| **Omnify** | Generisch | Modern, API-first | Nicht Kids-spezifisch, indischer Support | Ab 59$/Monat |
+| **Sawyer** (US) | Kids Activities | Starke Eltern-App, gute UX | 20% Marketplace-Fee, nur USA/UK | $219–399/Monat + 2.9%+$0.30 + **20% Marketplace** |
+| **ActivityHero** (US) | Kids Marketplace | 4M+ Familien, zero upfront | 15% Marketplace-Fee, wenig Provider-Tools | 0$ + **15% Marketplace** oder 1.7% |
+| **Omnify** | Kids Activities | Family-Accounts, Waitlist, global | Keine DE-Compliance, limitierte Reports | $0–499/Monat + 0.5–5% |
+| **Zooza** (EU/SK) | Kids Activities | Kids-first, DSGVO-nativ, Azure EU | Kleiner Player, kein Marketplace | Ab €29/Monat + Stripe-Fees |
+| **ClassForKids** (UK) | Kids Clubs | ISO-zertifiziert, Safeguarding | Nur UK | Transaction-basiert |
+| **Bookiphy** (UK) | Kids Clubs | Niedrige 2.1% Fee | Nur UK, klein | Free–Paid + 2.1% |
+| **Jackrabbit Class** (US) | Dance/Gym/Swim | 7.000+ Programme, Skills-Tracking | **Berechnet inaktive Schüler**, veraltet | $49–245/Monat |
+| **iClassPro** (US) | Gymnastics/Dance | Skill-Evaluierung | Per-Location-Preis, teuer bei Multi-Standort | $129–299/Monat/Standort |
+| **Pike13** (US) | General Classes | Unlimited Staff/Clients | **Häufige Bugs, 500er-Fehler, Umsatzverlust** | $0–118/Monat |
+| **Bookeo** | Generisch | Flat-Fee, keine Transaction-Fee | Nicht Kids-spezifisch, kein Safeguarding | $39.95–119.95/Monat flat |
+| **Amilia** (CA) | Community Orgs | Membership-Cards, Parks & Rec | Teuer, komplex | $99–799/Monat + 1% |
+| **Eversports** (AT) | Sport/Fitness DACH | 4.000+ Partner DACH, starker Marketplace | Erwachsenen-Fokus, **25% Referral-Fee** | $39–99/Monat + 25% (neue Kunden) |
+| **KidPass** (US/NYC) | Kids Subscription | 50.000+ Activities, Credit-Modell | Nur NYC, wenig Provider-Kontrolle | Subscription/Credits |
 
 ### Indirekte Wettbewerber (Generische Tools)
 
@@ -213,6 +217,36 @@ Formate: **XRechnung** (reines XML, UBL 2.1) oder **ZUGFeRD** (PDF/A-3 mit einge
 | **Honorarvertrag-Mgmt** | ✅ | ❌ | ❌ | ❌ | ❌ |
 
 ✅ = Vorhanden | ⚠️ = Eingeschränkt | ❌ = Nicht vorhanden
+
+---
+
+## 4b. Strategische Marktlücken (aus Wettbewerbsrecherche)
+
+### Lücke 1: Kein dominanter Kids-Player im DACH-Raum
+Eversports = Erwachsenen-Sport. Die US/UK-Player (Sawyer, ClassForKids) bedienen Deutschland nicht. Zooza (Slowakei) ist der nächste EU-Wettbewerber, aber klein und nicht DE-optimiert.
+
+### Lücke 2: Marketplace-Gebühren sind überall ein Schmerzpunkt
+- Sawyer: **20%** Marketplace-Fee
+- ActivityHero: **15%** Marketplace-Fee
+- Eversports: **25%** Referral-Fee (gedeckelt, temporär)
+→ **Fairer Marketplace mit niedrigerer/keiner Provision = massive Differenzierung**
+
+### Lücke 3: Provider verlieren Kundendaten an den Marketplace
+Sawyer vermarktet aktiv konkurrierende Studios an Eltern der eigenen Kunden. Provider beschweren sich, dass ihre Kundenliste eine "Free-for-all Marketing-Datenbank" ist.
+→ **Provider behält die Kundenbeziehung = Vertrauensargument**
+
+### Lücke 4: Kinderschutz als Kernfeature fehlt fast überall
+Generische Buchungsplattformen haben keine: Allergien auf Anwesenheitslisten, Foto-Consent, Notfallkontakt-Workflows, Abholberechtigungen. Nur ClassForKids (ISO) und Zooza behandeln das als Kern.
+
+### Lücke 5: Intelligente Warteliste + Nachfrage-Signale
+Keine Plattform bietet Demand-Analytics: *"47 Eltern warten auf einen Dienstag-Nachmittag Ballettkurs in deiner Gegend – erwäge einen zu eröffnen."*
+→ **Nachfrage-Intelligence hilft Providern ihr Angebot zu optimieren**
+
+### Marktgröße
+- Globaler Kids Recreational Services Markt: **$1.464 Mrd.** (2025) → **$2.320 Mrd.** (2035)
+- Feriencamps: 36.4% des Marktes
+- Mobile Buchung: >58% Adoption
+- CAGR: 4.7%
 
 ---
 
