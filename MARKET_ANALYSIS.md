@@ -49,14 +49,81 @@ Anbieter von Kinderkursen und -aktivitäten im DACH-Raum:
 | **Jimdo/Wix** | Website | Keine echte Kursverwaltung |
 | **lexoffice/sevDesk** | Rechnungen | Kein Buchungssystem |
 
-### DACH-spezifische Lösungen
+### DACH-spezifische Lösungen (Recherche April 2026)
 
-| Plattform | Fokus | Status |
-|-----------|-------|--------|
-| **Eversports** | Sport (AT-lastig) | Einziger ernstzunehmender DACH-Player |
-| **CourseTicket** | Kursmarktplatz (AT) | Marketplace ohne Provider-Tools |
-| **Kursfreunde** (DE) | Kinderkurse (klein) | Kleine Plattform, wenig Features |
-| **Helloclass** (CH) | Schulferien-Kurse (CH) | Nur Schweiz, saisonal |
+| Plattform | Fokus | Bewertung | Status |
+|-----------|-------|-----------|--------|
+| **Eversports** | Sport (AT-lastig) | - | Einziger größerer DACH-Player, aber Erwachsenen-Fokus |
+| **Yolawo** | Sportvereine, Eltern-Kind | 9.4/10 | WordPress-Embed, DSGVO-konform, gute Online-Buchung |
+| **Kursifant** | Gruppen-Kursbuchung | 9.8/10 | Automatische Warteliste mit Nachrücken, starke Nische |
+| **SEMCO** | Umfassende Kursverwaltung | 10/10 | Volles Lifecycle-Management, aber Enterprise-Preis |
+| **StudioIntern** | Ballett, Tanz, Musik, Kunst | - | Empfohlen von Dt. Berufsverband für Tanzpädagogik |
+| **MSVplus** | Musikschulverwaltung | - | ~500 Musikschulen, Anwesenheit, SEPA |
+| **axinio** | Musikschulverwaltung | - | Moderne UX, schnelle Datenbank |
+| **Microtango** | Tanzschulverwaltung | - | 30+ Jahre am Markt, eingespielte Kundenbasis |
+| **SPORTMEO** | Sportvereine, Fitness | - | Kostenlose Mitglieder-App, browserbasiert |
+| **Butlerapp** | All-in-One Kursverwaltung | - | Registrierung, Rechnungen, Kundenverwaltung |
+| **CourseTicket** | Kursmarktplatz (AT) | - | Marketplace ohne Provider-Tools |
+| **Kursfreunde** (DE) | Kinderkurse (klein) | - | Kleine Plattform, wenig Features |
+| **Helloclass** (CH) | Schulferien-Kurse (CH) | - | Nur Schweiz, saisonal |
+
+**Kernbeobachtung:** Der Markt ist stark fragmentiert – Tanzschulen nutzen Microtango, Musikschulen MSVplus, Sportvereine SPORTMEO. **Keine Lösung bedient den breiten "Kids-Kursanbieter"-Markt mit moderner UX und voller deutscher Compliance.**
+
+---
+
+## 2b. Regulatorische Rahmenbedingungen (DE-spezifisch)
+
+### E-Rechnung – Gesetzliche Pflicht (KRITISCH)
+
+| Datum | Pflicht |
+|-------|---------|
+| Seit 01.01.2025 | Alle Unternehmen müssen E-Rechnungen **empfangen** können |
+| Bis 31.12.2026 | Papierrechnungen noch erlaubt |
+| Ab 01.01.2027 | Unternehmen >800.000€ Umsatz müssen E-Rechnungen **ausstellen** |
+| Ab 01.01.2028 | **ALLE** Unternehmen müssen E-Rechnungen ausstellen (B2B) |
+
+Formate: **XRechnung** (reines XML, UBL 2.1) oder **ZUGFeRD** (PDF/A-3 mit eingebettetem XML, ab v2.0.1).
+→ **Wir unterstützen beide Formate out-of-the-box.**
+
+### GoBD-Compliance (Pflichtangaben Rechnungen)
+- Vollständiger Name + Adresse von Anbieter UND Kunde
+- Steuernummer / USt-IdNr.
+- Fortlaufende Rechnungsnummer
+- Rechnungsdatum + Leistungsdatum
+- Nettobetrag, MwSt-Satz, MwSt-Betrag, Bruttobetrag
+- Zahlungsbedingungen
+→ **Automatisch generiert durch unseren GoBDInvoiceData Builder.**
+
+### Scheinselbständigkeit – Herrenberg-Urteil (KRITISCH)
+- 2022: Musikschullehrer als **Angestellte** eingestuft (nicht Freelancer)
+- Betrifft: Tanzschulen, Yogastudios, Sportvereine, Musikschulen
+- **Übergangsfrist bis 31.12.2026**: Honorarkräfte noch als Selbständige behandelt
+- **Ab 01.01.2027**: Rückwirkende Sozialversicherungs-Nachzahlungen!
+- Deutsche Rentenversicherung prüft aktiv
+→ **Unser ContractService mit Freelance-Risk-Assessment ist einzigartig am Markt.**
+
+### DSGVO für Kinderdaten (Art. 8)
+- Kinderdaten = besonders schützenswert
+- Unter 16: Einwilligung der Eltern zwingend erforderlich
+- Angemessene Verifizierung der Sorgeberechtigung
+- Verständliche Datenschutzhinweise
+- Dokumentierte Einwilligung + Widerrufsrecht
+- Recht auf Datenlöschung + Datenportabilität
+→ **ConsentService mit vollständigem DSGVO-Lifecycle implementiert.**
+
+### Kinderschutz (Bundeskinderschutzgesetz)
+- **Erweitertes Führungszeugnis** für alle Personen mit regelmäßigem Kinderkontakt
+- Gilt für: Angestellte, Freelancer UND Ehrenamtliche
+- Erneuerung alle **3–5 Jahre**, bei Vorlage max. **3 Monate** alt
+- Anbieter darf **keine Kopie** aufbewahren – nur Einsichtnahme dokumentieren
+→ **DocumentService trackt Ablaufdaten und sendet Erinnerungen.**
+
+### Bildungs- und Teilhabepaket (BuT)
+- Kinder aus einkommensschwachen Familien: **15 €/Monat** für Sport/Kultur/Musik
+- Gutscheine vom Jobcenter/Sozialamt
+- Provider muss Gutscheine annehmen und abrechnen können
+- Teilweise digitale Bildungskarten in einigen Regionen
+→ **BuTVoucherService für Gutschein-Tracking und Abrechnung implementiert.**
 
 ---
 
@@ -139,6 +206,11 @@ Anbieter von Kinderkursen und -aktivitäten im DACH-Raum:
 | **Eltern-Discovery** | ✅ | ✅ | ✅ | ❌ | ❌ |
 | **Bewertungen** | ✅ | ✅ | ✅ | ❌ | ✅ |
 | **Push-Benachrichtigungen** | ✅ | ✅ | ✅ | ❌ | ❌ |
+| **E-Rechnung (ZUGFeRD)** | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **E-Rechnung (XRechnung)** | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **BuT-Gutscheine** | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Scheinselbständigkeit-Check** | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Honorarvertrag-Mgmt** | ✅ | ❌ | ❌ | ❌ | ❌ |
 
 ✅ = Vorhanden | ⚠️ = Eingeschränkt | ❌ = Nicht vorhanden
 
@@ -217,7 +289,7 @@ Plus Transaktionsgebühr: 3% (Free), 2% (Starter), 1% (Pro), 0% (Enterprise)
 
 ### Was wir JETZT schon gebaut haben (In-Memory, sofort nutzbar):
 
-**26 Services** im Provider Dashboard:
+**29 Services** im Provider Dashboard:
 
 | Bereich | Service | Beschreibung |
 |---------|---------|-------------|
@@ -247,6 +319,9 @@ Plus Transaktionsgebühr: 3% (Free), 2% (Starter), 1% (Pro), 0% (Enterprise)
 | 130% | CrmService | Auto-Tagging, Segmente |
 | 130% | ExportService | CSV, DATEV, JSON |
 | 130% | ReportingService | Dashboard, Umsatz, Auslastung |
+| Compliance | EInvoiceService | ZUGFeRD + XRechnung XML-Generierung |
+| Compliance | BuTVoucherService | Bildungsgutschein-Tracking & Abrechnung |
+| Compliance | ContractService | Honorarverträge, Scheinselbständigkeit-Risk-Check |
 
 ### Architektur-Vorteil:
 - **In-Memory = sofort testbar**, keine DB-Setup nötig

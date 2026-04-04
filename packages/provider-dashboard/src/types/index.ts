@@ -571,6 +571,119 @@ export interface ExportRequest {
   completedAt?: Date
 }
 
+// --- E-Rechnung / ZUGFeRD / XRechnung (Gesetzliche Pflicht ab 2027/28) ---
+
+export type EInvoiceFormat = 'zugferd' | 'xrechnung' | 'pdf'
+
+export interface EInvoice {
+  id: ID
+  invoiceId: ID
+  providerId: ID
+  format: EInvoiceFormat
+  xmlContent?: string         // XRechnung XML oder ZUGFeRD XML
+  pdfContent?: string         // PDF/A-3 mit eingebettetem XML (ZUGFeRD)
+  leitweg_id?: string         // Leitweg-ID für öffentliche Auftraggeber
+  status: 'draft' | 'generated' | 'sent' | 'accepted' | 'rejected'
+  generatedAt?: Date
+  sentAt?: Date
+}
+
+// GoBD-konforme Rechnungspflichtangaben
+export interface GoBDInvoiceData {
+  providerName: string
+  providerAddress: Address
+  providerTaxId: string       // Steuernummer
+  providerVatId?: string      // USt-IdNr. (optional)
+  customerName: string
+  customerAddress: Address
+  invoiceNumber: string       // Fortlaufend!
+  invoiceDate: Date
+  deliveryDate?: Date         // Leistungsdatum
+  lineItems: Array<{
+    description: string
+    quantity: number
+    unitPrice: number
+    vatRate: number           // 0.19 oder 0.07 (ermäßigt)
+    netAmount: number
+    vatAmount: number
+    grossAmount: number
+  }>
+  netTotal: number
+  vatBreakdown: Array<{ rate: number; net: number; vat: number }>
+  grossTotal: number
+  paymentTerms: string        // "Zahlbar innerhalb von 14 Tagen"
+  bankDetails?: {
+    iban: string
+    bic?: string
+    bankName?: string
+  }
+}
+
+// --- Bildungs- und Teilhabepaket / BuT (Soziale Verantwortung) ---
+
+export type BuTVoucherStatus = 'submitted' | 'approved' | 'redeemed' | 'settled' | 'rejected' | 'expired'
+
+export interface BuTVoucher {
+  id: ID
+  providerId: ID
+  parentId: ID
+  childName: string
+  bookingId?: ID
+  voucherNumber: string       // Gutscheinnummer vom Jobcenter
+  issuingAuthority: string    // "Jobcenter Köln", "Sozialamt Düsseldorf"
+  monthlyAmount: number       // Typisch 15 €/Monat
+  validFrom: string           // "YYYY-MM-DD"
+  validUntil: string
+  status: BuTVoucherStatus
+  totalRedeemed: number       // Bisher eingelöster Betrag
+  settlementReference?: string
+  notes?: string
+  createdAt: Date
+  updatedAt: Date
+}
+
+// --- Honorarverträge / Instructor Contracts (Scheinselbständigkeit) ---
+
+export type ContractType = 'employed' | 'freelance' | 'volunteer' | 'mini_job'
+
+export type ContractStatus = 'draft' | 'active' | 'terminated' | 'expired'
+
+export interface InstructorContract {
+  id: ID
+  providerId: ID
+  teamMemberId: ID
+  type: ContractType
+  title: string               // "Honorarvertrag Tanzunterricht"
+  startDate: string
+  endDate?: string
+  status: ContractStatus
+
+  // Freelance-Nachweis (gegen Scheinselbständigkeit)
+  freelanceIndicators?: {
+    ownSchedule: boolean      // Bestimmt eigene Zeiten
+    ownStudents: boolean      // Eigener Kundenstamm
+    ownMaterials: boolean     // Eigene Arbeitsmittel
+    ownLocation: boolean      // Eigene Räumlichkeiten (teilweise)
+    multipleClients: boolean  // Mehrere Auftraggeber
+    substitutionRight: boolean // Darf Vertretung schicken
+    noInstructions: boolean   // Keine Weisungsgebundenheit
+  }
+
+  compensation: {
+    type: 'hourly' | 'monthly' | 'per_session' | 'per_student'
+    amount: number
+    currency: Currency
+  }
+
+  hoursPerWeek?: number
+  taxId?: string              // Steuernummer des Freelancers
+  insuranceConfirmed?: boolean // Eigene Haftpflicht?
+  socialInsuranceExempt?: boolean
+
+  createdAt: Date
+  updatedAt: Date
+}
+
 // --- Audit Log (Compliance) ---
 
 export interface AuditLogEntry {

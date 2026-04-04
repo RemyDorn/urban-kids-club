@@ -34,6 +34,9 @@ import type {
   ContactNote,
   ExportRequest,
   AuditLogEntry,
+  EInvoice,
+  BuTVoucher,
+  InstructorContract,
 } from '../types'
 
 export interface StoreState {
@@ -67,6 +70,9 @@ export interface StoreState {
   contactNotes: Map<ID, ContactNote>
   exportRequests: Map<ID, ExportRequest>
   auditLog: Map<ID, AuditLogEntry>
+  eInvoices: Map<ID, EInvoice>
+  butVouchers: Map<ID, BuTVoucher>
+  instructorContracts: Map<ID, InstructorContract>
 }
 
 // --- Sekundärindizes für schnelle Lookups ---
@@ -125,6 +131,12 @@ export interface StoreIndexes {
   exportsByProvider: Map<ID, Set<ID>>
   auditByProvider: Map<ID, Set<ID>>
   auditByEntity: Map<string, Set<ID>>        // "entityType:entityId" → audit IDs
+  eInvoicesByInvoice: Map<ID, ID>           // invoice ID → eInvoice ID (1:1)
+  eInvoicesByProvider: Map<ID, Set<ID>>
+  butVouchersByProvider: Map<ID, Set<ID>>
+  butVouchersByParent: Map<ID, Set<ID>>
+  contractsByProvider: Map<ID, Set<ID>>
+  contractsByTeamMember: Map<ID, Set<ID>>
 }
 
 class Store {
@@ -160,6 +172,9 @@ class Store {
       contactNotes: new Map(),
       exportRequests: new Map(),
       auditLog: new Map(),
+      eInvoices: new Map(),
+      butVouchers: new Map(),
+      instructorContracts: new Map(),
     }
 
     this.indexes = {
@@ -213,6 +228,12 @@ class Store {
       exportsByProvider: new Map(),
       auditByProvider: new Map(),
       auditByEntity: new Map(),
+      eInvoicesByInvoice: new Map(),
+      eInvoicesByProvider: new Map(),
+      butVouchersByProvider: new Map(),
+      butVouchersByParent: new Map(),
+      contractsByProvider: new Map(),
+      contractsByTeamMember: new Map(),
     }
   }
 
