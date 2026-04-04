@@ -722,6 +722,84 @@ export interface LoyaltyAccount {
   memberSince: Date
 }
 
+// --- Marketing Automation ---
+
+export type AutomationTrigger =
+  | 'customer_signup'         // Neuer Kunde registriert sich
+  | 'booking_confirmed'       // Buchung bestätigt
+  | 'booking_reminder_24h'    // 24h vor Kurstermin
+  | 'booking_completed'       // Kurs abgeschlossen
+  | 'trial_completed'         // Probestunde abgeschlossen
+  | 'trial_no_conversion'     // Probestunde ohne Buchung (nach X Tagen)
+  | 'payment_received'        // Zahlung eingegangen
+  | 'payment_overdue'         // Zahlung überfällig
+  | 'waitlist_spot_available' // Platz auf Warteliste frei
+  | 'child_birthday'          // Geburtstag des Kindes
+  | 'inactive_customer'       // Kunde seit X Wochen inaktiv
+  | 'course_ending_soon'      // Kurspaket endet in X Tagen
+  | 'loyalty_tier_upgrade'    // Treuestufe aufgestiegen
+  | 'review_request'          // Bewertung anfordern (nach Kurs)
+  | 'seasonal_reminder'       // Saisonstart / Neues Halbjahr
+
+export type AutomationChannel = 'whatsapp' | 'email' | 'sms'
+
+export type AutomationStatus = 'active' | 'paused' | 'draft'
+
+export interface AutomationFlow {
+  id: ID
+  providerId: ID
+  name: string
+  trigger: AutomationTrigger
+  channel: AutomationChannel
+  delayMinutes: number        // Verzögerung nach Trigger (0 = sofort)
+  templateId: ID
+  status: AutomationStatus
+  conditions?: {
+    minBookings?: number      // Nur wenn Kunde X+ Buchungen hat
+    loyaltyTier?: string      // Nur für bestimmten Rang
+    activityIds?: ID[]        // Nur für bestimmte Kurse
+  }
+  stats: {
+    sent: number
+    opened: number
+    clicked: number
+  }
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface MessageTemplate {
+  id: ID
+  providerId: ID
+  name: string
+  channel: AutomationChannel
+  subject?: string            // Nur bei E-Mail
+  body: string                // Mit Platzhaltern: {{childName}}, {{courseName}}, etc.
+  variables: string[]         // Verfügbare Platzhalter
+  isDefault: boolean          // System-Template oder benutzerdefiniert
+  createdAt: Date
+}
+
+export interface MarketingCampaign {
+  id: ID
+  providerId: ID
+  name: string
+  channel: AutomationChannel
+  templateId: ID
+  targetSegment: 'all' | 'active' | 'inactive' | 'vip' | 'prospects' | 'custom'
+  targetActivityIds?: ID[]
+  status: 'draft' | 'scheduled' | 'sent'
+  scheduledAt?: Date
+  sentAt?: Date
+  stats: {
+    recipients: number
+    sent: number
+    opened: number
+    clicked: number
+  }
+  createdAt: Date
+}
+
 // --- Audit Log (Compliance) ---
 
 export interface AuditLogEntry {

@@ -92,6 +92,10 @@
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
           Ferien
         </button>
+        <button onclick="navigate('marketing')" data-page="marketing" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 transition-all">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z"/></svg>
+          Marketing
+        </button>
         <div class="mt-4 pt-3 border-t border-gray-100">
           <button onclick="navigate('settings')" data-page="settings" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 transition-all">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
@@ -175,7 +179,7 @@
       const activeBtn = document.querySelector(`[data-page="${page}"]`)
       if (activeBtn) { activeBtn.classList.add('active'); activeBtn.classList.remove('text-gray-600') }
 
-      const titles = { dashboard: 'Dashboard', activities: 'Kurse & Angebote', bookings: 'Buchungen', customers: 'Kunden (CRM)', trials: 'Probestunden', invoices: 'Rechnungen', team: 'Team', holidays: 'Ferien & Saisons', settings: 'Einstellungen' }
+      const titles = { dashboard: 'Dashboard', activities: 'Kurse & Angebote', bookings: 'Buchungen', customers: 'Kunden (CRM)', trials: 'Probestunden', invoices: 'Rechnungen', team: 'Team', holidays: 'Ferien & Saisons', marketing: 'Marketing & Automation', settings: 'Einstellungen' }
       document.getElementById('pageTitle').textContent = titles[page] || page
 
       const content = document.getElementById('content')
@@ -184,7 +188,7 @@
       void content.offsetWidth
       content.classList.add('fade-in')
 
-      const renderers = { dashboard: renderDashboard, activities: renderActivities, bookings: renderBookings, customers: renderCustomers, trials: renderTrials, invoices: renderInvoices, team: renderTeam, holidays: renderHolidays, settings: renderSettings }
+      const renderers = { dashboard: renderDashboard, activities: renderActivities, bookings: renderBookings, customers: renderCustomers, trials: renderTrials, invoices: renderInvoices, team: renderTeam, holidays: renderHolidays, marketing: renderMarketing, settings: renderSettings }
       if (renderers[page]) renderers[page]()
     }
 
@@ -1404,6 +1408,301 @@
     }
 
     // --- Helpers ---
+    // --- Marketing & Automation ---
+    const triggerLabels = {
+      customer_signup: { label: 'Neuer Kunde', icon: '👋' },
+      booking_confirmed: { label: 'Buchung bestätigt', icon: '✅' },
+      booking_reminder_24h: { label: 'Erinnerung 24h', icon: '⏰' },
+      booking_completed: { label: 'Kurs abgeschlossen', icon: '🎓' },
+      trial_completed: { label: 'Probestunde fertig', icon: '🧪' },
+      trial_no_conversion: { label: 'Probe ohne Buchung', icon: '🔄' },
+      payment_received: { label: 'Zahlung eingegangen', icon: '💰' },
+      payment_overdue: { label: 'Zahlung überfällig', icon: '⚠️' },
+      waitlist_spot_available: { label: 'Platz frei', icon: '🎫' },
+      child_birthday: { label: 'Kindergeburtstag', icon: '🎂' },
+      inactive_customer: { label: 'Inaktiver Kunde', icon: '😢' },
+      course_ending_soon: { label: 'Kurspaket endet', icon: '📦' },
+      loyalty_tier_upgrade: { label: 'Treuestufe Aufstieg', icon: '🏆' },
+      review_request: { label: 'Bewertung anfragen', icon: '⭐' },
+      seasonal_reminder: { label: 'Neues Halbjahr', icon: '📅' },
+    }
+    const channelInfo = {
+      whatsapp: { label: 'WhatsApp', icon: '💬', color: 'bg-green-100 text-green-700' },
+      email: { label: 'E-Mail', icon: '📧', color: 'bg-blue-100 text-blue-700' },
+      sms: { label: 'SMS', icon: '📱', color: 'bg-purple-100 text-purple-700' },
+    }
+    const flowStatusInfo = {
+      active: { label: 'Aktiv', color: 'bg-green-100 text-green-700' },
+      paused: { label: 'Pausiert', color: 'bg-amber-100 text-amber-700' },
+      draft: { label: 'Entwurf', color: 'bg-gray-100 text-gray-600' },
+    }
+
+    // Demo flows (in Produktion: aus API)
+    function getMarketingFlows() {
+      const templates = getDefaultTemplates()
+      const findTmpl = (name) => templates.find(t => t.name === name)
+      return [
+        { id: 'flow_1', name: 'Willkommensnachricht', trigger: 'customer_signup', channel: 'whatsapp', delay: '0', template: findTmpl('Willkommen'), status: 'active', stats: { sent: 47, opened: 42, clicked: 0 } },
+        { id: 'flow_2', name: 'Buchungsbestätigung', trigger: 'booking_confirmed', channel: 'whatsapp', delay: '0', template: findTmpl('Buchungsbestätigung'), status: 'active', stats: { sent: 156, opened: 148, clicked: 0 } },
+        { id: 'flow_3', name: 'Kurs-Erinnerung', trigger: 'booking_reminder_24h', channel: 'whatsapp', delay: '0', template: findTmpl('Erinnerung (24h)'), status: 'active', stats: { sent: 312, opened: 290, clicked: 0 } },
+        { id: 'flow_4', name: 'Probe → Nachfassen', trigger: 'trial_completed', channel: 'whatsapp', delay: '24h', template: findTmpl('Nach Probestunde'), status: 'active', stats: { sent: 23, opened: 19, clicked: 8 } },
+        { id: 'flow_5', name: 'Bewertung anfragen', trigger: 'review_request', channel: 'whatsapp', delay: '2h', template: findTmpl('Bewertung anfragen'), status: 'paused', stats: { sent: 0, opened: 0, clicked: 0 } },
+        { id: 'flow_6', name: 'Wir vermissen euch', trigger: 'inactive_customer', channel: 'whatsapp', delay: '0', template: findTmpl('Wir vermissen euch'), status: 'active', stats: { sent: 12, opened: 9, clicked: 4 } },
+        { id: 'flow_7', name: 'Kindergeburtstag', trigger: 'child_birthday', channel: 'whatsapp', delay: '0', template: findTmpl('Geburtstag'), status: 'draft', stats: { sent: 0, opened: 0, clicked: 0 } },
+        { id: 'flow_8', name: 'Zahlungserinnerung', trigger: 'payment_overdue', channel: 'email', delay: '3 Tage', template: findTmpl('Zahlungserinnerung'), status: 'active', stats: { sent: 8, opened: 6, clicked: 0 } },
+        { id: 'flow_9', name: 'Kurspaket endet', trigger: 'course_ending_soon', channel: 'whatsapp', delay: '0', template: findTmpl('Kurspaket endet bald'), status: 'active', stats: { sent: 34, opened: 30, clicked: 12 } },
+        { id: 'flow_10', name: 'Treuestufe aufgestiegen', trigger: 'loyalty_tier_upgrade', channel: 'whatsapp', delay: '0', template: findTmpl('Treuestufe Aufstieg'), status: 'active', stats: { sent: 5, opened: 5, clicked: 3 } },
+      ]
+    }
+
+    function getDefaultTemplates() {
+      return [
+        { name: 'Willkommen', channel: 'whatsapp', body: 'Hallo {{parentName}}! 👋 Willkommen bei {{providerName}}.' },
+        { name: 'Buchungsbestätigung', channel: 'whatsapp', body: '✅ Buchung bestätigt! {{childName}} für "{{courseName}}".' },
+        { name: 'Erinnerung (24h)', channel: 'whatsapp', body: '⏰ Morgen um {{startTime}}: "{{courseName}}" – {{childName}}, wir sehen uns!' },
+        { name: 'Nach Probestunde', channel: 'whatsapp', body: 'Hat {{childName}} die Probestunde gefallen? 🤩 Sollen wir fest anmelden?' },
+        { name: 'Bewertung anfragen', channel: 'whatsapp', body: 'Wie fand {{childName}} "{{courseName}}"? ⭐ {{reviewLink}}' },
+        { name: 'Wir vermissen euch', channel: 'whatsapp', body: 'Wir haben {{childName}} vermisst 😢 Neue Kurse: {{courseListLink}}' },
+        { name: 'Geburtstag', channel: 'whatsapp', body: '🎂 Happy Birthday, {{childName}}! 🎉 {{discountPercent}}% Rabatt: {{couponCode}}' },
+        { name: 'Kurspaket endet bald', channel: 'whatsapp', body: 'Kurspaket von {{childName}} endet in {{daysLeft}} Tagen. Verlängern? 📩' },
+        { name: 'Treuestufe Aufstieg', channel: 'whatsapp', body: '🎊 Aufgestiegen: {{tierName}} {{tierIcon}}! {{discountPercent}}% Rabatt! ❤️' },
+        { name: 'Zahlungserinnerung', channel: 'email', body: 'Rechnung {{invoiceNumber}} über {{amount}}€ ist offen. Fällig: {{dueDate}}.' },
+        { name: 'Neues Halbjahr', channel: 'whatsapp', body: '📅 {{seasonName}} – Anmeldung offen! Platz sichern für {{childName}}!' },
+      ]
+    }
+
+    function getPixelSettings() {
+      try { return JSON.parse(localStorage.getItem('pixels_' + currentProvider?.id) || '{}') } catch { return {} }
+    }
+    function savePixelSettings(settings) {
+      localStorage.setItem('pixels_' + currentProvider?.id, JSON.stringify(settings))
+    }
+
+    async function renderMarketing() {
+      const flows = getMarketingFlows()
+      const templates = getDefaultTemplates()
+      const pixels = getPixelSettings()
+
+      const totalSent = flows.reduce((s, f) => s + f.stats.sent, 0)
+      const totalOpened = flows.reduce((s, f) => s + f.stats.opened, 0)
+      const totalClicked = flows.reduce((s, f) => s + f.stats.clicked, 0)
+      const openRate = totalSent > 0 ? Math.round((totalOpened / totalSent) * 100) : 0
+      const clickRate = totalOpened > 0 ? Math.round((totalClicked / totalOpened) * 100) : 0
+      const activeFlows = flows.filter(f => f.status === 'active').length
+
+      document.getElementById('content').innerHTML = `
+        <!-- Stats -->
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+          ${kpiCardSmall('Aktive Flows', activeFlows + '/' + flows.length)}
+          ${kpiCardSmall('Gesendet', totalSent)}
+          ${kpiCardSmall('Geöffnet', totalOpened + ' (' + openRate + '%)')}
+          ${kpiCardSmall('Geklickt', totalClicked + ' (' + clickRate + '%)')}
+          ${kpiCardSmall('Kanäle', '💬 📧 📱')}
+        </div>
+
+        <!-- Tabs -->
+        <div class="flex gap-1 mb-6 border-b border-gray-200">
+          <button onclick="showMarketingTab('flows')" id="tabFlows" class="px-4 py-2.5 text-sm font-medium border-b-2 border-brand-500 text-brand-600">Automation Flows</button>
+          <button onclick="showMarketingTab('templates')" id="tabTemplates" class="px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">Vorlagen</button>
+          <button onclick="showMarketingTab('tracking')" id="tabTracking" class="px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">Tracking & Pixel</button>
+        </div>
+
+        <!-- Tab Content -->
+        <div id="marketingTabContent">
+          <!-- Flows (default) -->
+          ${renderFlowsTab(flows)}
+        </div>
+      `
+    }
+
+    function showMarketingTab(tab) {
+      document.querySelectorAll('[id^="tab"]').forEach(el => {
+        el.className = 'px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700'
+      })
+      document.getElementById('tab' + tab.charAt(0).toUpperCase() + tab.slice(1)).className = 'px-4 py-2.5 text-sm font-medium border-b-2 border-brand-500 text-brand-600'
+
+      const content = document.getElementById('marketingTabContent')
+      if (tab === 'flows') content.innerHTML = renderFlowsTab(getMarketingFlows())
+      else if (tab === 'templates') content.innerHTML = renderTemplatesTab(getDefaultTemplates())
+      else if (tab === 'tracking') content.innerHTML = renderTrackingTab()
+    }
+
+    function renderFlowsTab(flows) {
+      return `
+        <div class="space-y-3">
+          ${flows.map(f => {
+            const trigger = triggerLabels[f.trigger] || { label: f.trigger, icon: '⚡' }
+            const ch = channelInfo[f.channel] || channelInfo.whatsapp
+            const st = flowStatusInfo[f.status] || flowStatusInfo.draft
+            const openRate = f.stats.sent > 0 ? Math.round((f.stats.opened / f.stats.sent) * 100) : 0
+            return `
+            <div class="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition-shadow">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-4 flex-1">
+                  <!-- Trigger Icon -->
+                  <div class="w-10 h-10 rounded-lg bg-gray-50 flex items-center justify-center text-xl">${trigger.icon}</div>
+                  <!-- Flow Info -->
+                  <div class="flex-1">
+                    <div class="flex items-center gap-2">
+                      <span class="font-semibold text-gray-900 text-sm">${f.name}</span>
+                      <span class="px-2 py-0.5 rounded-full text-xs font-medium ${st.color}">${st.label}</span>
+                      <span class="px-2 py-0.5 rounded-full text-xs font-medium ${ch.color}">${ch.icon} ${ch.label}</span>
+                    </div>
+                    <div class="text-xs text-gray-500 mt-0.5">
+                      Auslöser: <strong>${trigger.label}</strong>
+                      ${f.delay && f.delay !== '0' ? ` · Verzögerung: ${f.delay}` : ' · Sofort'}
+                    </div>
+                  </div>
+                </div>
+                <!-- Stats -->
+                <div class="flex items-center gap-6 text-xs text-gray-500">
+                  <div class="text-center">
+                    <div class="font-bold text-gray-900 text-sm">${f.stats.sent}</div>
+                    <div>Gesendet</div>
+                  </div>
+                  <div class="text-center">
+                    <div class="font-bold text-gray-900 text-sm">${openRate}%</div>
+                    <div>Öffnungsrate</div>
+                  </div>
+                  <div class="text-center">
+                    <div class="font-bold text-gray-900 text-sm">${f.stats.clicked}</div>
+                    <div>Klicks</div>
+                  </div>
+                  <div class="flex items-center gap-1">
+                    ${f.status === 'active'
+                      ? '<div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>'
+                      : f.status === 'paused'
+                        ? '<div class="w-2 h-2 rounded-full bg-amber-500"></div>'
+                        : '<div class="w-2 h-2 rounded-full bg-gray-300"></div>'
+                    }
+                  </div>
+                </div>
+              </div>
+              ${f.template ? `
+                <div class="mt-3 bg-gray-50 rounded-lg p-3 text-xs text-gray-600 font-mono">
+                  ${f.template.body.length > 120 ? f.template.body.substring(0, 120) + '...' : f.template.body}
+                </div>
+              ` : ''}
+            </div>
+          `}).join('')}
+        </div>
+      `
+    }
+
+    function renderTemplatesTab(templates) {
+      return `
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          ${templates.map(t => {
+            const ch = channelInfo[t.channel] || channelInfo.whatsapp
+            return `
+            <div class="bg-white rounded-xl border border-gray-200 p-4">
+              <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-2">
+                  <span class="font-semibold text-sm text-gray-900">${t.name}</span>
+                  <span class="px-2 py-0.5 rounded-full text-xs font-medium ${ch.color}">${ch.icon} ${ch.label}</span>
+                </div>
+              </div>
+              <div class="bg-gray-50 rounded-lg p-3 text-xs text-gray-600 font-mono whitespace-pre-wrap">${t.body}</div>
+              <div class="mt-2 flex flex-wrap gap-1">
+                ${(t.body.match(/\{\{(\w+)\}\}/g) || []).map(v => `<span class="px-1.5 py-0.5 bg-brand-50 text-brand-600 rounded text-xs">${v}</span>`).join('')}
+              </div>
+            </div>
+          `}).join('')}
+        </div>
+      `
+    }
+
+    function renderTrackingTab() {
+      const pixels = getPixelSettings()
+      return `
+        <div class="space-y-6">
+          <!-- Google Tag Manager -->
+          <div class="bg-white rounded-xl border border-gray-200 p-5">
+            <div class="flex items-center gap-3 mb-4">
+              <div class="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
+                <svg class="w-6 h-6 text-blue-600" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+              </div>
+              <div>
+                <div class="font-semibold text-gray-900">Google Tag Manager</div>
+                <div class="text-xs text-gray-500">Container-ID für GTM einbinden</div>
+              </div>
+            </div>
+            <input id="gtmId" value="${pixels.gtmId || ''}" placeholder="GTM-XXXXXXX" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-2" onchange="updatePixel('gtmId', this.value)">
+          </div>
+
+          <!-- Meta / Facebook Pixel -->
+          <div class="bg-white rounded-xl border border-gray-200 p-5">
+            <div class="flex items-center gap-3 mb-4">
+              <div class="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center text-xl">📘</div>
+              <div>
+                <div class="font-semibold text-gray-900">Meta / Facebook Pixel</div>
+                <div class="text-xs text-gray-500">Für Retargeting und Conversion-Tracking</div>
+              </div>
+            </div>
+            <input id="fbPixel" value="${pixels.fbPixel || ''}" placeholder="Pixel-ID (z.B. 1234567890)" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-2" onchange="updatePixel('fbPixel', this.value)">
+          </div>
+
+          <!-- Google Analytics -->
+          <div class="bg-white rounded-xl border border-gray-200 p-5">
+            <div class="flex items-center gap-3 mb-4">
+              <div class="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center text-xl">📊</div>
+              <div>
+                <div class="font-semibold text-gray-900">Google Analytics 4</div>
+                <div class="text-xs text-gray-500">Measurement-ID für GA4</div>
+              </div>
+            </div>
+            <input id="ga4Id" value="${pixels.ga4Id || ''}" placeholder="G-XXXXXXXXXX" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-2" onchange="updatePixel('ga4Id', this.value)">
+          </div>
+
+          <!-- TikTok Pixel -->
+          <div class="bg-white rounded-xl border border-gray-200 p-5">
+            <div class="flex items-center gap-3 mb-4">
+              <div class="w-10 h-10 rounded-lg bg-gray-900 flex items-center justify-center text-xl">🎵</div>
+              <div>
+                <div class="font-semibold text-gray-900">TikTok Pixel</div>
+                <div class="text-xs text-gray-500">Für TikTok Ads Conversion-Tracking</div>
+              </div>
+            </div>
+            <input id="tiktokPixel" value="${pixels.tiktokPixel || ''}" placeholder="Pixel-ID" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-2" onchange="updatePixel('tiktokPixel', this.value)">
+          </div>
+
+          <!-- Custom Script -->
+          <div class="bg-white rounded-xl border border-gray-200 p-5">
+            <div class="flex items-center gap-3 mb-4">
+              <div class="w-10 h-10 rounded-lg bg-gray-50 flex items-center justify-center text-xl">🔧</div>
+              <div>
+                <div class="font-semibold text-gray-900">Eigener Tracking-Code</div>
+                <div class="text-xs text-gray-500">Beliebiges Script für Buchungsseite einbinden</div>
+              </div>
+            </div>
+            <textarea id="customScript" rows="3" placeholder="<script>...</script>" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono" onchange="updatePixel('customScript', this.value)">${pixels.customScript || ''}</textarea>
+          </div>
+
+          <button onclick="saveAllPixels()" class="bg-brand-500 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-brand-600 transition-colors">
+            Tracking-Einstellungen speichern
+          </button>
+        </div>
+      `
+    }
+
+    function updatePixel(key, value) {
+      const pixels = getPixelSettings()
+      pixels[key] = value
+      savePixelSettings(pixels)
+    }
+
+    function saveAllPixels() {
+      const pixels = {
+        gtmId: document.getElementById('gtmId')?.value || '',
+        fbPixel: document.getElementById('fbPixel')?.value || '',
+        ga4Id: document.getElementById('ga4Id')?.value || '',
+        tiktokPixel: document.getElementById('tiktokPixel')?.value || '',
+        customScript: document.getElementById('customScript')?.value || '',
+      }
+      savePixelSettings(pixels)
+      alert('Tracking-Einstellungen gespeichert!')
+    }
+
     // --- Settings ---
     async function renderSettings() {
       const tiers = getLoyaltyTiers()
