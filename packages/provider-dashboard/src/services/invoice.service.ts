@@ -1,29 +1,47 @@
 // ============================================================
-// Invoice Service – Rechnungen (130%-Feature)
+// Invoice Service – Rechnungen (v2 – GoBD-konform)
 // ============================================================
-// Eigenständiges Feature für Provider – unabhängig von der Plattform.
-// Provider können Rechnungen an Eltern erstellen und verwalten.
+// Variable MwSt-Sätze (19% Standard, 7% ermäßigt, 0% befreit)
+// Doppelte Rechnungsprüfung, Audit-Integration, E-Rechnung-Link
 // ============================================================
 
 import { store } from '../domain/store'
 import { generateId } from './id'
+import { Validators } from './validators'
 import type { Invoice, InvoiceLineItem, InvoiceStatus, Currency, ID } from '../types'
+
+export interface InvoiceLineItemInput {
+  description: string
+  quantity: number
+  unitPrice: number
+  vatRate?: number           // 0.19 (Standard), 0.07 (ermäßigt), 0 (befreit)
+}
 
 export interface CreateInvoiceInput {
   providerId: ID
   parentId: ID
   bookingIds?: ID[]
-  lineItems: InvoiceLineItem[]
+  lineItems: InvoiceLineItemInput[]
   currency?: Currency
-  taxRate?: number           // z.B. 0.19 für 19% MwSt
   dueInDays?: number         // Zahlungsziel, default 14
 }
 
-// Laufende Rechnungsnummer pro Provider
+// Laufende Rechnungsnummer pro Provider (persistent in Produktion!)
 const invoiceCounters = new Map<ID, number>()
 
 function nextInvoiceNumber(providerId: ID): string {
-  const current = invoiceCounters.get(providerId) ?? 0
+  // Hole höchste bestehende Nummer falls Counter zurückgesetzt wurde
+  const existing = Array.from(store.getFromIndex(store.indexes.invoicesByProvider, providerId))
+    .map((id) => store.state.invoices.get(id)!)
+    .filter(Boolean)
+
+  const currentFromCounter = invoiceCounters.get(providerId) ?? 0
+  const currentFromExisting = existing.reduce((max, inv) => {
+    const match = inv.number.match(/INV-\d{4}-(\d+)/)
+    return match ? Math.max(max, parseInt(match[1])) : max
+  }, 0)
+
+  const current = Math.max(currentFromCounter, currentFromExisting)
   const next = current + 1
   invoiceCounters.set(providerId, next)
   const year = new Date().getFullYear()
@@ -32,15 +50,62 @@ function nextInvoiceNumber(providerId: ID): string {
 
 export const InvoiceService = {
 
-  create(input: CreateInvoiceInput): Invoice {
+  create(input: CreateInvoiceInput): Invoice | { error: string } {
+    // Validierung
+    const providerCheck = Validators.providerExists(input.providerId)
+    if (!providerCheck.valid) return { error: providerCheck.errors[0] }
+
+    const parentCheck = Validators.parentExists(input.parentId)
+    if (!parentCheck.valid) return { error: parentCheck.errors[0] }
+
+    if (!input.lineItems || input.lineItems.length === 0) {
+      return { error: 'Mindestens eine Rechnungsposition erforderlich' }
+    }
+
+    // Prüfe ob Buchung bereits eine Rechnung hat
+    if (input.bookingIds?.length) {
+      for (const bid of input.bookingIds) {
+        const existingInvoices = Array.from(store.getFromIndex(store.indexes.invoicesByProvider, input.providerId))
+          .map((id) => store.state.invoices.get(id)!)
+          .filter((inv) => inv && inv.bookingIds.includes(bid) && inv.status !== 'cancelled')
+
+        if (existingInvoices.length > 0) {
+          return { error: `Buchung ${bid} hat bereits eine aktive Rechnung (${existingInvoices[0].number})` }
+        }
+      }
+    }
+
     const id = generateId('inv')
     const now = new Date()
-    const taxRate = input.taxRate ?? 0.19
     const dueInDays = input.dueInDays ?? 14
 
-    const subtotal = input.lineItems.reduce((sum, item) => sum + item.total, 0)
-    const tax = Math.round(subtotal * taxRate * 100) / 100
+    // Line Items mit variabler MwSt berechnen
+    const lineItems: InvoiceLineItem[] = input.lineItems.map((item) => {
+      const total = Math.round(item.quantity * item.unitPrice * 100) / 100
+      return {
+        description: item.description,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        total,
+      }
+    })
+
+    // Netto-Summe
+    const subtotal = lineItems.reduce((sum, item) => sum + item.total, 0)
+
+    // MwSt nach Sätzen aufschlüsseln
+    let totalTax = 0
+    for (let i = 0; i < input.lineItems.length; i++) {
+      const vatRate = input.lineItems[i].vatRate ?? 0.19
+      totalTax += Math.round(lineItems[i].total * vatRate * 100) / 100
+    }
+
+    const tax = Math.round(totalTax * 100) / 100
     const total = Math.round((subtotal + tax) * 100) / 100
+
+    // Betrag muss positiv sein
+    const amountCheck = Validators.amountPositive(total, 'Rechnungsbetrag')
+    if (!amountCheck.valid) return { error: amountCheck.errors[0] }
 
     const dueDate = new Date(now)
     dueDate.setDate(dueDate.getDate() + dueInDays)
@@ -51,7 +116,7 @@ export const InvoiceService = {
       parentId: input.parentId,
       bookingIds: input.bookingIds ?? [],
       number: nextInvoiceNumber(input.providerId),
-      lineItems: input.lineItems,
+      lineItems,
       subtotal,
       tax,
       total,
@@ -64,6 +129,21 @@ export const InvoiceService = {
     store.state.invoices.set(id, invoice)
     store.addToIndex(store.indexes.invoicesByProvider, input.providerId, id)
     store.addToIndex(store.indexes.invoicesByParent, input.parentId, id)
+
+    // Audit
+    const auditId = generateId('audit')
+    store.state.auditLog.set(auditId, {
+      id: auditId,
+      providerId: input.providerId,
+      userId: input.providerId,
+      userType: 'provider',
+      action: 'invoice.created',
+      entityType: 'invoice',
+      entityId: id,
+      timestamp: now,
+    })
+    store.addToIndex(store.indexes.auditByProvider, input.providerId, auditId)
+    store.addToIndex(store.indexes.auditByEntity, `invoice:${id}`, auditId)
 
     return invoice
   },
@@ -97,6 +177,37 @@ export const InvoiceService = {
     const invoice = store.state.invoices.get(id)
     if (!invoice || invoice.status !== 'draft') return undefined
     invoice.status = 'sent'
+
+    // Benachrichtigung an Elternteil
+    const notifId = generateId('notif')
+    store.state.notifications.set(notifId, {
+      id: notifId,
+      recipientType: 'parent',
+      recipientId: invoice.parentId,
+      type: 'invoice_sent',
+      channel: 'email',
+      title: `Rechnung ${invoice.number}`,
+      body: `Sie haben eine neue Rechnung über ${invoice.total} ${invoice.currency} erhalten. Fällig am ${invoice.dueDate.toISOString().split('T')[0]}.`,
+      data: { invoiceId: id, invoiceNumber: invoice.number },
+      read: false,
+      sentAt: new Date(),
+    })
+    store.addToIndex(store.indexes.notificationsByRecipient, invoice.parentId, notifId)
+
+    // Audit
+    const auditId = generateId('audit')
+    store.state.auditLog.set(auditId, {
+      id: auditId,
+      providerId: invoice.providerId,
+      userId: invoice.providerId,
+      userType: 'provider',
+      action: 'invoice.sent',
+      entityType: 'invoice',
+      entityId: id,
+      timestamp: new Date(),
+    })
+    store.addToIndex(store.indexes.auditByProvider, invoice.providerId, auditId)
+
     return invoice
   },
 
@@ -123,7 +234,7 @@ export const InvoiceService = {
   },
 
   // Aus Buchung automatisch Rechnung generieren
-  createFromBooking(bookingId: ID): Invoice | { error: string } {
+  createFromBooking(bookingId: ID, vatRate: number = 0.19): Invoice | { error: string } {
     const booking = store.state.bookings.get(bookingId)
     if (!booking) return { error: 'Buchung nicht gefunden' }
 
@@ -142,7 +253,7 @@ export const InvoiceService = {
           description: `${activity.title} – ${pricingOption.label} (${booking.child.name})`,
           quantity: 1,
           unitPrice: pricingOption.amount,
-          total: pricingOption.amount,
+          vatRate,
         },
       ],
       currency: pricingOption.currency,
@@ -150,10 +261,32 @@ export const InvoiceService = {
   },
 
   // Offener Betrag pro Provider
-  getOutstandingTotal(providerId: ID): number {
+  getOutstandingTotal(providerId: ID): { count: number; total: number } {
     const invoices = this.listByProvider(providerId)
-    return invoices
-      .filter((inv) => inv.status === 'sent' || inv.status === 'overdue')
-      .reduce((sum, inv) => sum + inv.total, 0)
+    const outstanding = invoices.filter((inv) => inv.status === 'sent' || inv.status === 'overdue')
+    return {
+      count: outstanding.length,
+      total: outstanding.reduce((sum, inv) => sum + inv.total, 0),
+    }
+  },
+
+  // MwSt-Zusammenfassung für Steuererklärung
+  getVatSummary(providerId: ID, year: number): {
+    totalNet: number
+    totalVat: number
+    totalGross: number
+    paidInvoices: number
+    openInvoices: number
+  } {
+    const invoices = this.listByProvider(providerId)
+      .filter((inv) => inv.issuedAt.getFullYear() === year && inv.status !== 'cancelled')
+
+    return {
+      totalNet: invoices.reduce((sum, inv) => sum + inv.subtotal, 0),
+      totalVat: invoices.reduce((sum, inv) => sum + inv.tax, 0),
+      totalGross: invoices.reduce((sum, inv) => sum + inv.total, 0),
+      paidInvoices: invoices.filter((inv) => inv.status === 'paid').length,
+      openInvoices: invoices.filter((inv) => inv.status !== 'paid' && inv.status !== 'cancelled').length,
+    }
   },
 }

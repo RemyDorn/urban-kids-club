@@ -45,5 +45,14 @@ export {
   ContractService,
 } from './services'
 
+// Validierung & Workflows
+export {
+  Validators,
+  TrialConversionWorkflow,
+  WaitlistConversionWorkflow,
+  BackgroundJobs,
+  CascadeDelete,
+} from './services'
+
 // Store (nur für Tests / Reset)
 export { store } from './domain/store'

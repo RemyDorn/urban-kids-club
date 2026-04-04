@@ -27,7 +27,11 @@ export { CrmService } from './crm.service'
 export { ExportService } from './export.service'
 export { ReportingService } from './reporting.service'
 
-// Compliance & Regulatorik (Forschungsergebnisse)
+// Compliance & Regulatorik
 export { EInvoiceService } from './einvoice.service'
 export { BuTVoucherService } from './but-voucher.service'
 export { ContractService } from './contract.service'
+
+// Validierung & Workflows
+export { Validators } from './validators'
+export { TrialConversionWorkflow, WaitlistConversionWorkflow, BackgroundJobs, CascadeDelete } from './workflows'

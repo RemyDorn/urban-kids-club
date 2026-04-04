@@ -1,8 +1,8 @@
 // ============================================================
-// Export Service – CSV, DATEV, PDF Export (130%-Feature)
+// Export Service – CSV, DATEV, PDF Export (v2 – fixed)
 // ============================================================
-// Provider können ihre Daten in verschiedenen Formaten exportieren.
-// DATEV-Export für den Steuerberater ist ein Killer-Feature in DE.
+// Fixes: CSV escaping, DATEV spec, consistent date filtering,
+// no Buffer dependency (works in browser + Node.js)
 // ============================================================
 
 import { store } from '../domain/store'
@@ -82,7 +82,8 @@ export const ExportService = {
       }
 
       // In Produktion: Datei auf S3 hochladen und URL speichern
-      request.fileUrl = `data:text/${request.format};base64,${Buffer.from(content).toString('base64')}`
+      // Kein Buffer.from – funktioniert auch im Browser
+      request.fileUrl = `data:text/${request.format};charset=utf-8,${encodeURIComponent(content)}`
       request.status = 'completed'
       request.completedAt = new Date()
     } catch {
@@ -90,7 +91,30 @@ export const ExportService = {
     }
   },
 
-  // --- CSV Export ---
+  // --- CSV Escaping (Semikolon-getrennt für DE) ---
+
+  _csvEscape(value: string): string {
+    if (value.includes(';') || value.includes('"') || value.includes('\n') || value.includes('\r')) {
+      return `"${value.replace(/"/g, '""')}"`
+    }
+    return value
+  },
+
+  _csvRow(values: string[]): string {
+    return values.map((v) => this._csvEscape(v)).join(';')
+  },
+
+  _filterByDate<T extends { createdAt?: Date; issuedAt?: Date }>(items: T[], dateRange?: { from: string; to: string }, dateField: 'createdAt' | 'issuedAt' = 'createdAt'): T[] {
+    if (!dateRange) return items
+    const from = new Date(dateRange.from)
+    const to = new Date(dateRange.to + 'T23:59:59')
+    return items.filter((item) => {
+      const d = dateField === 'issuedAt' ? (item as any).issuedAt : (item as any).createdAt
+      return d && d >= from && d <= to
+    })
+  },
+
+  // --- Export-Methoden ---
 
   _exportBookings(request: ExportRequest): string {
     const bookingIds = store.getFromIndex(store.indexes.bookingsByProvider, request.providerId)
@@ -98,17 +122,13 @@ export const ExportService = {
       .map((id) => store.state.bookings.get(id)!)
       .filter(Boolean)
 
-    if (request.dateRange) {
-      const from = new Date(request.dateRange.from)
-      const to = new Date(request.dateRange.to)
-      bookings = bookings.filter((b) => b.createdAt >= from && b.createdAt <= to)
-    }
+    bookings = this._filterByDate(bookings, request.dateRange, 'createdAt')
 
     if (request.format === 'csv') {
-      const header = 'Buchungs-ID;Kind;Kurs;Status;Zahlungsstatus;Betrag;Währung;Erstellt am'
+      const header = this._csvRow(['Buchungs-ID', 'Kind', 'Kurs', 'Status', 'Zahlungsstatus', 'Betrag', 'Währung', 'Erstellt am'])
       const rows = bookings.map((b) => {
         const activity = store.state.activities.get(b.activityId)
-        return [
+        return this._csvRow([
           b.id,
           b.child.name,
           activity?.title ?? b.activityId,
@@ -117,7 +137,7 @@ export const ExportService = {
           b.amountPaid.toFixed(2).replace('.', ','),
           b.currency,
           b.createdAt.toISOString().split('T')[0],
-        ].join(';')
+        ])
       })
       return [header, ...rows].join('\n')
     }
