@@ -28,7 +28,7 @@
     /* Calendar */
     .cal-grid { display: grid; grid-template-columns: 60px repeat(7, 1fr); }
     .cal-hour { height: 64px; border-bottom: 1px solid #f3f4f6; }
-    .cal-event { position: absolute; left: 2px; right: 2px; border-radius: 6px; padding: 4px 8px; font-size: 12px; overflow: hidden; cursor: pointer; transition: all 0.15s; border-left: 3px solid; }
+    .cal-event { position: absolute; left: 2px; right: 2px; border-radius: 6px; padding: 4px 8px; font-size: 12px; overflow: hidden; cursor: pointer; transition: all 0.15s; border: 1.5px solid; }
     .cal-event:hover { transform: scale(1.02); box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 10 !important; }
     .cal-day-col { position: relative; border-left: 1px solid #f3f4f6; }
     .cal-today { background: #f0f9ff; }
@@ -254,27 +254,56 @@
       const end = fmtDate(addDays(calWeekStart, 6))
       const today = fmtDate(new Date())
 
-      const [calData, activities, occupancy, bookingsRes] = await Promise.all([
-        api(`/providers/${currentProvider.id}/calendar?start=${start}&end=${end}`),
+      const [activities, occupancy, holidays] = await Promise.all([
         api(`/providers/${currentProvider.id}/activities`),
         api(`/providers/${currentProvider.id}/reports/occupancy`),
-        api(`/providers/${currentProvider.id}/bookings`),
+        api(`/providers/${currentProvider.id}/holidays`),
       ])
 
-      const events = calData.data
-      const conflicts = calData.conflicts || []
       const actMap = {}
       activities.data.forEach(a => { actMap[a.id] = a })
       const occMap = {}
       occupancy.data.forEach(o => { occMap[o.activityId] = o })
-      // Color per activity
-      const colorMap = {}
-      let colorIdx = 0
-      activities.data.forEach(a => { colorMap[a.id] = eventColors[colorIdx++ % eventColors.length] })
 
-      // Days
+      // Build virtual calendar events from activity schedules
+      const dayToNum = { SU: 0, MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6 }
+      const holidayDates = new Set()
+      ;(holidays.data || []).forEach(h => {
+        if (!h.cancelActivities) return
+        const cur = new Date(h.startDate)
+        const hEnd = new Date(h.endDate)
+        while (cur <= hEnd) { holidayDates.add(fmtDate(cur)); cur.setDate(cur.getDate() + 1) }
+      })
+
+      const events = []
       const days = []
       for (let i = 0; i < 7; i++) days.push(addDays(calWeekStart, i))
+
+      activities.data.filter(a => a.status === 'published').forEach(a => {
+        if (a.schedule.type === 'recurring') {
+          for (const slot of a.schedule.slots) {
+            const targetDay = dayToNum[slot.day]
+            days.forEach(d => {
+              if (d.getDay() === targetDay && !holidayDates.has(fmtDate(d))) {
+                events.push({ activityId: a.id, title: a.title, date: fmtDate(d), startTime: slot.startTime, endTime: slot.endTime, type: 'activity' })
+              }
+            })
+          }
+        } else if (a.schedule.type === 'single') {
+          if (a.schedule.date >= start && a.schedule.date <= end) {
+            events.push({ activityId: a.id, title: a.title, date: a.schedule.date, startTime: a.schedule.startTime, endTime: a.schedule.endTime, type: 'activity' })
+          }
+        } else if (a.schedule.type === 'camp') {
+          days.forEach(d => {
+            const ds = fmtDate(d)
+            if (ds >= a.schedule.startDate && ds <= a.schedule.endDate && d.getDay() >= 1 && d.getDay() <= 5) {
+              events.push({ activityId: a.id, title: a.title + ' (Camp)', date: ds, startTime: a.schedule.dailyStartTime, endTime: a.schedule.dailyEndTime, type: 'activity' })
+            }
+          })
+        }
+      })
+
+      const conflicts = [] // Conflicts computed locally could be added later
 
       // Hours 7-21
       const hours = []
@@ -400,9 +429,8 @@
             // Occupancy fill: background fills from bottom based on booking percentage
             eventEl.style.cssText = `
               top:${topOffset}px; height:${height}px; z-index:5;
-              border-left:4px solid ${clr};
-              background: linear-gradient(to top, ${hexToRgba(clr, 0.35)} ${occPct}%, ${hexToRgba(clr, 0.08)} ${occPct}%);
-              color: ${clr.replace(')', ',0.9)').replace('rgb', 'rgba').startsWith('rgba') ? clr : '#1f2937'};
+              border-color:${clr}; border-left-width:4px;
+              background: linear-gradient(to top, ${hexToRgba(clr, 0.4)} ${occPct}%, ${hexToRgba(clr, 0.06)} ${occPct}%);
             `
             eventEl.onclick = () => showEventDetail(event, activity, occ)
 
