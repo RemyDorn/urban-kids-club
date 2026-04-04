@@ -26,6 +26,8 @@ function merge(...results: ValidationResult[]): ValidationResult {
   return { valid: errors.length === 0, errors }
 }
 
+export const WAITLIST_SIGNAL = '__WAITLIST__' as const
+
 export const Validators = {
 
   // --- Entity-Existenz ---
@@ -127,7 +129,7 @@ export const Validators = {
 
     if (activeCount >= activity.capacity) {
       if (activity.waitlistEnabled) {
-        return { valid: true, errors: ['WAITLIST'] } // Signal: Warteliste statt Fehler
+        return { valid: true, errors: [WAITLIST_SIGNAL] }
       }
       return fail('Kurs ist ausgebucht')
     }

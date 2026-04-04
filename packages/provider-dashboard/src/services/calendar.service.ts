@@ -4,6 +4,7 @@
 
 import { store } from '../domain/store'
 import { generateId } from './id'
+import { DAY_TO_NUMBER, RECURRING_WEEKS_AHEAD } from './helpers'
 import type { CalendarEvent, CalendarConflict, ID } from '../types'
 
 export interface CreateCalendarEventInput {
@@ -252,10 +253,9 @@ export const CalendarService = {
       } else if (schedule.type === 'recurring') {
         // Erstelle Events für die nächsten 12 Wochen
         for (const slot of schedule.slots) {
-          const dayMap: Record<string, number> = { MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6, SU: 0 }
-          const targetDay = dayMap[slot.day]
+          const targetDay = DAY_TO_NUMBER[slot.day]
           const start = new Date(schedule.startDate)
-          const end = schedule.endDate ? new Date(schedule.endDate) : new Date(start.getTime() + 84 * 24 * 60 * 60 * 1000)
+          const end = schedule.endDate ? new Date(schedule.endDate) : new Date(start.getTime() + RECURRING_WEEKS_AHEAD * 7 * 24 * 60 * 60 * 1000)
 
           const current = new Date(start)
           // Zum richtigen Wochentag springen

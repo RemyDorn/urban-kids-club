@@ -7,6 +7,7 @@
 
 import { store } from '../domain/store'
 import { generateId } from './id'
+import { createNotification, createAuditEntry } from './helpers'
 import type { ID } from '../types'
 
 // ============================================================
@@ -60,26 +61,16 @@ export const TrialConversionWorkflow = {
     trial.convertedToBookingId = bookingId
     trial.updatedAt = now
 
-    // Benachrichtigung
-    const notifId = generateId('notif')
-    store.state.notifications.set(notifId, {
-      id: notifId,
+    createNotification({
       recipientType: 'parent',
       recipientId: trial.parentId,
       type: 'booking_confirmed',
-      channel: 'email',
       title: 'Willkommen im Kurs!',
       body: `"${trial.child.name}" ist jetzt fest für "${activity.title}" angemeldet. Probestunde erfolgreich konvertiert.`,
       data: { bookingId, activityId: trial.activityId, trialId },
-      read: false,
-      sentAt: now,
     })
-    store.addToIndex(store.indexes.notificationsByRecipient, trial.parentId, notifId)
 
-    // Audit
-    const auditId = generateId('audit')
-    store.state.auditLog.set(auditId, {
-      id: auditId,
+    createAuditEntry({
       providerId: trial.providerId,
       userId: trial.parentId,
       userType: 'parent',
@@ -87,9 +78,7 @@ export const TrialConversionWorkflow = {
       entityType: 'trial',
       entityId: trialId,
       changes: { bookingId: { old: null, new: bookingId } },
-      timestamp: now,
     })
-    store.addToIndex(store.indexes.auditByProvider, trial.providerId, auditId)
 
     return { bookingId }
   },
@@ -149,21 +138,14 @@ export const WaitlistConversionWorkflow = {
     // Warteliste aktualisieren
     entry.status = 'accepted'
 
-    // Benachrichtigung
-    const notifId = generateId('notif')
-    store.state.notifications.set(notifId, {
-      id: notifId,
+    createNotification({
       recipientType: 'parent',
       recipientId: entry.parentId,
       type: 'booking_confirmed',
-      channel: 'email',
       title: 'Buchung bestätigt – Platz von Warteliste',
       body: `"${entry.child.name}" hat einen Platz in "${activity.title}" erhalten!`,
       data: { bookingId, activityId: entry.activityId },
-      read: false,
-      sentAt: now,
     })
-    store.addToIndex(store.indexes.notificationsByRecipient, entry.parentId, notifId)
 
     return { bookingId }
   },
@@ -202,7 +184,6 @@ export const BackgroundJobs = {
         entry.status = 'expired'
         expiredWaitlistOffers++
 
-        // Nächsten Kandidaten anbieten
         const nextWaiting = Array.from(store.state.waitlistEntries.values())
           .filter((e) => e.activityId === entry.activityId && e.status === 'waiting')
           .sort((a, b) => a.position - b.position)[0]
@@ -212,90 +193,59 @@ export const BackgroundJobs = {
           nextWaiting.notifiedAt = now
           nextWaiting.expiresAt = new Date(now.getTime() + 48 * 60 * 60 * 1000)
 
-          const notifId = generateId('notif')
-          store.state.notifications.set(notifId, {
-            id: notifId,
+          createNotification({
             recipientType: 'parent',
             recipientId: nextWaiting.parentId,
             type: 'waitlist_promoted',
-            channel: 'email',
             title: 'Platz frei geworden!',
-            body: `Ein Platz ist frei geworden. Bitte bestätigen Sie innerhalb von 48 Stunden.`,
+            body: 'Ein Platz ist frei geworden. Bitte bestätigen Sie innerhalb von 48 Stunden.',
             data: { waitlistEntryId: nextWaiting.id, activityId: nextWaiting.activityId },
-            read: false,
-            sentAt: now,
           })
-          store.addToIndex(store.indexes.notificationsByRecipient, nextWaiting.parentId, notifId)
         }
       }
     }
 
-    // 2. Überfällige Rechnungen
+    // 2. ��berfällige Rechnungen
     for (const invoice of store.state.invoices.values()) {
       if (invoice.status === 'sent' && invoice.dueDate < now) {
         invoice.status = 'overdue'
         overdueInvoices++
-
-        const notifId = generateId('notif')
-        store.state.notifications.set(notifId, {
-          id: notifId,
+        createNotification({
           recipientType: 'parent',
           recipientId: invoice.parentId,
           type: 'payment_overdue',
-          channel: 'email',
           title: `Zahlungserinnerung – ${invoice.number}`,
           body: `Die Rechnung ${invoice.number} über ${invoice.total} ${invoice.currency} ist überfällig.`,
           data: { invoiceId: invoice.id, invoiceNumber: invoice.number },
-          read: false,
-          sentAt: now,
         })
-        store.addToIndex(store.indexes.notificationsByRecipient, invoice.parentId, notifId)
       }
     }
 
-    // 3. Ablaufende Dokumente (30 Tage vorher warnen)
-    const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
+    // 3. Ablaufende Dokumente
     for (const doc of store.state.documents.values()) {
       if (!doc.expiresAt) continue
-
       const daysUntilExpiry = (doc.expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
 
       if (daysUntilExpiry < 0 && doc.status !== 'expired') {
         doc.status = 'expired'
         expiringDocuments++
-
-        const notifId = generateId('notif')
-        store.state.notifications.set(notifId, {
-          id: notifId,
-          recipientType: 'provider',
-          recipientId: doc.providerId,
-          type: 'document_expiring',
-          channel: 'in_app',
+        createNotification({
+          recipientType: 'provider', recipientId: doc.providerId,
+          type: 'document_expiring', channel: 'in_app',
           title: 'Dokument abgelaufen!',
           body: `"${doc.name}" ist abgelaufen. Bitte erneuern Sie es umgehend.`,
           data: { documentId: doc.id },
-          read: false,
-          sentAt: now,
         })
-        store.addToIndex(store.indexes.notificationsByRecipient, doc.providerId, notifId)
       } else if (daysUntilExpiry > 0 && daysUntilExpiry <= 30 && doc.status !== 'expiring_soon') {
         doc.status = 'expiring_soon'
         expiringDocuments++
-
-        const notifId = generateId('notif')
-        store.state.notifications.set(notifId, {
-          id: notifId,
-          recipientType: 'provider',
-          recipientId: doc.providerId,
-          type: 'document_expiring',
-          channel: 'in_app',
+        createNotification({
+          recipientType: 'provider', recipientId: doc.providerId,
+          type: 'document_expiring', channel: 'in_app',
           title: 'Dokument läuft bald ab',
           body: `"${doc.name}" läuft in ${Math.ceil(daysUntilExpiry)} Tagen ab.`,
           data: { documentId: doc.id },
-          read: false,
-          sentAt: now,
         })
-        store.addToIndex(store.indexes.notificationsByRecipient, doc.providerId, notifId)
       }
     }
 
@@ -303,22 +253,14 @@ export const BackgroundJobs = {
     for (const trial of store.state.trialLessons.values()) {
       if (trial.status === 'scheduled' && trial.scheduledDate === tomorrow) {
         trialReminders++
-
         const activity = store.state.activities.get(trial.activityId)
-        const notifId = generateId('notif')
-        store.state.notifications.set(notifId, {
-          id: notifId,
-          recipientType: 'parent',
-          recipientId: trial.parentId,
-          type: 'trial_reminder' as any,
-          channel: 'email',
+        createNotification({
+          recipientType: 'parent', recipientId: trial.parentId,
+          type: 'booking_reminder',
           title: 'Erinnerung: Probestunde morgen',
           body: `"${trial.child.name}" hat morgen um ${trial.scheduledTime} eine Probestunde bei "${activity?.title ?? ''}".`,
           data: { trialId: trial.id },
-          read: false,
-          sentAt: now,
         })
-        store.addToIndex(store.indexes.notificationsByRecipient, trial.parentId, notifId)
       }
     }
 
@@ -330,65 +272,36 @@ export const BackgroundJobs = {
       for (const bid of bookingIds) {
         const booking = store.state.bookings.get(bid)
         if (!booking || booking.status !== 'confirmed') continue
-
         bookingReminders++
-        const notifId = generateId('notif')
-        store.state.notifications.set(notifId, {
-          id: notifId,
-          recipientType: 'parent',
-          recipientId: booking.parentId,
+        createNotification({
+          recipientType: 'parent', recipientId: booking.parentId,
           type: 'booking_reminder',
-          channel: 'email',
           title: 'Erinnerung: Kurs morgen',
           body: `"${booking.child.name}" hat morgen um ${calEvent.startTime} Kurs: "${calEvent.title}".`,
           data: { bookingId: bid, activityId: calEvent.activityId },
-          read: false,
-          sentAt: now,
         })
-        store.addToIndex(store.indexes.notificationsByRecipient, booking.parentId, notifId)
       }
     }
 
     return { expiredWaitlistOffers, overdueInvoices, expiringDocuments, trialReminders, bookingReminders }
   },
 
-  /**
-   * WÖCHENTLICH aufrufen: SEPA-Lastschriften, Reporting-Snapshots.
-   */
-  runWeekly(): {
-    sepaCollections: number
-    paymentReminders: number
-  } {
+  runWeekly(): { sepaCollections: number; paymentReminders: number } {
     let sepaCollections = 0
     let paymentReminders = 0
-    const now = new Date()
-
-    // Zahlungserinnerungen für unbezahlte Buchungen (>7 Tage)
-    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
 
     for (const booking of store.state.bookings.values()) {
-      if (
-        booking.status === 'confirmed' &&
-        booking.paymentStatus === 'unpaid' &&
-        booking.createdAt < sevenDaysAgo
-      ) {
+      if (booking.status === 'confirmed' && booking.paymentStatus === 'unpaid' && booking.createdAt < sevenDaysAgo) {
         paymentReminders++
-
         const activity = store.state.activities.get(booking.activityId)
-        const notifId = generateId('notif')
-        store.state.notifications.set(notifId, {
-          id: notifId,
-          recipientType: 'parent',
-          recipientId: booking.parentId,
+        createNotification({
+          recipientType: 'parent', recipientId: booking.parentId,
           type: 'payment_overdue',
-          channel: 'email',
           title: 'Zahlungserinnerung',
           body: `Die Zahlung für "${activity?.title ?? ''}" (${booking.child.name}) steht noch aus.`,
           data: { bookingId: booking.id },
-          read: false,
-          sentAt: now,
         })
-        store.addToIndex(store.indexes.notificationsByRecipient, booking.parentId, notifId)
       }
     }
 

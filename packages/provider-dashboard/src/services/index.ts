@@ -32,6 +32,7 @@ export { EInvoiceService } from './einvoice.service'
 export { BuTVoucherService } from './but-voucher.service'
 export { ContractService } from './contract.service'
 
-// Validierung & Workflows
-export { Validators } from './validators'
+// Shared Helpers & Validierung
+export { createNotification, createAuditEntry, calcDocumentStatus, getEntitiesFromIndex } from './helpers'
+export { Validators, WAITLIST_SIGNAL } from './validators'
 export { TrialConversionWorkflow, WaitlistConversionWorkflow, BackgroundJobs, CascadeDelete } from './workflows'

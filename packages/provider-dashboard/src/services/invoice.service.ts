@@ -8,6 +8,7 @@
 import { store } from '../domain/store'
 import { generateId } from './id'
 import { Validators } from './validators'
+import { createNotification, createAuditEntry } from './helpers'
 import type { Invoice, InvoiceLineItem, InvoiceStatus, Currency, ID } from '../types'
 
 export interface InvoiceLineItemInput {
@@ -130,20 +131,10 @@ export const InvoiceService = {
     store.addToIndex(store.indexes.invoicesByProvider, input.providerId, id)
     store.addToIndex(store.indexes.invoicesByParent, input.parentId, id)
 
-    // Audit
-    const auditId = generateId('audit')
-    store.state.auditLog.set(auditId, {
-      id: auditId,
-      providerId: input.providerId,
-      userId: input.providerId,
-      userType: 'provider',
-      action: 'invoice.created',
-      entityType: 'invoice',
-      entityId: id,
-      timestamp: now,
+    createAuditEntry({
+      providerId: input.providerId, userId: input.providerId, userType: 'provider',
+      action: 'invoice.created', entityType: 'invoice', entityId: id,
     })
-    store.addToIndex(store.indexes.auditByProvider, input.providerId, auditId)
-    store.addToIndex(store.indexes.auditByEntity, `invoice:${id}`, auditId)
 
     return invoice
   },
@@ -178,35 +169,18 @@ export const InvoiceService = {
     if (!invoice || invoice.status !== 'draft') return undefined
     invoice.status = 'sent'
 
-    // Benachrichtigung an Elternteil
-    const notifId = generateId('notif')
-    store.state.notifications.set(notifId, {
-      id: notifId,
-      recipientType: 'parent',
-      recipientId: invoice.parentId,
+    createNotification({
+      recipientType: 'parent', recipientId: invoice.parentId,
       type: 'invoice_sent',
-      channel: 'email',
       title: `Rechnung ${invoice.number}`,
       body: `Sie haben eine neue Rechnung über ${invoice.total} ${invoice.currency} erhalten. Fällig am ${invoice.dueDate.toISOString().split('T')[0]}.`,
       data: { invoiceId: id, invoiceNumber: invoice.number },
-      read: false,
-      sentAt: new Date(),
     })
-    store.addToIndex(store.indexes.notificationsByRecipient, invoice.parentId, notifId)
 
-    // Audit
-    const auditId = generateId('audit')
-    store.state.auditLog.set(auditId, {
-      id: auditId,
-      providerId: invoice.providerId,
-      userId: invoice.providerId,
-      userType: 'provider',
-      action: 'invoice.sent',
-      entityType: 'invoice',
-      entityId: id,
-      timestamp: new Date(),
+    createAuditEntry({
+      providerId: invoice.providerId, userId: invoice.providerId, userType: 'provider',
+      action: 'invoice.sent', entityType: 'invoice', entityId: id,
     })
-    store.addToIndex(store.indexes.auditByProvider, invoice.providerId, auditId)
 
     return invoice
   },

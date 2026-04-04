@@ -7,7 +7,8 @@
 
 import { store } from '../domain/store'
 import { generateId } from './id'
-import { Validators } from './validators'
+import { Validators, WAITLIST_SIGNAL } from './validators'
+import { createNotification, createAuditEntry } from './helpers'
 import type { Booking, BookingStatus, PaymentStatus, ChildInfo, Currency, ID } from '../types'
 
 export interface CreateBookingInput {
@@ -65,7 +66,7 @@ export const BookingService = {
     let waitlisted = false
 
     if (!capacityCheck.valid) {
-      if (capacityCheck.errors[0] === 'WAITLIST') {
+      if (capacityCheck.errors[0] === WAITLIST_SIGNAL) {
         status = 'waitlisted'
         waitlisted = true
       } else {
@@ -78,15 +79,9 @@ export const BookingService = {
     let couponId: string | undefined
 
     if (input.couponCode) {
-      // Lazy import to avoid circular dependency
-      const coupon = store.state.coupons.values()
-      let foundCoupon = undefined
-      for (const c of coupon) {
-        if (c.code === input.couponCode.toUpperCase().trim()) {
-          foundCoupon = c
-          break
-        }
-      }
+      const normalizedCode = input.couponCode.toUpperCase().trim()
+      const couponIdFromIndex = store.indexes.couponByCode.get(normalizedCode)
+      const foundCoupon = couponIdFromIndex ? store.state.coupons.get(couponIdFromIndex) : undefined
 
       if (foundCoupon) {
         couponId = foundCoupon.id
@@ -148,7 +143,7 @@ export const BookingService = {
       pricingOptionId: input.pricingOptionId,
       status,
       paymentStatus: finalAmount === 0 ? 'paid' : 'unpaid',
-      amountPaid: finalAmount === 0 ? 0 : 0,
+      amountPaid: 0,
       currency: pricingOption.currency,
       notes: input.notes,
       createdAt: now,
@@ -181,42 +176,26 @@ export const BookingService = {
       }
     }
 
-    // --- Audit-Log ---
-    const auditId = generateId('audit')
-    store.state.auditLog.set(auditId, {
-      id: auditId,
+    createAuditEntry({
       providerId: input.providerId,
       userId: input.parentId,
       userType: 'parent',
       action: waitlisted ? 'booking.waitlisted' : 'booking.created',
       entityType: 'booking',
       entityId: id,
-      timestamp: now,
     })
-    store.addToIndex(store.indexes.auditByProvider, input.providerId, auditId)
-    store.addToIndex(store.indexes.auditByEntity, `booking:${id}`, auditId)
 
-    // --- Benachrichtigungen ---
     const notifications: string[] = []
-
-    const notifId = generateId('notif')
-    const notification = {
-      id: notifId,
-      recipientType: 'parent' as const,
+    notifications.push(createNotification({
+      recipientType: 'parent',
       recipientId: input.parentId,
-      type: waitlisted ? 'waitlist_promoted' as const : 'booking_confirmed' as const,
-      channel: 'email' as const,
+      type: waitlisted ? 'waitlist_promoted' : 'booking_confirmed',
       title: waitlisted ? 'Auf Warteliste gesetzt' : 'Buchungsbestätigung',
       body: waitlisted
         ? `"${input.child.name}" steht auf der Warteliste für "${activity.title}". Sie werden benachrichtigt, sobald ein Platz frei wird.`
         : `Buchung bestätigt: "${input.child.name}" für "${activity.title}".${discountApplied > 0 ? ` Rabatt: ${discountApplied} ${pricingOption.currency}` : ''}`,
       data: { bookingId: id, activityId: input.activityId },
-      read: false,
-      sentAt: now,
-    }
-    store.state.notifications.set(notifId, notification)
-    store.addToIndex(store.indexes.notificationsByRecipient, input.parentId, notifId)
-    notifications.push(notifId)
+    }))
 
     return { booking, discountApplied: discountApplied > 0 ? discountApplied : undefined, waitlisted, notifications }
   },
@@ -270,37 +249,24 @@ export const BookingService = {
     booking.status = 'cancelled'
     booking.updatedAt = new Date()
 
-    // Audit
-    const auditId = generateId('audit')
-    store.state.auditLog.set(auditId, {
-      id: auditId,
+    createAuditEntry({
       providerId: booking.providerId,
       userId: cancelledBy?.userId ?? booking.parentId,
       userType: cancelledBy?.userType ?? 'parent',
       action: 'booking.cancelled',
       entityType: 'booking',
       entityId: id,
-      timestamp: new Date(),
     })
-    store.addToIndex(store.indexes.auditByProvider, booking.providerId, auditId)
-    store.addToIndex(store.indexes.auditByEntity, `booking:${id}`, auditId)
 
-    // Stornierungsbenachrichtigung
     const activity = store.state.activities.get(booking.activityId)
-    const notifId = generateId('notif')
-    store.state.notifications.set(notifId, {
-      id: notifId,
+    createNotification({
       recipientType: 'parent',
       recipientId: booking.parentId,
       type: 'booking_cancelled',
-      channel: 'email',
       title: 'Buchung storniert',
       body: `Ihre Buchung für "${activity?.title ?? booking.activityId}" wurde storniert.`,
       data: { bookingId: id },
-      read: false,
-      sentAt: new Date(),
     })
-    store.addToIndex(store.indexes.notificationsByRecipient, booking.parentId, notifId)
 
     // Warteliste nachrücken
     if (wasConfirmed) {
@@ -316,23 +282,16 @@ export const BookingService = {
     booking.status = 'completed'
     booking.updatedAt = new Date()
 
-    // Review-Request nach Abschluss senden
     const activity = store.state.activities.get(booking.activityId)
     if (activity) {
-      const notifId = generateId('notif')
-      store.state.notifications.set(notifId, {
-        id: notifId,
+      createNotification({
         recipientType: 'parent',
         recipientId: booking.parentId,
         type: 'review_request',
-        channel: 'email',
         title: 'Wie war der Kurs?',
         body: `"${booking.child.name}" hat "${activity.title}" besucht. Wir freuen uns über Ihre Bewertung!`,
         data: { activityId: booking.activityId, bookingId: id },
-        read: false,
-        sentAt: new Date(),
       })
-      store.addToIndex(store.indexes.notificationsByRecipient, booking.parentId, notifId)
     }
 
     return booking
@@ -365,21 +324,14 @@ export const BookingService = {
 
     booking.updatedAt = new Date()
 
-    // Notification bei Zahlung
-    const notifId = generateId('notif')
-    store.state.notifications.set(notifId, {
-      id: notifId,
+    createNotification({
       recipientType: 'parent',
       recipientId: booking.parentId,
       type: 'payment_received',
-      channel: 'email',
       title: 'Zahlung eingegangen',
       body: `Zahlung über ${amount} ${booking.currency} für "${activity?.title ?? ''}" eingegangen.`,
       data: { bookingId: id, amount: amount.toString() },
-      read: false,
-      sentAt: new Date(),
     })
-    store.addToIndex(store.indexes.notificationsByRecipient, booking.parentId, notifId)
 
     return booking
   },
@@ -401,22 +353,15 @@ export const BookingService = {
       nextWaitlisted.status = 'confirmed'
       nextWaitlisted.updatedAt = new Date()
 
-      // Benachrichtigung
       const activity = store.state.activities.get(activityId)
-      const notifId = generateId('notif')
-      store.state.notifications.set(notifId, {
-        id: notifId,
+      createNotification({
         recipientType: 'parent',
         recipientId: nextWaitlisted.parentId,
         type: 'waitlist_promoted',
-        channel: 'email',
         title: 'Platz frei geworden!',
         body: `Ein Platz in "${activity?.title ?? ''}" ist frei geworden! "${nextWaitlisted.child.name}" wurde automatisch bestätigt.`,
         data: { bookingId: nextWaitlisted.id, activityId },
-        read: false,
-        sentAt: new Date(),
       })
-      store.addToIndex(store.indexes.notificationsByRecipient, nextWaitlisted.parentId, notifId)
 
       return nextWaitlisted
     }
