@@ -5,6 +5,7 @@
 import { store } from '../domain/store'
 import { generateId } from './id'
 import { DAY_TO_NUMBER, RECURRING_WEEKS_AHEAD } from './helpers'
+import { timesOverlap } from './validators'
 import type { CalendarEvent, CalendarConflict, ID } from '../types'
 
 export interface CreateCalendarEventInput {
@@ -118,10 +119,6 @@ export const CalendarService = {
 
   // --- Konflikterkennung ---
 
-  _timesOverlap(startA: string, endA: string, startB: string, endB: string): boolean {
-    return startA < endB && startB < endA
-  },
-
   detectConflicts(providerId: ID, date: string): CalendarConflict[] {
     const events = this.getByDate(providerId, date)
     const conflicts: CalendarConflict[] = []
@@ -131,7 +128,7 @@ export const CalendarService = {
         const a = events[i]
         const b = events[j]
 
-        if (!this._timesOverlap(a.startTime, a.endTime, b.startTime, b.endTime)) continue
+        if (!timesOverlap(a.startTime, a.endTime, b.startTime, b.endTime)) continue
 
         // Raum-Konflikt
         if (a.locationId && b.locationId && a.locationId === b.locationId) {
