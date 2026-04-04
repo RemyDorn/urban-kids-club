@@ -124,8 +124,13 @@
     let providers = []
 
     // --- API Helper ---
-    async function api(path) {
-      const res = await fetch(API + path)
+    async function api(path, method = 'GET', body = undefined) {
+      const opts = { method, headers: {} }
+      if (body) {
+        opts.headers['Content-Type'] = 'application/json'
+        opts.body = JSON.stringify(body)
+      }
+      const res = await fetch(API + path, opts)
       return res.json()
     }
 
@@ -217,7 +222,7 @@
       const end = fmtDate(addDays(calWeekStart, 6))
       const today = fmtDate(new Date())
 
-      await api(`/providers/${currentProvider.id}/calendar/sync`)
+      await api(`/providers/${currentProvider.id}/calendar/sync`, 'POST')
       const [calData, activities, occupancy, bookingsRes] = await Promise.all([
         api(`/providers/${currentProvider.id}/calendar?start=${start}&end=${end}`),
         api(`/providers/${currentProvider.id}/activities`),
@@ -537,23 +542,32 @@
     async function renderActivities() {
       const res = await api(`/providers/${currentProvider.id}/activities`)
       const activities = res.data
+      allActivitiesCache = activities
 
       document.getElementById('content').innerHTML = `
         <div class="mb-6 flex items-center justify-between">
           <div class="flex items-center gap-3">
             <input type="text" id="actSearch" placeholder="Kurse durchsuchen..." class="border border-gray-200 rounded-lg px-4 py-2 text-sm w-64 focus:ring-2 focus:ring-brand-500" onkeyup="filterActivities()">
           </div>
-          <span class="text-sm text-gray-500">${activities.length} Kurse</span>
+          <div class="flex items-center gap-3">
+            <span class="text-sm text-gray-500">${activities.length} Kurse</span>
+            <button onclick="showActivityForm()" class="bg-brand-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-brand-600 transition-colors flex items-center gap-2">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+              Neuer Kurs
+            </button>
+          </div>
         </div>
         <div id="activityList" class="grid gap-4">
           ${activities.map(a => activityCard(a)).join('')}
         </div>
+        <div id="activityModal" class="hidden"></div>
       `
     }
 
+    const statusColors = { published: 'bg-green-100 text-green-700', draft: 'bg-gray-100 text-gray-600', cancelled: 'bg-red-100 text-red-700', archived: 'bg-gray-100 text-gray-500' }
+    const statusLabels = { published: 'Aktiv', draft: 'Entwurf', cancelled: 'Abgesagt', archived: 'Archiviert' }
+
     function activityCard(a) {
-      const statusColors = { published: 'bg-green-100 text-green-700', draft: 'bg-gray-100 text-gray-600', cancelled: 'bg-red-100 text-red-700', archived: 'bg-gray-100 text-gray-500' }
-      const statusLabels = { published: 'Aktiv', draft: 'Entwurf', cancelled: 'Abgesagt', archived: 'Archiviert' }
       const scheduleText = a.schedule.type === 'recurring' ? a.schedule.slots.map(s => s.day + ' ' + s.startTime + '–' + s.endTime).join(', ')
         : a.schedule.type === 'camp' ? `Camp: ${a.schedule.startDate} – ${a.schedule.endDate}`
         : `${a.schedule.date} ${a.schedule.startTime}–${a.schedule.endTime}`
@@ -575,9 +589,181 @@
                 <span>💰 ${a.pricing.map(p => p.amount + '€ (' + p.label + ')').join(', ')}</span>
               </div>
             </div>
+            <div class="flex items-center gap-2 ml-4">
+              ${a.status === 'draft' ? `<button onclick="publishActivity('${a.id}')" class="px-3 py-1.5 text-xs font-medium bg-green-500 text-white rounded-lg hover:bg-green-600">Veröffentlichen</button>` : ''}
+              <button onclick="showActivityForm('${a.id}')" class="px-3 py-1.5 text-xs font-medium bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">Bearbeiten</button>
+              <button onclick="duplicateActivity('${a.id}')" class="px-3 py-1.5 text-xs font-medium bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200" title="Duplizieren">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+              </button>
+              ${a.status !== 'archived' ? `<button onclick="archiveActivity('${a.id}')" class="px-3 py-1.5 text-xs font-medium bg-red-50 text-red-600 rounded-lg hover:bg-red-100" title="Archivieren">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"/></svg>
+              </button>` : ''}
+            </div>
           </div>
         </div>
       `
+    }
+
+    // Activity CRUD actions
+    async function publishActivity(id) {
+      await api(`/activities/${id}/publish`, 'POST')
+      navigate('activities')
+    }
+
+    async function duplicateActivity(id) {
+      await api(`/activities/${id}/duplicate`, 'POST')
+      navigate('activities')
+    }
+
+    async function archiveActivity(id) {
+      if (!confirm('Kurs wirklich archivieren?')) return
+      await api(`/activities/${id}/archive`, 'POST')
+      navigate('activities')
+    }
+
+    // Activity Create/Edit Form
+    function showActivityForm(editId) {
+      let a = editId ? allActivitiesCache.find(x => x.id === editId) : null
+      const isEdit = !!a
+      if (!a) a = { title: '', description: '', category: 'Tanz', ageRange: { min: 3, max: 10 }, capacity: 12, schedule: { type: 'recurring', slots: [{ day: 'MO', startTime: '15:00', endTime: '16:00' }], startDate: new Date().toISOString().split('T')[0] }, pricing: [{ label: 'Monatsbeitrag', type: 'subscription', amount: 45, currency: 'EUR', intervalMonths: 1 }], tags: [], waitlistEnabled: true }
+
+      const modal = document.getElementById('activityModal')
+      modal.className = 'cal-modal-backdrop'
+      modal.onclick = (e) => { if (e.target === modal) modal.className = 'hidden' }
+
+      const categories = ['Tanz', 'Ballett', 'Hip-Hop', 'Kindertanz', 'Sport', 'Musik', 'Kunst', 'STEM', 'Sprachen', 'Outdoor', 'Feriencamp']
+      const days = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU']
+      const dayLabels = { MO: 'Mo', TU: 'Di', WE: 'Mi', TH: 'Do', FR: 'Fr', SA: 'Sa', SU: 'So' }
+
+      modal.innerHTML = `
+        <div class="cal-modal fade-in" style="width: 600px; max-height: 90vh;">
+          <div class="flex items-center justify-between mb-6">
+            <h3 class="text-lg font-bold text-gray-900">${isEdit ? 'Kurs bearbeiten' : 'Neuen Kurs anlegen'}</h3>
+            <button onclick="document.getElementById('activityModal').className='hidden'" class="text-gray-400 hover:text-gray-600">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+          </div>
+
+          <form id="activityForm" onsubmit="saveActivity(event, '${editId || ''}')" class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Kursname *</label>
+              <input name="title" value="${a.title}" required class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500" placeholder="z.B. Ballett für Anfänger">
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Beschreibung</label>
+              <textarea name="description" rows="3" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500" placeholder="Was erwartet die Kinder?">${a.description}</textarea>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Kategorie *</label>
+                <select name="category" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                  ${categories.map(c => `<option value="${c}" ${a.category === c ? 'selected' : ''}>${c}</option>`).join('')}
+                </select>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Kapazität *</label>
+                <input name="capacity" type="number" min="1" max="100" value="${a.capacity}" required class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Alter von</label>
+                <input name="ageMin" type="number" min="0" max="18" value="${a.ageRange.min}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Alter bis</label>
+                <input name="ageMax" type="number" min="0" max="18" value="${a.ageRange.max}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+              </div>
+            </div>
+
+            <fieldset class="border border-gray-200 rounded-lg p-4">
+              <legend class="text-sm font-medium text-gray-700 px-2">Zeitplan</legend>
+              <div class="grid grid-cols-3 gap-3">
+                <div>
+                  <label class="block text-xs text-gray-500 mb-1">Wochentag</label>
+                  <select name="scheduleDay" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                    ${days.map(d => `<option value="${d}" ${a.schedule.type === 'recurring' && a.schedule.slots[0]?.day === d ? 'selected' : ''}>${dayLabels[d]}</option>`).join('')}
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-xs text-gray-500 mb-1">Von</label>
+                  <input name="startTime" type="time" value="${a.schedule.type === 'recurring' ? a.schedule.slots[0]?.startTime : a.schedule.startTime || '15:00'}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                </div>
+                <div>
+                  <label class="block text-xs text-gray-500 mb-1">Bis</label>
+                  <input name="endTime" type="time" value="${a.schedule.type === 'recurring' ? a.schedule.slots[0]?.endTime : a.schedule.endTime || '16:00'}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                </div>
+              </div>
+              <div class="mt-3">
+                <label class="block text-xs text-gray-500 mb-1">Startdatum</label>
+                <input name="startDate" type="date" value="${a.schedule.startDate || new Date().toISOString().split('T')[0]}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+              </div>
+            </fieldset>
+
+            <fieldset class="border border-gray-200 rounded-lg p-4">
+              <legend class="text-sm font-medium text-gray-700 px-2">Preis</legend>
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs text-gray-500 mb-1">Bezeichnung</label>
+                  <input name="pricingLabel" value="${a.pricing[0]?.label || 'Monatsbeitrag'}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                </div>
+                <div>
+                  <label class="block text-xs text-gray-500 mb-1">Betrag (EUR)</label>
+                  <input name="pricingAmount" type="number" step="0.01" min="0" value="${a.pricing[0]?.amount || 45}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                </div>
+              </div>
+            </fieldset>
+
+            <div class="flex items-center gap-2">
+              <input name="waitlistEnabled" type="checkbox" ${a.waitlistEnabled ? 'checked' : ''} class="rounded border-gray-300">
+              <label class="text-sm text-gray-700">Warteliste aktivieren</label>
+            </div>
+
+            <div class="flex gap-3 pt-2">
+              <button type="submit" class="flex-1 bg-brand-500 text-white py-2.5 rounded-lg font-medium hover:bg-brand-600 transition-colors">
+                ${isEdit ? 'Speichern' : 'Kurs anlegen'}
+              </button>
+              <button type="button" onclick="document.getElementById('activityModal').className='hidden'" class="px-6 py-2.5 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-colors">Abbrechen</button>
+            </div>
+          </form>
+        </div>
+      `
+    }
+
+    let allActivitiesCache = []
+
+    async function saveActivity(e, editId) {
+      e.preventDefault()
+      const f = new FormData(e.target)
+
+      const body = {
+        providerId: currentProvider.id,
+        title: f.get('title'),
+        description: f.get('description'),
+        category: f.get('category'),
+        ageRange: { min: parseInt(f.get('ageMin')), max: parseInt(f.get('ageMax')) },
+        capacity: parseInt(f.get('capacity')),
+        waitlistEnabled: !!f.get('waitlistEnabled'),
+        schedule: {
+          type: 'recurring',
+          slots: [{ day: f.get('scheduleDay'), startTime: f.get('startTime'), endTime: f.get('endTime') }],
+          startDate: f.get('startDate'),
+        },
+        pricing: [{ label: f.get('pricingLabel'), type: 'subscription', amount: parseFloat(f.get('pricingAmount')), currency: 'EUR', intervalMonths: 1 }],
+        tags: [],
+      }
+
+      if (editId) {
+        await api(`/activities/${editId}`, 'PUT', body)
+      } else {
+        await api('/activities', 'POST', body)
+      }
+
+      document.getElementById('activityModal').className = 'hidden'
+      navigate('activities')
     }
 
     // --- Bookings ---
