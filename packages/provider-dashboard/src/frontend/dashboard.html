@@ -1290,41 +1290,180 @@
     }
 
     // --- Invoices ---
+    const invoiceStatusDE = { draft: 'Entwurf', sent: 'Versendet', paid: 'Bezahlt', overdue: 'Überfällig', cancelled: 'Storniert' }
+    const invoiceStatusColors = { draft: 'bg-gray-100 text-gray-600', sent: 'bg-blue-100 text-blue-700', paid: 'bg-green-100 text-green-700', overdue: 'bg-red-100 text-red-700', cancelled: 'bg-gray-100 text-gray-500' }
+    const paymentMethodLabels = { sepa_direct_debit: 'SEPA-Lastschrift', bank_transfer: 'Überweisung', cash: 'Bar', card: 'Kreditkarte', paypal: 'PayPal', stripe: 'Stripe' }
+
     async function renderInvoices() {
-      const [invoices, outstanding, vatSummary] = await Promise.all([
+      const [invoices, bookings, outstanding, vatSummary, activities] = await Promise.all([
         api(`/providers/${currentProvider.id}/invoices`),
+        api(`/providers/${currentProvider.id}/bookings`),
         api(`/providers/${currentProvider.id}/invoices/outstanding`),
-        api(`/providers/${currentProvider.id}/invoices/vat-summary/2026`),
+        api(`/providers/${currentProvider.id}/invoices/vat-summary/${new Date().getFullYear()}`),
+        api(`/providers/${currentProvider.id}/activities`),
       ])
       const o = outstanding.data
       const v = vatSummary.data
+      const actMap = {}
+      activities.data.forEach(a => { actMap[a.id] = a })
+
+      // Unbilled bookings (confirmed, no invoice)
+      const invoicedBookingIds = new Set()
+      invoices.data.forEach(inv => (inv.bookingIds || []).forEach(bid => invoicedBookingIds.add(bid)))
+      const unbilledBookings = bookings.data.filter(b => b.status === 'confirmed' && !invoicedBookingIds.has(b.id))
 
       document.getElementById('content').innerHTML = `
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          ${kpiCardSmall('Offene Rechnungen', o.count)}
-          ${kpiCardSmall('Offener Betrag', formatCurrency(o.total))}
-          ${kpiCardSmall('MwSt 2026', formatCurrency(v.totalVat))}
-          ${kpiCardSmall('Brutto 2026', formatCurrency(v.totalGross))}
+        <!-- KPIs -->
+        <div class="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+          ${kpiCardSmall('Rechnungen', invoices.data.length)}
+          ${kpiCardSmall('Offen', o.count + ' (' + formatCurrency(o.total) + ')')}
+          ${kpiCardSmall('Bezahlt ' + new Date().getFullYear(), v.paidInvoices)}
+          ${kpiCardSmall('MwSt ' + new Date().getFullYear(), formatCurrency(v.totalVat))}
+          ${kpiCardSmall('Umsatz ' + new Date().getFullYear(), formatCurrency(v.totalGross))}
         </div>
+
+        <!-- Unbilled Bookings -->
+        ${unbilledBookings.length > 0 ? `
+        <div class="bg-amber-50 border border-amber-200 rounded-xl p-5 mb-6">
+          <div class="flex items-center justify-between mb-3">
+            <div>
+              <div class="font-semibold text-amber-800">${unbilledBookings.length} Buchungen ohne Rechnung</div>
+              <div class="text-sm text-amber-600">Klicke auf "Rechnung erstellen" um automatisch eine Rechnung zu generieren.</div>
+            </div>
+            <button onclick="generateAllInvoices()" class="bg-amber-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-amber-600">
+              Alle Rechnungen erstellen
+            </button>
+          </div>
+          <div class="space-y-2">
+            ${unbilledBookings.slice(0, 5).map(b => {
+              const act = actMap[b.activityId]
+              return `
+              <div class="flex items-center justify-between bg-white rounded-lg p-3">
+                <div class="flex items-center gap-3">
+                  <span class="text-sm font-medium text-gray-900">${b.child.name}</span>
+                  <span class="text-sm text-gray-500">${act?.title || '–'}</span>
+                </div>
+                <button onclick="createInvoiceFromBooking('${b.id}')" class="text-xs text-brand-600 hover:text-brand-700 font-medium">Rechnung erstellen</button>
+              </div>`
+            }).join('')}
+            ${unbilledBookings.length > 5 ? '<div class="text-xs text-amber-600 mt-1">...und ' + (unbilledBookings.length - 5) + ' weitere</div>' : ''}
+          </div>
+        </div>
+        ` : ''}
+
+        <!-- Invoices Table -->
         <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          ${invoices.data.length === 0 ? '<div class="p-8 text-center text-gray-400">Noch keine Rechnungen erstellt. Rechnungen werden aus Buchungen generiert.</div>' : `
+          <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+            <span class="font-semibold text-gray-900">${invoices.data.length} Rechnungen</span>
+          </div>
+          ${invoices.data.length === 0 ? '<div class="p-8 text-center text-gray-400">Noch keine Rechnungen. Erstelle Rechnungen aus bestätigten Buchungen.</div>' : `
           <table class="w-full">
             <thead class="bg-gray-50 text-xs text-gray-500 uppercase tracking-wider">
-              <tr><th class="px-6 py-3 text-left">Nr.</th><th class="px-6 py-3 text-left">Betrag</th><th class="px-6 py-3 text-left">Status</th><th class="px-6 py-3 text-left">Fällig</th></tr>
+              <tr>
+                <th class="px-6 py-3 text-left">Nr.</th>
+                <th class="px-6 py-3 text-left">Kunde</th>
+                <th class="px-6 py-3 text-left">Positionen</th>
+                <th class="px-6 py-3 text-right">Netto</th>
+                <th class="px-6 py-3 text-right">MwSt</th>
+                <th class="px-6 py-3 text-right">Brutto</th>
+                <th class="px-6 py-3 text-left">Status</th>
+                <th class="px-6 py-3 text-left">Fällig</th>
+                <th class="px-6 py-3 text-left">Aktionen</th>
+              </tr>
             </thead>
             <tbody class="divide-y divide-gray-100">
-              ${invoices.data.map(i => `
-                <tr class="hover:bg-gray-50">
-                  <td class="px-6 py-4 text-sm font-medium text-gray-900">${i.number}</td>
-                  <td class="px-6 py-4 text-sm text-gray-900">${formatCurrency(i.total)}</td>
-                  <td class="px-6 py-4"><span class="px-2 py-1 rounded-full text-xs font-medium ${invoiceStatusColor(i.status)}">${i.status}</span></td>
-                  <td class="px-6 py-4 text-sm text-gray-500">${new Date(i.dueDate).toLocaleDateString('de-DE')}</td>
-                </tr>
-              `).join('')}
+              ${invoices.data.map(inv => {
+                const statusColor = invoiceStatusColors[inv.status] || 'bg-gray-100'
+                const statusLabel = invoiceStatusDE[inv.status] || inv.status
+                const isOverdue = inv.status === 'sent' && new Date(inv.dueDate) < new Date()
+                return `
+                <tr class="hover:bg-gray-50 ${isOverdue ? 'bg-red-50/50' : ''}">
+                  <td class="px-6 py-4 text-sm font-mono font-medium text-gray-900">${inv.number}</td>
+                  <td class="px-6 py-4 text-sm text-gray-700">${inv.parentId.slice(0, 10)}</td>
+                  <td class="px-6 py-4 text-xs text-gray-500">${(inv.lineItems || []).map(li => li.description).join(', ').substring(0, 40)}</td>
+                  <td class="px-6 py-4 text-sm text-gray-700 text-right">${formatCurrency(inv.subtotal)}</td>
+                  <td class="px-6 py-4 text-sm text-gray-500 text-right">${formatCurrency(inv.tax)}</td>
+                  <td class="px-6 py-4 text-sm font-semibold text-gray-900 text-right">${formatCurrency(inv.total)}</td>
+                  <td class="px-6 py-4"><span class="px-2 py-1 rounded-full text-xs font-medium ${statusColor}">${statusLabel}</span></td>
+                  <td class="px-6 py-4 text-sm ${isOverdue ? 'text-red-600 font-medium' : 'text-gray-500'}">${new Date(inv.dueDate).toLocaleDateString('de-DE')}</td>
+                  <td class="px-6 py-4">
+                    <div class="flex items-center gap-1">
+                      ${inv.status === 'draft' ? `<button onclick="sendInvoice('${inv.id}')" class="px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded hover:bg-blue-100">Versenden</button>` : ''}
+                      ${inv.status === 'sent' || inv.status === 'overdue' ? `<button onclick="markInvoicePaid('${inv.id}')" class="px-2 py-1 text-xs bg-green-50 text-green-700 rounded hover:bg-green-100">Bezahlt</button>` : ''}
+                      ${inv.status !== 'paid' && inv.status !== 'cancelled' ? `<button onclick="cancelInvoice('${inv.id}')" class="px-2 py-1 text-xs bg-red-50 text-red-600 rounded hover:bg-red-100">Stornieren</button>` : ''}
+                    </div>
+                  </td>
+                </tr>`
+              }).join('')}
             </tbody>
           </table>`}
         </div>
+
+        <!-- Zahlungsmethoden Info -->
+        <div class="mt-6 bg-white rounded-xl border border-gray-200 p-6">
+          <h3 class="font-semibold text-gray-900 mb-3">Zahlungsmethoden</h3>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div class="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+              <div class="text-2xl">🏦</div>
+              <div><div class="text-sm font-medium">SEPA-Lastschrift</div><div class="text-xs text-gray-500">Automatisch</div></div>
+            </div>
+            <div class="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+              <div class="text-2xl">💳</div>
+              <div><div class="text-sm font-medium">Stripe</div><div class="text-xs text-gray-500">Kreditkarte, Apple/Google Pay</div></div>
+            </div>
+            <div class="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+              <div class="text-2xl">🅿️</div>
+              <div><div class="text-sm font-medium">PayPal</div><div class="text-xs text-gray-500">Online-Zahlung</div></div>
+            </div>
+            <div class="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+              <div class="text-2xl">💶</div>
+              <div><div class="text-sm font-medium">Überweisung / Bar</div><div class="text-xs text-gray-500">Manuell</div></div>
+            </div>
+          </div>
+        </div>
       `
+    }
+
+    async function createInvoiceFromBooking(bookingId) {
+      const s = getProviderSettings()
+      const vatRate = s.kleinunternehmer ? 0 : (parseFloat(s.vatRate || '19') / 100)
+      const result = await api('/invoices/from-booking/' + bookingId, 'POST', { vatRate })
+      if (result.error) { alert('Fehler: ' + result.error); return }
+      navigate('invoices')
+    }
+
+    async function generateAllInvoices() {
+      const bookings = await api('/providers/' + currentProvider.id + '/bookings')
+      const invoices = await api('/providers/' + currentProvider.id + '/invoices')
+      const invoicedIds = new Set()
+      invoices.data.forEach(inv => (inv.bookingIds || []).forEach(bid => invoicedIds.add(bid)))
+
+      const unbilled = bookings.data.filter(b => b.status === 'confirmed' && !invoicedIds.has(b.id))
+      let created = 0
+      for (const b of unbilled) {
+        const s = getProviderSettings()
+        const vatRate = s.kleinunternehmer ? 0 : (parseFloat(s.vatRate || '19') / 100)
+        await api('/invoices/from-booking/' + b.id, 'POST', { vatRate })
+        created++
+      }
+      alert(created + ' Rechnungen erstellt!')
+      navigate('invoices')
+    }
+
+    async function sendInvoice(id) {
+      await api('/invoices/' + id + '/send', 'POST')
+      navigate('invoices')
+    }
+
+    async function markInvoicePaid(id) {
+      await api('/invoices/' + id + '/pay', 'POST')
+      navigate('invoices')
+    }
+
+    async function cancelInvoice(id) {
+      if (!confirm('Rechnung wirklich stornieren?')) return
+      await api('/invoices/' + id + '/cancel', 'POST')
+      navigate('invoices')
     }
 
     // --- Team ---
