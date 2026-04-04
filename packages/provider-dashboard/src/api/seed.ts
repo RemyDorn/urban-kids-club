@@ -243,7 +243,7 @@ export function seedDemoData() {
   })
   SeasonService.activate(season.id)
 
-  HolidayService.importGermanHolidays(provider.id, 'NW')
+  HolidayService.importGermanHolidays(provider.id, 'NW', false)
 
   // --- Gutschein ---
   CouponService.create({
@@ -297,7 +297,7 @@ export function seedDemoData() {
   ActivityService.publish(aMusik2.id)
 
   SeasonService.create({ providerId: pMusik.id, name: 'Schuljahr 2025/26', type: 'school_term', startDate: '2025-09-01', endDate: '2026-07-31' })
-  HolidayService.importGermanHolidays(pMusik.id, 'NW')
+  HolidayService.importGermanHolidays(pMusik.id, 'NW', false)
 
   // --- Provider 4: Sportverein ---
   const pSport = ProviderService.create({
@@ -321,7 +321,7 @@ export function seedDemoData() {
   const aSport2 = ActivityService.create({ providerId: pSport.id, instructorId: tSport1.id, title: 'Mini-Fußball', description: 'Spielerisch Fußball lernen. Dribbeln, Passen, Schießen – ohne Leistungsdruck.', category: 'Ballsport', ageRange: { min: 5, max: 8 }, capacity: 20, waitlistEnabled: false, schedule: { type: 'recurring', slots: [{ day: 'FR', startTime: '15:00', endTime: '16:00' }], startDate: '2025-11-01' }, pricing: [{ label: 'Halbjahr', type: 'package', amount: 50, currency: 'EUR', packageSize: 20 }], color: '#3b82f6' })
   ActivityService.publish(aSport2.id)
 
-  HolidayService.importGermanHolidays(pSport.id, 'NW')
+  HolidayService.importGermanHolidays(pSport.id, 'NW', false)
 
   // --- Provider 5: Kreativstudio ---
   const pKreativ = ProviderService.create({

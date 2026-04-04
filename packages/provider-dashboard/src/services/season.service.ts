@@ -170,7 +170,7 @@ export const HolidayService = {
   },
 
   // Ferien für ein Bundesland importieren (alle 16 Bundesländer verfügbar)
-  importGermanHolidays(providerId: ID, region: string = 'NW'): Holiday[] {
+  importGermanHolidays(providerId: ID, region: string = 'NW', cancelActivities: boolean = true): Holiday[] {
     const bundesland = region as Bundesland
     const templates = SCHULFERIEN_2026[bundesland] ?? []
 
@@ -178,12 +178,12 @@ export const HolidayService = {
       // Fallback: versuche Alias-Mapping und Namen-Suche
       const aliases: Record<string, Bundesland> = { 'NRW': 'NW', 'BAYERN': 'BY', 'BERLIN': 'BE', 'HAMBURG': 'HH', 'HESSEN': 'HE', 'SACHSEN': 'SN', 'BREMEN': 'HB', 'SAARLAND': 'SL' }
       const alias = aliases[region.toUpperCase()]
-      if (alias) return this.importGermanHolidays(providerId, alias)
+      if (alias) return this.importGermanHolidays(providerId, alias, cancelActivities)
 
       const found = ALL_BUNDESLAENDER.find((bl) =>
         BUNDESLAND_NAMES[bl].toLowerCase().includes(region.toLowerCase())
       )
-      if (found) return this.importGermanHolidays(providerId, found)
+      if (found) return this.importGermanHolidays(providerId, found, cancelActivities)
       return []
     }
 
@@ -193,7 +193,7 @@ export const HolidayService = {
         name: t.name,
         startDate: t.startDate,
         endDate: t.endDate,
-        cancelActivities: true,
+        cancelActivities,
         region: `${bundesland} (${BUNDESLAND_NAMES[bundesland]})`,
       })
     )
