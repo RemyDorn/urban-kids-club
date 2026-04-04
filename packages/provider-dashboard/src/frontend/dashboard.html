@@ -964,10 +964,17 @@
 
     // --- Bookings ---
     async function renderBookings() {
-      const res = await api(`/providers/${currentProvider.id}/bookings`)
+      const [res, actRes] = await Promise.all([
+        api(`/providers/${currentProvider.id}/bookings`),
+        api(`/providers/${currentProvider.id}/activities`),
+      ])
       const bookings = res.data
+      const actMap = {}
+      actRes.data.forEach(a => { actMap[a.id] = a })
 
+      const statusLabelsDE = { confirmed: 'Angenommen', waitlisted: 'Warteliste', pending: 'Ausstehend', cancelled: 'Storniert', completed: 'Abgeschlossen', no_show: 'Nicht erschienen' }
       const statusColors = { confirmed: 'bg-green-100 text-green-700', waitlisted: 'bg-amber-100 text-amber-700', pending: 'bg-blue-100 text-blue-700', cancelled: 'bg-red-100 text-red-700', completed: 'bg-gray-100 text-gray-600', no_show: 'bg-gray-100 text-gray-500' }
+      const paymentLabelsDE = { paid: 'Bezahlt', unpaid: 'Ausstehend', partial: 'Teilzahlung', refunded: 'Erstattet' }
       const paymentColors = { paid: 'text-green-600', unpaid: 'text-red-500', partial: 'text-amber-500', refunded: 'text-gray-400' }
 
       document.getElementById('content').innerHTML = `
@@ -978,33 +985,83 @@
           <table class="w-full">
             <thead class="bg-gray-50 text-xs text-gray-500 uppercase tracking-wider">
               <tr>
+                <th class="px-6 py-3 text-left">Datum</th>
                 <th class="px-6 py-3 text-left">Kind</th>
                 <th class="px-6 py-3 text-left">Kurs</th>
                 <th class="px-6 py-3 text-left">Status</th>
                 <th class="px-6 py-3 text-left">Zahlung</th>
-                <th class="px-6 py-3 text-left">Datum</th>
+                <th class="px-6 py-3 text-left">Aktionen</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-gray-100">
-              ${bookings.map(b => `
+              ${bookings.map(b => {
+                const act = actMap[b.activityId]
+                return `
                 <tr class="hover:bg-gray-50">
+                  <td class="px-6 py-4 text-sm text-gray-700">${new Date(b.createdAt).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}</td>
                   <td class="px-6 py-4">
                     <div class="font-medium text-gray-900 text-sm">${b.child.name}</div>
                     <div class="text-xs text-gray-500">${b.child.age} Jahre</div>
                   </td>
-                  <td class="px-6 py-4 text-sm text-gray-700">${b.activityId.slice(0, 12)}...</td>
-                  <td class="px-6 py-4"><span class="px-2 py-1 rounded-full text-xs font-medium ${statusColors[b.status] || ''}">${b.status}</span></td>
-                  <td class="px-6 py-4 text-sm font-medium ${paymentColors[b.paymentStatus] || ''}">${b.paymentStatus}${b.amountPaid > 0 ? ' (' + b.amountPaid + '€)' : ''}</td>
-                  <td class="px-6 py-4 text-sm text-gray-500">${new Date(b.createdAt).toLocaleDateString('de-DE')}</td>
+                  <td class="px-6 py-4">
+                    <div class="text-sm font-medium text-gray-900">${act?.title || '–'}</div>
+                    <div class="text-xs text-gray-500">${act?.category || ''}</div>
+                  </td>
+                  <td class="px-6 py-4"><span class="px-2 py-1 rounded-full text-xs font-medium ${statusColors[b.status] || ''}">${statusLabelsDE[b.status] || b.status}</span></td>
+                  <td class="px-6 py-4">
+                    <span class="text-sm font-medium ${paymentColors[b.paymentStatus] || ''}">${paymentLabelsDE[b.paymentStatus] || b.paymentStatus}</span>
+                    ${b.amountPaid > 0 ? `<span class="text-xs text-gray-400 ml-1">(${b.amountPaid}€)</span>` : ''}
+                  </td>
+                  <td class="px-6 py-4">
+                    <div class="flex items-center gap-2">
+                      ${b.status === 'confirmed' && b.paymentStatus === 'unpaid' ? `<button onclick="markBookingPaid('${b.id}', ${act?.pricing?.[0]?.amount || 0})" class="px-2 py-1 text-xs bg-green-50 text-green-700 rounded hover:bg-green-100">Bezahlt</button>` : ''}
+                      ${b.status === 'confirmed' ? `<button onclick="cancelBooking('${b.id}')" class="px-2 py-1 text-xs bg-red-50 text-red-600 rounded hover:bg-red-100">Stornieren</button>` : ''}
+                    </div>
+                  </td>
                 </tr>
-              `).join('')}
+              `}).join('')}
             </tbody>
           </table>
         </div>
       `
     }
 
-    // --- Customers ---
+    async function markBookingPaid(id, amount) {
+      await api(`/bookings/${id}/pay`, 'POST', { amount })
+      navigate('bookings')
+    }
+    async function cancelBooking(id) {
+      if (!confirm('Buchung wirklich stornieren?')) return
+      await api(`/bookings/${id}/cancel`, 'POST')
+      navigate('bookings')
+    }
+
+    // --- Customers (with Loyalty) ---
+    const loyaltyTiers = [
+      { name: 'Starter', minBookings: 0, minSpent: 0, color: 'bg-gray-100 text-gray-600', icon: '⭐', discount: 0, perks: [] },
+      { name: 'Bronze', minBookings: 3, minSpent: 100, color: 'bg-amber-100 text-amber-700', icon: '🥉', discount: 5, perks: ['5% Rabatt auf alle Kurse'] },
+      { name: 'Silber', minBookings: 6, minSpent: 250, color: 'bg-gray-200 text-gray-700', icon: '🥈', discount: 10, perks: ['10% Rabatt', 'Priorität auf Warteliste'] },
+      { name: 'Gold', minBookings: 10, minSpent: 500, color: 'bg-yellow-100 text-yellow-800', icon: '🥇', discount: 15, perks: ['15% Rabatt', 'Priorität auf Warteliste', 'Kostenlose Schnupperstunden'] },
+    ]
+
+    function getLoyaltyTier(bookingCount, totalSpent) {
+      let tier = loyaltyTiers[0]
+      for (const t of loyaltyTiers) {
+        if (bookingCount >= t.minBookings && totalSpent >= t.minSpent) tier = t
+      }
+      return tier
+    }
+
+    function loyaltyProgress(bookingCount, totalSpent) {
+      const current = getLoyaltyTier(bookingCount, totalSpent)
+      const currentIdx = loyaltyTiers.indexOf(current)
+      const next = loyaltyTiers[currentIdx + 1]
+      if (!next) return { current, next: null, progressBookings: 100, progressSpent: 100 }
+      const progressBookings = Math.min(100, Math.round((bookingCount / next.minBookings) * 100))
+      const progressSpent = Math.min(100, Math.round((totalSpent / next.minSpent) * 100))
+      return { current, next, progressBookings, progressSpent }
+    }
+
     async function renderCustomers() {
       const res = await api(`/providers/${currentProvider.id}/customers`)
       const customers = res.data
@@ -1024,26 +1081,142 @@
             <thead class="bg-gray-50 text-xs text-gray-500 uppercase tracking-wider">
               <tr>
                 <th class="px-6 py-3 text-left">Name</th>
-                <th class="px-6 py-3 text-left">E-Mail</th>
                 <th class="px-6 py-3 text-left">Kinder</th>
                 <th class="px-6 py-3 text-left">Buchungen</th>
-                <th class="px-6 py-3 text-left">Ausgaben</th>
-                <th class="px-6 py-3 text-left">Tags</th>
+                <th class="px-6 py-3 text-left">Treue-Status</th>
+                <th class="px-6 py-3 text-left">Nächstes Level</th>
+                <th class="px-6 py-3 text-left">Vorteile</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-gray-100">
-              ${customers.map(c => `
-                <tr class="hover:bg-gray-50">
-                  <td class="px-6 py-4 font-medium text-sm text-gray-900">${c.name}</td>
-                  <td class="px-6 py-4 text-sm text-gray-500">${c.email}</td>
-                  <td class="px-6 py-4 text-sm text-gray-700">${c.children.map(ch => ch.name + ' (' + ch.age + ')').join(', ')}</td>
-                  <td class="px-6 py-4 text-sm text-gray-700">${c.bookingCount}</td>
-                  <td class="px-6 py-4 text-sm font-medium text-gray-900">${formatCurrency(c.totalSpent)}</td>
-                  <td class="px-6 py-4">${c.tags.map(t => `<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium ${tagColor(t)} mr-1">${t}</span>`).join('')}</td>
+              ${customers.map(c => {
+                const lp = loyaltyProgress(c.bookingCount, c.totalSpent)
+                return `
+                <tr class="hover:bg-gray-50 cursor-pointer" onclick="showCustomerDetail('${c.id}')">
+                  <td class="px-6 py-4">
+                    <div class="font-medium text-gray-900 text-sm">${c.name}</div>
+                    <div class="text-xs text-gray-500">${c.email}</div>
+                  </td>
+                  <td class="px-6 py-4 text-sm text-gray-700">${c.children.map(ch => ch.name).join(', ')}</td>
+                  <td class="px-6 py-4">
+                    <div class="text-sm font-medium text-gray-900">${c.bookingCount} Buchungen</div>
+                    <div class="text-xs text-gray-500">${formatCurrency(c.totalSpent)} ausgegeben</div>
+                  </td>
+                  <td class="px-6 py-4">
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${lp.current.color}">
+                      ${lp.current.icon} ${lp.current.name}
+                    </span>
+                    ${lp.current.discount > 0 ? `<div class="text-xs text-green-600 mt-1">${lp.current.discount}% Rabatt</div>` : ''}
+                  </td>
+                  <td class="px-6 py-4">
+                    ${lp.next ? `
+                      <div class="text-xs text-gray-500 mb-1">${lp.next.icon} ${lp.next.name} (${lp.next.minBookings} Buchungen)</div>
+                      <div class="w-24 bg-gray-100 rounded-full h-1.5">
+                        <div class="h-1.5 rounded-full bg-brand-400" style="width:${lp.progressBookings}%"></div>
+                      </div>
+                      <div class="text-xs text-gray-400 mt-0.5">${c.bookingCount}/${lp.next.minBookings}</div>
+                    ` : `<span class="text-xs text-green-600 font-medium">Max. Level erreicht</span>`}
+                  </td>
+                  <td class="px-6 py-4">
+                    ${lp.current.perks.length > 0
+                      ? lp.current.perks.map(p => `<div class="text-xs text-gray-600">✓ ${p}</div>`).join('')
+                      : '<span class="text-xs text-gray-400">Noch keine</span>'
+                    }
+                  </td>
                 </tr>
-              `).join('')}
+              `}).join('')}
             </tbody>
           </table>
+        </div>
+      `
+    }
+
+    async function showCustomerDetail(parentId) {
+      const res = await api(`/providers/${currentProvider.id}/customers/${parentId}`)
+      const c = res.data
+      const lp = loyaltyProgress(c.bookingCount, c.totalSpent)
+
+      const modal = document.getElementById('calModal') || document.createElement('div')
+      modal.id = 'calModal'
+      if (!modal.parentElement) document.body.appendChild(modal)
+      modal.className = 'cal-modal-backdrop'
+      modal.onclick = (e) => { if (e.target === modal) modal.className = 'hidden' }
+
+      modal.innerHTML = `
+        <div class="cal-modal fade-in" style="width: 520px;">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-bold text-gray-900">${c.name}</h3>
+            <button onclick="document.getElementById('calModal').className='hidden'" class="text-gray-400 hover:text-gray-600">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+          </div>
+
+          <div class="text-sm text-gray-500 mb-4">${c.email}${c.phone ? ' · ' + c.phone : ''}</div>
+
+          <!-- Loyalty Card -->
+          <div class="bg-gradient-to-br from-brand-500 to-brand-700 rounded-xl p-5 text-white mb-4">
+            <div class="flex items-center justify-between mb-3">
+              <div>
+                <div class="text-xs opacity-80">Treue-Status</div>
+                <div class="text-xl font-bold flex items-center gap-2">${lp.current.icon} ${lp.current.name}</div>
+              </div>
+              <div class="text-right">
+                <div class="text-2xl font-bold">${c.bookingCount}</div>
+                <div class="text-xs opacity-80">Buchungen</div>
+              </div>
+            </div>
+            ${lp.next ? `
+              <div class="mt-3">
+                <div class="flex justify-between text-xs opacity-80 mb-1">
+                  <span>Fortschritt zu ${lp.next.icon} ${lp.next.name}</span>
+                  <span>${c.bookingCount}/${lp.next.minBookings}</span>
+                </div>
+                <div class="w-full bg-white/20 rounded-full h-2">
+                  <div class="h-2 rounded-full bg-white" style="width:${lp.progressBookings}%"></div>
+                </div>
+              </div>
+            ` : '<div class="text-sm opacity-80 mt-2">Höchstes Level erreicht!</div>'}
+            ${lp.current.discount > 0 ? `<div class="mt-3 text-sm font-medium">${lp.current.discount}% Rabatt auf alle Kurse</div>` : ''}
+          </div>
+
+          <!-- Kinder -->
+          <div class="mb-4">
+            <div class="text-sm font-medium text-gray-900 mb-2">Kinder</div>
+            <div class="space-y-2">
+              ${c.children.map(ch => `
+                <div class="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
+                  <span class="text-sm text-gray-900">${ch.name}</span>
+                  <span class="text-xs text-gray-500">${ch.age} Jahre</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+
+          <!-- Vorteile -->
+          ${lp.current.perks.length > 0 ? `
+          <div class="mb-4">
+            <div class="text-sm font-medium text-gray-900 mb-2">Aktive Vorteile</div>
+            <div class="space-y-1">
+              ${lp.current.perks.map(p => `<div class="flex items-center gap-2 text-sm text-green-700"><svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/></svg> ${p}</div>`).join('')}
+            </div>
+          </div>
+          ` : ''}
+
+          <!-- Stats -->
+          <div class="grid grid-cols-3 gap-3">
+            <div class="bg-gray-50 rounded-lg p-3 text-center">
+              <div class="text-lg font-bold text-gray-900">${formatCurrency(c.totalSpent)}</div>
+              <div class="text-xs text-gray-500">Ausgaben</div>
+            </div>
+            <div class="bg-gray-50 rounded-lg p-3 text-center">
+              <div class="text-lg font-bold text-gray-900">${c.bookingCount}</div>
+              <div class="text-xs text-gray-500">Buchungen</div>
+            </div>
+            <div class="bg-gray-50 rounded-lg p-3 text-center">
+              <div class="text-lg font-bold text-gray-900">${c.children.length}</div>
+              <div class="text-xs text-gray-500">Kinder</div>
+            </div>
+          </div>
         </div>
       `
     }

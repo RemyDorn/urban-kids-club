@@ -693,6 +693,35 @@ export interface InstructorContract {
   updatedAt: Date
 }
 
+// --- Loyalty / Treueprogramm (130%-Feature) ---
+
+export interface LoyaltyConfig {
+  id: ID
+  providerId: ID
+  enabled: boolean
+  pointsPerBooking: number      // Punkte pro abgeschlossener Buchung
+  pointsPerEuro: number         // Punkte pro ausgegebenem Euro (z.B. 1 Punkt/10€)
+  tiers: LoyaltyTier[]
+}
+
+export interface LoyaltyTier {
+  name: string                  // "Bronze", "Silber", "Gold"
+  minPoints: number             // Ab wie vielen Punkten?
+  discountPercent: number       // Rabatt in Prozent
+  color: string                 // Farbcode für Badge
+  perks: string[]               // z.B. ["5% Rabatt", "Priorität bei Warteliste"]
+}
+
+export interface LoyaltyAccount {
+  parentId: ID
+  providerId: ID
+  totalPoints: number
+  currentTier: string
+  bookingsCompleted: number
+  totalSpent: number
+  memberSince: Date
+}
+
 // --- Audit Log (Compliance) ---
 
 export interface AuditLogEntry {
