@@ -226,6 +226,15 @@ export const CalendarService = {
 
   // Aus Activities automatisch Kalender-Events generieren
   syncActivitiesToCalendar(providerId: ID): CalendarEvent[] {
+    // Remove existing activity-generated events to prevent duplicates
+    const existingIds = Array.from(store.getFromIndex(store.indexes.calendarByProvider, providerId))
+    for (const eid of existingIds) {
+      const ev = store.state.calendarEvents.get(eid)
+      if (ev && ev.type === 'activity') {
+        this.delete(eid)
+      }
+    }
+
     const activityIds = store.getFromIndex(store.indexes.activitiesByProvider, providerId)
     const created: CalendarEvent[] = []
 

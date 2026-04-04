@@ -222,7 +222,6 @@
       const end = fmtDate(addDays(calWeekStart, 6))
       const today = fmtDate(new Date())
 
-      await api(`/providers/${currentProvider.id}/calendar/sync`, 'POST')
       const [calData, activities, occupancy, bookingsRes] = await Promise.all([
         api(`/providers/${currentProvider.id}/calendar?start=${start}&end=${end}`),
         api(`/providers/${currentProvider.id}/activities`),
