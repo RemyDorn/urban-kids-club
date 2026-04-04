@@ -124,6 +124,13 @@ export interface CampSchedule {
 
 export type Schedule = RecurringSchedule | SingleSchedule | CampSchedule
 
+export interface PlatformListing {
+  enabled: boolean            // Auf Kids Club Plattform listen?
+  platformCapacity: number    // Wie viele Plätze über die Plattform buchbar?
+  featured: boolean           // Hervorgehoben auf der Plattform?
+  trialAvailable: boolean     // Probestunde über Plattform buchbar?
+}
+
 export interface Activity {
   id: ID
   providerId: ID
@@ -137,6 +144,7 @@ export interface Activity {
   capacity: number
   waitlistEnabled: boolean
   pricing: PricingOption[]
+  platformListing?: PlatformListing
   media: string[]           // URLs
   tags: string[]
   status: ActivityStatus

@@ -622,21 +622,31 @@
     }
 
     // Activity Create/Edit Form
+    let allActivitiesCache = []
+
     function showActivityForm(editId) {
       let a = editId ? allActivitiesCache.find(x => x.id === editId) : null
       const isEdit = !!a
-      if (!a) a = { title: '', description: '', category: 'Tanz', ageRange: { min: 3, max: 10 }, capacity: 12, schedule: { type: 'recurring', slots: [{ day: 'MO', startTime: '15:00', endTime: '16:00' }], startDate: new Date().toISOString().split('T')[0] }, pricing: [{ label: 'Monatsbeitrag', type: 'subscription', amount: 45, currency: 'EUR', intervalMonths: 1 }], tags: [], waitlistEnabled: true }
+      if (!a) a = { title: '', description: '', category: 'Tanz', ageRange: { min: 3, max: 10 }, capacity: 12, schedule: { type: 'recurring', slots: [{ day: 'MO', startTime: '15:00', endTime: '16:00' }], startDate: new Date().toISOString().split('T')[0] }, pricing: [], platformListing: { enabled: false, platformCapacity: 3, featured: false, trialAvailable: true }, tags: [], waitlistEnabled: true }
 
+      const pl = a.platformListing || { enabled: false, platformCapacity: 3, featured: false, trialAvailable: true }
+      const p1 = a.pricing[0] || { label: '', type: 'package', amount: 0, packageSize: 8 }
+      const p2 = a.pricing[1] || null
       const modal = document.getElementById('activityModal')
       modal.className = 'cal-modal-backdrop'
       modal.onclick = (e) => { if (e.target === modal) modal.className = 'hidden' }
 
-      const categories = ['Tanz', 'Ballett', 'Hip-Hop', 'Kindertanz', 'Sport', 'Musik', 'Kunst', 'STEM', 'Sprachen', 'Outdoor', 'Feriencamp']
+      const categories = ['Tanz', 'Ballett', 'Hip-Hop', 'Kindertanz', 'Sport', 'Musik', 'Kunst', 'STEM', 'Sprachen', 'Outdoor', 'Feriencamp', 'Theater', 'Kochen', 'Schwimmen']
       const days = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU']
       const dayLabels = { MO: 'Mo', TU: 'Di', WE: 'Mi', TH: 'Do', FR: 'Fr', SA: 'Sa', SU: 'So' }
+      const pricingTypes = [
+        { value: 'single', label: 'Einzelstunde', desc: 'Pro Termin' },
+        { value: 'package', label: 'Paket (z.B. 8er)', desc: 'X Wochen als Block' },
+        { value: 'subscription', label: 'Monatsabo', desc: 'Monatlich fortlaufend' },
+      ]
 
       modal.innerHTML = `
-        <div class="cal-modal fade-in" style="width: 600px; max-height: 90vh;">
+        <div class="cal-modal fade-in" style="width: 640px; max-height: 90vh;">
           <div class="flex items-center justify-between mb-6">
             <h3 class="text-lg font-bold text-gray-900">${isEdit ? 'Kurs bearbeiten' : 'Neuen Kurs anlegen'}</h3>
             <button onclick="document.getElementById('activityModal').className='hidden'" class="text-gray-400 hover:text-gray-600">
@@ -644,18 +654,18 @@
             </button>
           </div>
 
-          <form id="activityForm" onsubmit="saveActivity(event, '${editId || ''}')" class="space-y-4">
+          <form id="activityForm" onsubmit="saveActivity(event, '${editId || ''}')" class="space-y-5">
+            <!-- Basics -->
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">Kursname *</label>
               <input name="title" value="${a.title}" required class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500" placeholder="z.B. Ballett für Anfänger">
             </div>
-
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">Beschreibung</label>
-              <textarea name="description" rows="3" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500" placeholder="Was erwartet die Kinder?">${a.description}</textarea>
+              <textarea name="description" rows="2" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500">${a.description}</textarea>
             </div>
 
-            <div class="grid grid-cols-2 gap-4">
+            <div class="grid grid-cols-3 gap-4">
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Kategorie *</label>
                 <select name="category" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
@@ -663,56 +673,139 @@
                 </select>
               </div>
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Kapazität *</label>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Alter</label>
+                <div class="flex items-center gap-2">
+                  <input name="ageMin" type="number" min="0" max="18" value="${a.ageRange.min}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                  <span class="text-gray-400">–</span>
+                  <input name="ageMax" type="number" min="0" max="18" value="${a.ageRange.max}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                </div>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Max. Teilnehmer *</label>
                 <input name="capacity" type="number" min="1" max="100" value="${a.capacity}" required class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
               </div>
             </div>
 
-            <div class="grid grid-cols-2 gap-4">
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Alter von</label>
-                <input name="ageMin" type="number" min="0" max="18" value="${a.ageRange.min}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Alter bis</label>
-                <input name="ageMax" type="number" min="0" max="18" value="${a.ageRange.max}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
-              </div>
-            </div>
-
+            <!-- Zeitplan -->
             <fieldset class="border border-gray-200 rounded-lg p-4">
               <legend class="text-sm font-medium text-gray-700 px-2">Zeitplan</legend>
-              <div class="grid grid-cols-3 gap-3">
+              <div class="grid grid-cols-4 gap-3">
                 <div>
-                  <label class="block text-xs text-gray-500 mb-1">Wochentag</label>
+                  <label class="block text-xs text-gray-500 mb-1">Tag</label>
                   <select name="scheduleDay" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
                     ${days.map(d => `<option value="${d}" ${a.schedule.type === 'recurring' && a.schedule.slots[0]?.day === d ? 'selected' : ''}>${dayLabels[d]}</option>`).join('')}
                   </select>
                 </div>
                 <div>
                   <label class="block text-xs text-gray-500 mb-1">Von</label>
-                  <input name="startTime" type="time" value="${a.schedule.type === 'recurring' ? a.schedule.slots[0]?.startTime : a.schedule.startTime || '15:00'}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                  <input name="startTime" type="time" value="${a.schedule.type === 'recurring' ? a.schedule.slots[0]?.startTime : '15:00'}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
                 </div>
                 <div>
                   <label class="block text-xs text-gray-500 mb-1">Bis</label>
-                  <input name="endTime" type="time" value="${a.schedule.type === 'recurring' ? a.schedule.slots[0]?.endTime : a.schedule.endTime || '16:00'}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                  <input name="endTime" type="time" value="${a.schedule.type === 'recurring' ? a.schedule.slots[0]?.endTime : '16:00'}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
                 </div>
-              </div>
-              <div class="mt-3">
-                <label class="block text-xs text-gray-500 mb-1">Startdatum</label>
-                <input name="startDate" type="date" value="${a.schedule.startDate || new Date().toISOString().split('T')[0]}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                <div>
+                  <label class="block text-xs text-gray-500 mb-1">Ab Datum</label>
+                  <input name="startDate" type="date" value="${a.schedule.startDate || new Date().toISOString().split('T')[0]}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                </div>
               </div>
             </fieldset>
 
+            <!-- Preise -->
             <fieldset class="border border-gray-200 rounded-lg p-4">
-              <legend class="text-sm font-medium text-gray-700 px-2">Preis</legend>
-              <div class="grid grid-cols-2 gap-3">
-                <div>
-                  <label class="block text-xs text-gray-500 mb-1">Bezeichnung</label>
-                  <input name="pricingLabel" value="${a.pricing[0]?.label || 'Monatsbeitrag'}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+              <legend class="text-sm font-medium text-gray-700 px-2">Preismodell</legend>
+
+              <!-- Preis 1 (Pflicht) -->
+              <div class="space-y-3">
+                <div class="grid grid-cols-4 gap-3">
+                  <div>
+                    <label class="block text-xs text-gray-500 mb-1">Art *</label>
+                    <select name="p1Type" onchange="togglePackageSize()" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                      ${pricingTypes.map(t => `<option value="${t.value}" ${p1.type === t.value ? 'selected' : ''}>${t.label}</option>`).join('')}
+                    </select>
+                  </div>
+                  <div>
+                    <label class="block text-xs text-gray-500 mb-1">Bezeichnung</label>
+                    <input name="p1Label" value="${p1.label || '8er-Paket'}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="z.B. 8er-Paket">
+                  </div>
+                  <div>
+                    <label class="block text-xs text-gray-500 mb-1">Preis (EUR) *</label>
+                    <input name="p1Amount" type="number" step="0.01" min="0" value="${p1.amount || 96}" required class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                  </div>
+                  <div id="p1PackageWrap">
+                    <label class="block text-xs text-gray-500 mb-1">Wochen/Einheiten</label>
+                    <input name="p1PackageSize" type="number" min="1" max="52" value="${p1.packageSize || 8}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                  </div>
                 </div>
-                <div>
-                  <label class="block text-xs text-gray-500 mb-1">Betrag (EUR)</label>
-                  <input name="pricingAmount" type="number" step="0.01" min="0" value="${a.pricing[0]?.amount || 45}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+
+                <div class="grid grid-cols-2 gap-3">
+                  <div>
+                    <label class="block text-xs text-gray-500 mb-1">Geschwisterrabatt (%)</label>
+                    <input name="p1SiblingDiscount" type="number" min="0" max="100" value="${p1.siblingDiscount || 10}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="z.B. 10">
+                  </div>
+                </div>
+              </div>
+
+              <!-- Preis 2 (Optional) -->
+              <div class="mt-4 pt-4 border-t border-gray-100">
+                <div class="flex items-center justify-between mb-3">
+                  <label class="flex items-center gap-2 text-sm text-gray-600">
+                    <input type="checkbox" name="p2Enabled" ${p2 ? 'checked' : ''} onchange="document.getElementById('p2Fields').classList.toggle('hidden')" class="rounded border-gray-300">
+                    Zweite Preisoption (z.B. Einzelstunde)
+                  </label>
+                </div>
+                <div id="p2Fields" class="${p2 ? '' : 'hidden'} grid grid-cols-3 gap-3">
+                  <div>
+                    <label class="block text-xs text-gray-500 mb-1">Art</label>
+                    <select name="p2Type" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                      ${pricingTypes.map(t => `<option value="${t.value}" ${p2?.type === t.value ? 'selected' : ''}>${t.label}</option>`).join('')}
+                    </select>
+                  </div>
+                  <div>
+                    <label class="block text-xs text-gray-500 mb-1">Bezeichnung</label>
+                    <input name="p2Label" value="${p2?.label || 'Einzelstunde'}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                  </div>
+                  <div>
+                    <label class="block text-xs text-gray-500 mb-1">Preis (EUR)</label>
+                    <input name="p2Amount" type="number" step="0.01" min="0" value="${p2?.amount || 15}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                  </div>
+                </div>
+              </div>
+            </fieldset>
+
+            <!-- Kids Club Plattform -->
+            <fieldset class="border-2 border-brand-200 rounded-lg p-4 bg-brand-50/30">
+              <legend class="text-sm font-medium text-brand-700 px-2 flex items-center gap-2">
+                <div class="w-5 h-5 bg-brand-500 rounded text-white flex items-center justify-center text-xs font-bold">U</div>
+                Kids Club Plattform
+              </legend>
+              <div class="space-y-3">
+                <label class="flex items-center gap-3 cursor-pointer">
+                  <input type="checkbox" name="platformEnabled" ${pl.enabled ? 'checked' : ''} onchange="document.getElementById('platformFields').classList.toggle('hidden')" class="rounded border-brand-300 text-brand-500 focus:ring-brand-500 w-4 h-4">
+                  <div>
+                    <div class="text-sm font-medium text-gray-900">Auf Kids Club Plattform listen</div>
+                    <div class="text-xs text-gray-500">Eltern können diesen Kurs auf urbankidsclub.de finden und buchen</div>
+                  </div>
+                </label>
+
+                <div id="platformFields" class="${pl.enabled ? '' : 'hidden'} mt-3 space-y-3 pl-7">
+                  <div class="grid grid-cols-2 gap-4">
+                    <div>
+                      <label class="block text-xs text-gray-600 mb-1">Plätze über Plattform</label>
+                      <div class="flex items-center gap-2">
+                        <input name="platformCapacity" type="number" min="1" max="100" value="${pl.platformCapacity}" class="w-20 border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                        <span class="text-xs text-gray-500">von ${a.capacity} gesamt</span>
+                      </div>
+                    </div>
+                  </div>
+                  <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" name="platformFeatured" ${pl.featured ? 'checked' : ''} class="rounded border-gray-300">
+                    <span class="text-sm text-gray-700">Als Featured hervorheben</span>
+                  </label>
+                  <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" name="platformTrial" ${pl.trialAvailable ? 'checked' : ''} class="rounded border-gray-300">
+                    <span class="text-sm text-gray-700">Probestunde über Plattform buchbar</span>
+                  </label>
                 </div>
               </div>
             </fieldset>
@@ -731,13 +824,40 @@
           </form>
         </div>
       `
+      togglePackageSize()
     }
 
-    let allActivitiesCache = []
+    function togglePackageSize() {
+      const type = document.querySelector('[name="p1Type"]')?.value
+      const wrap = document.getElementById('p1PackageWrap')
+      if (wrap) wrap.style.display = type === 'package' ? 'block' : 'none'
+    }
 
     async function saveActivity(e, editId) {
       e.preventDefault()
       const f = new FormData(e.target)
+
+      // Pricing zusammenbauen
+      const pricing = []
+      const p1Type = f.get('p1Type')
+      pricing.push({
+        label: f.get('p1Label'),
+        type: p1Type,
+        amount: parseFloat(f.get('p1Amount')),
+        currency: 'EUR',
+        packageSize: p1Type === 'package' ? parseInt(f.get('p1PackageSize') || '8') : undefined,
+        intervalMonths: p1Type === 'subscription' ? 1 : undefined,
+        siblingDiscount: parseInt(f.get('p1SiblingDiscount') || '0') || undefined,
+      })
+
+      if (f.get('p2Enabled')) {
+        pricing.push({
+          label: f.get('p2Label'),
+          type: f.get('p2Type'),
+          amount: parseFloat(f.get('p2Amount')),
+          currency: 'EUR',
+        })
+      }
 
       const body = {
         providerId: currentProvider.id,
@@ -752,7 +872,13 @@
           slots: [{ day: f.get('scheduleDay'), startTime: f.get('startTime'), endTime: f.get('endTime') }],
           startDate: f.get('startDate'),
         },
-        pricing: [{ label: f.get('pricingLabel'), type: 'subscription', amount: parseFloat(f.get('pricingAmount')), currency: 'EUR', intervalMonths: 1 }],
+        pricing,
+        platformListing: f.get('platformEnabled') ? {
+          enabled: true,
+          platformCapacity: parseInt(f.get('platformCapacity') || '3'),
+          featured: !!f.get('platformFeatured'),
+          trialAvailable: !!f.get('platformTrial'),
+        } : { enabled: false, platformCapacity: 0, featured: false, trialAvailable: false },
         tags: [],
       }
 
