@@ -27,7 +27,7 @@
     .nav-item:not(.active):hover { background: #f0f9ff; }
     /* Calendar */
     .cal-grid { display: grid; grid-template-columns: 60px repeat(7, 1fr); }
-    .cal-hour { height: 64px; border-bottom: 1px solid #f3f4f6; }
+    .cal-hour { height: 48px; border-bottom: 1px solid #f3f4f6; }
     .cal-event { position: absolute; left: 2px; right: 2px; border-radius: 6px; padding: 4px 8px; font-size: 12px; overflow: hidden; cursor: pointer; transition: all 0.15s; border: 1.5px solid; }
     .cal-event:hover { transform: scale(1.02); box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 10 !important; }
     .cal-day-col { position: relative; border-left: 1px solid #f3f4f6; }
@@ -309,7 +309,7 @@
       const hours = []
       for (let h = 7; h <= 21; h++) hours.push(h)
 
-      const hourHeight = 64 // px per hour
+      const hourHeight = 48 // px per hour (compact for dashboard)
 
       // Group events by day
       const eventsByDay = {}
@@ -380,7 +380,7 @@
           </div>
 
           <!-- Time Grid -->
-          <div class="cal-grid overflow-y-auto" style="max-height: 680px;">
+          <div class="cal-grid overflow-y-auto" style="max-height: 420px;">
             <!-- Hours + Day Columns -->
             ${hours.map(h => `
               <div class="cal-hour flex items-start justify-end pr-2 pt-1">
@@ -509,6 +509,25 @@
               </div>
             ` : ''}
 
+            ${occ && (occ.capacity - occ.booked) > 0 ? `
+            <!-- Last-Minute Kids Club Freigabe -->
+            <div class="border-2 border-brand-200 rounded-lg p-4 bg-brand-50/30">
+              <div class="flex items-center gap-2 mb-2">
+                <div class="w-5 h-5 bg-brand-500 rounded text-white flex items-center justify-center text-xs font-bold">U</div>
+                <span class="text-sm font-semibold text-brand-700">Last-Minute für Kids Club freigeben</span>
+              </div>
+              <div class="text-xs text-gray-600 mb-3">${occ.capacity - occ.booked} freie Plätze – für die Plattform freischalten, damit Eltern über Kids Club buchen können.</div>
+              <div class="flex items-center gap-3">
+                <div class="flex items-center gap-2">
+                  <label class="text-xs text-gray-600">Plätze:</label>
+                  <input type="number" id="lastMinuteSpots" min="1" max="${occ.capacity - occ.booked}" value="${occ.capacity - occ.booked}" class="w-16 border border-gray-200 rounded px-2 py-1 text-sm text-center">
+                  <span class="text-xs text-gray-400">von ${occ.capacity - occ.booked} freien</span>
+                </div>
+                <button onclick="releaseToKidsClub('${activity?.id}', document.getElementById('lastMinuteSpots').value); document.getElementById('calModal').className='hidden'" class="px-4 py-1.5 bg-brand-500 text-white text-xs rounded-lg font-medium hover:bg-brand-600">Jetzt freigeben</button>
+              </div>
+            </div>
+            ` : ''}
+
             <div class="flex gap-3">
               <button onclick="navigate('bookings'); document.getElementById('calModal').className='hidden'" class="flex-1 bg-brand-500 text-white py-2 rounded-lg font-medium hover:bg-brand-600 transition-colors text-sm">Buchungen anzeigen</button>
               <button onclick="navigate('activities'); document.getElementById('calModal').className='hidden'" class="flex-1 bg-gray-100 text-gray-700 py-2 rounded-lg font-medium hover:bg-gray-200 transition-colors text-sm">Kurs bearbeiten</button>
@@ -516,6 +535,16 @@
           </div>
         </div>
       `
+    }
+
+    async function releaseToKidsClub(activityId, spots) {
+      spots = parseInt(spots) || 1
+      // Update platformListing with the released spots
+      await api('/activities/' + activityId, 'PUT', {
+        platformListing: { enabled: true, platformCapacity: spots, featured: false, trialAvailable: true }
+      })
+      alert(spots + ' Plätze wurden für Kids Club freigegeben!')
+      if (currentPage === 'dashboard') navigate('dashboard')
     }
 
     function setCalView(view) { calView = view; renderCalendarInto(activeCalContainer) }
