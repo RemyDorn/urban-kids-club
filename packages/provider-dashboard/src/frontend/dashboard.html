@@ -205,6 +205,7 @@
 
     // --- Calendar (Hauptansicht) ---
     let calWeekStart = getMonday(new Date())
+    let calView = 'week' // 'day', 'week', 'month'
 
     function getMonday(d) {
       const date = new Date(d)
@@ -218,6 +219,16 @@
     function addDays(d, n) { const r = new Date(d); r.setDate(r.getDate() + n); return r }
     function fmtDate(d) { return d.toISOString().split('T')[0] }
     function fmtDateShort(d) { return d.toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'short' }) }
+
+    // Default-Farben für Kurse
+    const courseColors = ['#3b82f6','#10b981','#8b5cf6','#f59e0b','#ec4899','#06b6d4','#f97316','#6366f1','#14b8a6','#e11d48']
+    function getCourseColor(activity, idx) {
+      return activity?.color || courseColors[idx % courseColors.length]
+    }
+    function hexToRgba(hex, alpha) {
+      const r = parseInt(hex.slice(1,3), 16), g = parseInt(hex.slice(3,5), 16), b = parseInt(hex.slice(5,7), 16)
+      return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')'
+    }
 
     const eventColors = [
       { bg: 'bg-blue-50', border: 'border-blue-400', text: 'text-blue-800', bar: 'bg-blue-400' },
@@ -296,7 +307,12 @@
             <button onclick="calNext()" class="p-2 hover:bg-gray-100 rounded-lg transition-colors">
               <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
             </button>
-            <h2 class="text-lg font-semibold text-gray-900">
+            <div class="flex bg-gray-100 rounded-lg p-0.5 ml-2">
+              <button onclick="setCalView('day')" class="px-3 py-1 text-xs font-medium rounded-md ${calView === 'day' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}">Tag</button>
+              <button onclick="setCalView('week')" class="px-3 py-1 text-xs font-medium rounded-md ${calView === 'week' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}">Woche</button>
+              <button onclick="setCalView('month')" class="px-3 py-1 text-xs font-medium rounded-md ${calView === 'month' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}">Monat</button>
+            </div>
+            <h2 class="text-lg font-semibold text-gray-900 ml-2">
               ${calWeekStart.toLocaleDateString('de-DE', { day: 'numeric', month: 'long' })} – ${addDays(calWeekStart, 6).toLocaleDateString('de-DE', { day: 'numeric', month: 'long', year: 'numeric' })}
             </h2>
           </div>
@@ -368,43 +384,33 @@
 
           const activity = actMap[event.activityId]
           const occ = occMap[event.activityId]
-          const color = colorMap[event.activityId] || eventColors[0]
+          const actIdx = activities.data.findIndex(a => a.id === event.activityId)
+          const clr = getCourseColor(activity, actIdx)
           const occPct = occ ? Math.round(occ.occupancy * 100) : 0
           const occText = occ ? `${occ.booked}/${occ.capacity}` : ''
 
-          // Find the day column cells
-          const dayCols = document.querySelectorAll(`.cal-day-col[data-date="${fmtDate(d)}"]`)
-          if (dayCols.length > 0) {
-            const container = dayCols[0].parentElement
-            // We need a positioned container for absolute events
-          }
-
-          // Use overlay approach: insert into first hour cell of the day column
           const firstCell = document.querySelector(`.cal-day-col[data-date="${fmtDate(d)}"][data-hour="7"]`)
           if (firstCell && !firstCell.style.position) {
-            firstCell.style.position = 'relative'
-            // Make all cells in this column relative containers
             document.querySelectorAll(`.cal-day-col[data-date="${fmtDate(d)}"]`).forEach(c => c.style.position = 'relative')
           }
 
           if (firstCell) {
             const eventEl = document.createElement('div')
-            eventEl.className = `cal-event ${color.bg} ${color.text} border-l-4 ${color.border}`
-            eventEl.style.top = `${topOffset}px`
-            eventEl.style.height = `${height}px`
-            eventEl.style.zIndex = '5'
+            eventEl.className = 'cal-event'
+            // Occupancy fill: background fills from bottom based on booking percentage
+            eventEl.style.cssText = `
+              top:${topOffset}px; height:${height}px; z-index:5;
+              border-left:4px solid ${clr};
+              background: linear-gradient(to top, ${hexToRgba(clr, 0.35)} ${occPct}%, ${hexToRgba(clr, 0.08)} ${occPct}%);
+              color: ${clr.replace(')', ',0.9)').replace('rgb', 'rgba').startsWith('rgba') ? clr : '#1f2937'};
+            `
             eventEl.onclick = () => showEventDetail(event, activity, occ)
 
             const showOcc = height > 40
             eventEl.innerHTML = `
-              <div class="font-semibold truncate" style="font-size: 11px; line-height: 1.3;">${event.title}</div>
-              <div class="truncate" style="font-size: 10px; opacity: 0.8;">${event.startTime} – ${event.endTime}</div>
-              ${showOcc && occ ? `
-                <div class="flex items-center gap-1 mt-1">
-                  <div class="flex-1 bg-white/60 rounded-full h-1.5"><div class="${color.bar} h-1.5 rounded-full" style="width:${occPct}%"></div></div>
-                  <span style="font-size:9px;" class="font-medium">${occText}</span>
-                </div>
-              ` : ''}
+              <div class="font-semibold truncate" style="font-size:11px;line-height:1.3;color:#1f2937;">${event.title}</div>
+              <div class="truncate" style="font-size:10px;color:#6b7280;">${event.startTime}–${event.endTime}</div>
+              ${showOcc && occ ? `<div style="font-size:9px;font-weight:600;color:${clr};margin-top:2px;">${occText} (${occPct}%)</div>` : ''}
             `
             firstCell.appendChild(eventEl)
           }
@@ -484,6 +490,7 @@
       `
     }
 
+    function setCalView(view) { calView = view; renderCalendarInto(activeCalContainer) }
     let activeCalContainer = 'dashboardCalendar'
     function calPrev() { calWeekStart = addDays(calWeekStart, -7); renderCalendarInto(activeCalContainer) }
     function calNext() { calWeekStart = addDays(calWeekStart, 7); renderCalendarInto(activeCalContainer) }
@@ -840,6 +847,24 @@
               </div>
             </fieldset>
 
+            <!-- Farbe & Bilder -->
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Kalenderfarbe</label>
+                <div class="flex items-center gap-2">
+                  <input name="color" type="color" value="${a.color || courseColors[0]}" class="w-10 h-10 rounded-lg border border-gray-200 cursor-pointer">
+                  <div class="flex gap-1">
+                    ${courseColors.slice(0,8).map(c => `<button type="button" onclick="this.closest('form').querySelector('[name=color]').value='${c}'" class="w-6 h-6 rounded-full border-2 border-white shadow-sm cursor-pointer" style="background:${c}"></button>`).join('')}
+                  </div>
+                </div>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Bilder (URLs, kommagetrennt)</label>
+                <input name="images" value="${(a.images || []).join(', ')}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Hauptbild-URL, Galerie-1, Galerie-2">
+                <div class="text-xs text-gray-400 mt-1">Erstes Bild = Hauptbild</div>
+              </div>
+            </div>
+
             <div class="flex items-center gap-6">
               <label class="flex items-center gap-2 cursor-pointer">
                 <input name="waitlistEnabled" type="checkbox" ${a.waitlistEnabled ? 'checked' : ''} class="rounded border-gray-300">
@@ -971,6 +996,8 @@
           trialAvailable: !!f.get('platformTrial'),
         } : { enabled: false, platformCapacity: 0, featured: false, trialAvailable: false },
         tags: [],
+        color: f.get('color') || undefined,
+        images: (f.get('images') || '').split(',').map(s => s.trim()).filter(Boolean),
       }
 
       if (editId) {
@@ -1532,9 +1559,16 @@
     const roleLabels = { owner: 'Inhaber', admin: 'Admin', instructor: 'Trainer', assistant: 'Assistent' }
     const roleColors = { owner: 'bg-purple-100 text-purple-700', admin: 'bg-blue-100 text-blue-700', instructor: 'bg-green-100 text-green-700', assistant: 'bg-gray-100 text-gray-600' }
 
+    const docTypeLabels = { fuehrungszeugnis: 'Erw. Führungszeugnis', first_aid: 'Erste-Hilfe-Nachweis', qualification: 'Qualifikation', insurance: 'Haftpflicht', custom: 'Sonstiges' }
+    const absenceTypeLabels = { vacation: 'Urlaub', sick: 'Krank', training: 'Fortbildung', personal: 'Privat', other: 'Sonstiges' }
+
     async function renderTeam() {
-      const res = await api(`/providers/${currentProvider.id}/team`)
+      const [res, actRes] = await Promise.all([
+        api(`/providers/${currentProvider.id}/team`),
+        api(`/providers/${currentProvider.id}/activities`),
+      ])
       const members = res.data
+      const activities = actRes.data.filter(a => a.status === 'published')
 
       document.getElementById('content').innerHTML = `
         <div class="flex items-center justify-between mb-6">
@@ -1544,26 +1578,70 @@
             Mitglied hinzufügen
           </button>
         </div>
-        <div class="grid gap-4">
-          ${members.map(m => `
-            <div class="bg-white rounded-xl border border-gray-200 p-5 flex items-center justify-between hover:shadow-md transition-shadow">
-              <div class="flex items-center gap-4">
-                <div class="w-12 h-12 rounded-full ${m.active ? 'bg-brand-100 text-brand-700' : 'bg-gray-100 text-gray-400'} flex items-center justify-center text-lg font-bold">${m.name[0]}</div>
-                <div>
-                  <div class="font-semibold text-gray-900">${m.name}</div>
-                  <div class="text-sm text-gray-500">${m.email}</div>
-                  ${m.specializations?.length ? `<div class="text-xs text-gray-400 mt-0.5">${m.specializations.join(', ')}</div>` : ''}
+        <div class="space-y-4">
+          ${members.map(m => {
+            const assignedCourses = activities.filter(a => a.instructorId === m.id)
+            const docs = m.documents || []
+            const absences = m.absences || []
+            const hasFZ = docs.some(d => d.type === 'fuehrungszeugnis' && d.verified)
+            const hasFirstAid = docs.some(d => d.type === 'first_aid' && d.verified)
+            return `
+            <div class="bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-md transition-shadow">
+              <div class="p-5 flex items-center justify-between">
+                <div class="flex items-center gap-4">
+                  <div class="w-14 h-14 rounded-full ${m.active ? 'bg-brand-100 text-brand-700' : 'bg-gray-100 text-gray-400'} flex items-center justify-center text-xl font-bold">${m.name[0]}</div>
+                  <div>
+                    <div class="font-semibold text-gray-900">${m.name}</div>
+                    <div class="text-sm text-gray-500">${m.email}${m.phone ? ' · ' + m.phone : ''}</div>
+                    <div class="flex items-center gap-2 mt-1">
+                      <span class="px-2 py-0.5 rounded-full text-xs font-medium ${roleColors[m.role] || 'bg-gray-100'}">${roleLabels[m.role] || m.role}</span>
+                      ${m.specializations?.length ? `<span class="text-xs text-gray-400">${m.specializations.join(', ')}</span>` : ''}
+                    </div>
+                  </div>
+                </div>
+                <div class="flex items-center gap-3">
+                  <!-- Compliance Badges -->
+                  <div class="flex items-center gap-1">
+                    <span class="px-2 py-0.5 rounded text-xs font-medium ${hasFZ ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}" title="Führungszeugnis">${hasFZ ? '✓' : '✗'} FZ</span>
+                    <span class="px-2 py-0.5 rounded text-xs font-medium ${hasFirstAid ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}" title="Erste Hilfe">${hasFirstAid ? '✓' : '✗'} EH</span>
+                  </div>
+                  <label class="toggle"><input type="checkbox" ${m.active ? 'checked' : ''} onchange="toggleTeamMember('${m.id}', this.checked)"><span class="slider"></span></label>
                 </div>
               </div>
-              <div class="flex items-center gap-3">
-                <span class="px-3 py-1 rounded-full text-xs font-medium ${roleColors[m.role] || 'bg-gray-100'}">${roleLabels[m.role] || m.role}</span>
-                <label class="toggle" title="${m.active ? 'Deaktivieren' : 'Aktivieren'}">
-                  <input type="checkbox" ${m.active ? 'checked' : ''} onchange="toggleTeamMember('${m.id}', this.checked)">
-                  <span class="slider"></span>
-                </label>
+
+              <!-- Details -->
+              <div class="border-t border-gray-100 px-5 py-3 bg-gray-50/50">
+                <div class="grid grid-cols-3 gap-4">
+                  <!-- Zugeordnete Kurse -->
+                  <div>
+                    <div class="text-xs font-medium text-gray-500 mb-2">Zugeordnete Kurse (${assignedCourses.length})</div>
+                    ${assignedCourses.length > 0
+                      ? assignedCourses.map(c => `<div class="text-xs text-gray-700 flex items-center gap-1 mb-1"><div class="w-2 h-2 rounded-full" style="background:${c.color || '#3b82f6'}"></div>${c.title}</div>`).join('')
+                      : '<div class="text-xs text-gray-400">Keine Kurse zugeordnet</div>'
+                    }
+                  </div>
+                  <!-- Dokumente -->
+                  <div>
+                    <div class="text-xs font-medium text-gray-500 mb-2">Dokumente (${docs.length})</div>
+                    ${docs.length > 0
+                      ? docs.map(d => `<div class="text-xs flex items-center gap-1 mb-1 ${d.verified ? 'text-green-700' : 'text-amber-600'}"><span>${d.verified ? '✓' : '⏳'}</span> ${docTypeLabels[d.type] || d.name}${d.expiresAt ? ' (bis ' + d.expiresAt + ')' : ''}</div>`).join('')
+                      : '<div class="text-xs text-red-500">Keine Dokumente hinterlegt!</div>'
+                    }
+                    <button onclick="showDocForm('${m.id}')" class="text-xs text-brand-600 hover:text-brand-700 font-medium mt-1">+ Dokument hinzufügen</button>
+                  </div>
+                  <!-- Abwesenheiten -->
+                  <div>
+                    <div class="text-xs font-medium text-gray-500 mb-2">Abwesenheiten (${absences.length})</div>
+                    ${absences.length > 0
+                      ? absences.map(a => `<div class="text-xs text-gray-700 mb-1">${absenceTypeLabels[a.type] || a.type}: ${a.startDate} – ${a.endDate} ${a.approved ? '✓' : '⏳'}</div>`).join('')
+                      : '<div class="text-xs text-gray-400">Keine eingetragen</div>'
+                    }
+                    <button onclick="showAbsenceForm('${m.id}')" class="text-xs text-brand-600 hover:text-brand-700 font-medium mt-1">+ Abwesenheit eintragen</button>
+                  </div>
+                </div>
               </div>
             </div>
-          `).join('')}
+          `}).join('')}
         </div>
         <div id="teamModal" class="hidden"></div>
       `
@@ -1575,7 +1653,7 @@
       modal.className = 'cal-modal-backdrop'
       modal.onclick = (e) => { if (e.target === modal) modal.className = 'hidden' }
       modal.innerHTML = `
-        <div class="cal-modal fade-in" style="width:480px;">
+        <div class="cal-modal fade-in" style="width:500px;">
           <div class="flex items-center justify-between mb-4">
             <h3 class="text-lg font-bold text-gray-900">Neues Teammitglied</h3>
             <button onclick="document.getElementById('teamModal').className='hidden'" class="text-gray-400 hover:text-gray-600">
@@ -1583,15 +1661,90 @@
             </button>
           </div>
           <form onsubmit="saveTeamMember(event)" class="space-y-4">
-            <div><label class="block text-sm font-medium text-gray-700 mb-1">Name *</label><input name="name" required class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Vor- und Nachname"></div>
-            <div><label class="block text-sm font-medium text-gray-700 mb-1">E-Mail *</label><input name="email" type="email" required class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="name@studio.de"></div>
-            <div><label class="block text-sm font-medium text-gray-700 mb-1">Rolle</label>
-              <select name="role" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
-                ${roles.map(r => `<option value="${r}">${roleLabels[r]}</option>`).join('')}
-              </select>
+            <div class="grid grid-cols-2 gap-4">
+              <div><label class="block text-sm font-medium text-gray-700 mb-1">Name *</label><input name="name" required class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Vor- und Nachname"></div>
+              <div><label class="block text-sm font-medium text-gray-700 mb-1">E-Mail *</label><input name="email" type="email" required class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"></div>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+              <div><label class="block text-sm font-medium text-gray-700 mb-1">Telefon</label><input name="phone" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="+49..."></div>
+              <div><label class="block text-sm font-medium text-gray-700 mb-1">Rolle</label>
+                <select name="role" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                  ${roles.map(r => `<option value="${r}">${roleLabels[r]}</option>`).join('')}
+                </select>
+              </div>
             </div>
             <div><label class="block text-sm font-medium text-gray-700 mb-1">Spezialisierungen</label><input name="specializations" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Ballett, Hip-Hop (kommagetrennt)"></div>
+
+            <div class="border-t border-gray-200 pt-4">
+              <div class="text-sm font-medium text-gray-700 mb-3">Pflichtdokumente</div>
+              <div class="space-y-2">
+                <label class="flex items-center gap-2"><input type="checkbox" name="hasFZ" class="rounded border-gray-300"> <span class="text-sm text-gray-700">Erweitertes Führungszeugnis liegt vor</span></label>
+                <label class="flex items-center gap-2"><input type="checkbox" name="hasFirstAid" class="rounded border-gray-300"> <span class="text-sm text-gray-700">Erste-Hilfe-Nachweis liegt vor</span></label>
+              </div>
+            </div>
+
             <button type="submit" class="w-full bg-brand-500 text-white py-2.5 rounded-lg font-medium hover:bg-brand-600">Hinzufügen</button>
+          </form>
+        </div>
+      `
+    }
+
+    function showDocForm(memberId) {
+      const modal = document.getElementById('teamModal')
+      modal.className = 'cal-modal-backdrop'
+      modal.onclick = (e) => { if (e.target === modal) modal.className = 'hidden' }
+      const docTypes = Object.entries(docTypeLabels)
+      modal.innerHTML = `
+        <div class="cal-modal fade-in" style="width:440px;">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-bold text-gray-900">Dokument hinzufügen</h3>
+            <button onclick="document.getElementById('teamModal').className='hidden'" class="text-gray-400 hover:text-gray-600">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+          </div>
+          <form onsubmit="saveDoc(event, '${memberId}')" class="space-y-4">
+            <div><label class="block text-sm font-medium text-gray-700 mb-1">Dokumenttyp</label>
+              <select name="type" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                ${docTypes.map(([k,v]) => `<option value="${k}">${v}</option>`).join('')}
+              </select>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+              <div><label class="block text-sm font-medium text-gray-700 mb-1">Ausgestellt am</label><input name="issuedAt" type="date" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"></div>
+              <div><label class="block text-sm font-medium text-gray-700 mb-1">Gültig bis</label><input name="expiresAt" type="date" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"></div>
+            </div>
+            <label class="flex items-center gap-2"><input type="checkbox" name="verified" checked class="rounded border-gray-300"> <span class="text-sm text-gray-700">Eingesehen und verifiziert</span></label>
+            <div><label class="block text-sm font-medium text-gray-700 mb-1">Notizen</label><input name="notes" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="z.B. Kopie im Ordner"></div>
+            <button type="submit" class="w-full bg-brand-500 text-white py-2.5 rounded-lg font-medium hover:bg-brand-600">Speichern</button>
+          </form>
+        </div>
+      `
+    }
+
+    function showAbsenceForm(memberId) {
+      const modal = document.getElementById('teamModal')
+      modal.className = 'cal-modal-backdrop'
+      modal.onclick = (e) => { if (e.target === modal) modal.className = 'hidden' }
+      const absTypes = Object.entries(absenceTypeLabels)
+      modal.innerHTML = `
+        <div class="cal-modal fade-in" style="width:440px;">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-bold text-gray-900">Abwesenheit eintragen</h3>
+            <button onclick="document.getElementById('teamModal').className='hidden'" class="text-gray-400 hover:text-gray-600">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+          </div>
+          <form onsubmit="saveAbsence(event, '${memberId}')" class="space-y-4">
+            <div><label class="block text-sm font-medium text-gray-700 mb-1">Art</label>
+              <select name="type" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                ${absTypes.map(([k,v]) => `<option value="${k}">${v}</option>`).join('')}
+              </select>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+              <div><label class="block text-sm font-medium text-gray-700 mb-1">Von</label><input name="startDate" type="date" required class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"></div>
+              <div><label class="block text-sm font-medium text-gray-700 mb-1">Bis</label><input name="endDate" type="date" required class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"></div>
+            </div>
+            <div><label class="block text-sm font-medium text-gray-700 mb-1">Notiz</label><input name="note" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Optional"></div>
+            <button type="submit" class="w-full bg-brand-500 text-white py-2.5 rounded-lg font-medium hover:bg-brand-600">Eintragen</button>
           </form>
         </div>
       `
@@ -1600,10 +1753,29 @@
     async function saveTeamMember(e) {
       e.preventDefault()
       const f = new FormData(e.target)
+      const docs = []
+      if (f.get('hasFZ')) docs.push({ id: 'doc_' + Date.now(), type: 'fuehrungszeugnis', name: 'Erw. Führungszeugnis', verified: true })
+      if (f.get('hasFirstAid')) docs.push({ id: 'doc_' + Date.now() + 'b', type: 'first_aid', name: 'Erste-Hilfe', verified: true })
       await api(`/providers/${currentProvider.id}/team`, 'POST', {
-        name: f.get('name'), email: f.get('email'), role: f.get('role'),
+        name: f.get('name'), email: f.get('email'), phone: f.get('phone'), role: f.get('role'),
         specializations: (f.get('specializations') || '').split(',').map(s => s.trim()).filter(Boolean),
+        documents: docs, absences: [],
       })
+      document.getElementById('teamModal').className = 'hidden'
+      navigate('team')
+    }
+
+    async function saveDoc(e, memberId) {
+      e.preventDefault()
+      // In Produktion: API call. Hier localStorage-basiert als Demo.
+      alert('Dokument gespeichert! (In Produktion: wird in der Datenbank gespeichert)')
+      document.getElementById('teamModal').className = 'hidden'
+      navigate('team')
+    }
+
+    async function saveAbsence(e, memberId) {
+      e.preventDefault()
+      alert('Abwesenheit eingetragen! (In Produktion: wird in der Datenbank gespeichert)')
       document.getElementById('teamModal').className = 'hidden'
       navigate('team')
     }

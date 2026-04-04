@@ -72,10 +72,37 @@ export interface TeamMember {
   providerId: ID
   name: string
   email: string
+  phone?: string
   role: TeamRole
   specializations?: string[]
   avatar?: string
   active: boolean
+  assignedActivityIds?: ID[]    // Zugeordnete Kurse
+  documents?: TeamDocument[]    // Führungszeugnis, Erste Hilfe, etc.
+  absences?: TeamAbsence[]      // Urlaub, Krankheit, etc.
+}
+
+export type TeamDocumentType = 'fuehrungszeugnis' | 'first_aid' | 'qualification' | 'insurance' | 'custom'
+
+export interface TeamDocument {
+  id: ID
+  type: TeamDocumentType
+  name: string
+  issuedAt?: string
+  expiresAt?: string
+  verified: boolean
+  notes?: string
+}
+
+export type AbsenceType = 'vacation' | 'sick' | 'training' | 'personal' | 'other'
+
+export interface TeamAbsence {
+  id: ID
+  type: AbsenceType
+  startDate: string
+  endDate: string
+  note?: string
+  approved: boolean
 }
 
 // --- Activities (Kurse/Angebote) ---
@@ -145,8 +172,10 @@ export interface Activity {
   waitlistEnabled: boolean
   pricing: PricingOption[]
   platformListing?: PlatformListing
-  trialEnabled: boolean       // Schnupperstunde anbieten?
-  media: string[]           // URLs
+  trialEnabled: boolean
+  color?: string              // Farbcode für Kalender z.B. "#3b82f6"
+  images?: string[]           // Bild-URLs (erstes = Hauptbild, Rest = Galerie)
+  media: string[]
   tags: string[]
   status: ActivityStatus
   createdAt: Date
