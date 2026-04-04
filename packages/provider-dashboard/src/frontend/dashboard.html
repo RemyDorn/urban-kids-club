@@ -92,6 +92,12 @@
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
           Ferien
         </button>
+        <div class="mt-4 pt-3 border-t border-gray-100">
+          <button onclick="navigate('settings')" data-page="settings" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 transition-all">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+            Einstellungen
+          </button>
+        </div>
       </nav>
 
       <!-- Footer -->
@@ -169,7 +175,7 @@
       const activeBtn = document.querySelector(`[data-page="${page}"]`)
       if (activeBtn) { activeBtn.classList.add('active'); activeBtn.classList.remove('text-gray-600') }
 
-      const titles = { dashboard: 'Dashboard', activities: 'Kurse & Angebote', bookings: 'Buchungen', customers: 'Kunden (CRM)', trials: 'Probestunden', invoices: 'Rechnungen', team: 'Team', holidays: 'Ferien & Saisons' }
+      const titles = { dashboard: 'Dashboard', activities: 'Kurse & Angebote', bookings: 'Buchungen', customers: 'Kunden (CRM)', trials: 'Probestunden', invoices: 'Rechnungen', team: 'Team', holidays: 'Ferien & Saisons', settings: 'Einstellungen' }
       document.getElementById('pageTitle').textContent = titles[page] || page
 
       const content = document.getElementById('content')
@@ -178,7 +184,7 @@
       void content.offsetWidth
       content.classList.add('fade-in')
 
-      const renderers = { dashboard: renderDashboard, activities: renderActivities, bookings: renderBookings, customers: renderCustomers, trials: renderTrials, invoices: renderInvoices, team: renderTeam, holidays: renderHolidays }
+      const renderers = { dashboard: renderDashboard, activities: renderActivities, bookings: renderBookings, customers: renderCustomers, trials: renderTrials, invoices: renderInvoices, team: renderTeam, holidays: renderHolidays, settings: renderSettings }
       if (renderers[page]) renderers[page]()
     }
 
@@ -1036,26 +1042,41 @@
       navigate('bookings')
     }
 
-    // --- Customers (with Loyalty) ---
-    const loyaltyTiers = [
+    // --- Loyalty (pro Provider konfigurierbar) ---
+    const defaultLoyaltyTiers = [
       { name: 'Starter', minBookings: 0, minSpent: 0, color: 'bg-gray-100 text-gray-600', icon: '⭐', discount: 0, perks: [] },
       { name: 'Bronze', minBookings: 3, minSpent: 100, color: 'bg-amber-100 text-amber-700', icon: '🥉', discount: 5, perks: ['5% Rabatt auf alle Kurse'] },
       { name: 'Silber', minBookings: 6, minSpent: 250, color: 'bg-gray-200 text-gray-700', icon: '🥈', discount: 10, perks: ['10% Rabatt', 'Priorität auf Warteliste'] },
       { name: 'Gold', minBookings: 10, minSpent: 500, color: 'bg-yellow-100 text-yellow-800', icon: '🥇', discount: 15, perks: ['15% Rabatt', 'Priorität auf Warteliste', 'Kostenlose Schnupperstunden'] },
     ]
+    // Per-provider storage (persists in session, saved to localStorage)
+    function getLoyaltyTiers() {
+      try {
+        const stored = localStorage.getItem('loyalty_' + currentProvider?.id)
+        if (stored) return JSON.parse(stored)
+      } catch {}
+      return [...defaultLoyaltyTiers]
+    }
+    function saveLoyaltyTiers(tiers) {
+      localStorage.setItem('loyalty_' + currentProvider?.id, JSON.stringify(tiers))
+    }
+    // Computed getter
+    const loyaltyTiers = null // will use getLoyaltyTiers() dynamically
 
     function getLoyaltyTier(bookingCount, totalSpent) {
-      let tier = loyaltyTiers[0]
-      for (const t of loyaltyTiers) {
+      const tiers = getLoyaltyTiers()
+      let tier = tiers[0]
+      for (const t of tiers) {
         if (bookingCount >= t.minBookings && totalSpent >= t.minSpent) tier = t
       }
       return tier
     }
 
     function loyaltyProgress(bookingCount, totalSpent) {
+      const tiers = getLoyaltyTiers()
       const current = getLoyaltyTier(bookingCount, totalSpent)
-      const currentIdx = loyaltyTiers.indexOf(current)
-      const next = loyaltyTiers[currentIdx + 1]
+      const currentIdx = tiers.findIndex(t => t.name === current.name)
+      const next = tiers[currentIdx + 1]
       if (!next) return { current, next: null, progressBookings: 100, progressSpent: 100 }
       const progressBookings = Math.min(100, Math.round((bookingCount / next.minBookings) * 100))
       const progressSpent = Math.min(100, Math.round((totalSpent / next.minSpent) * 100))
@@ -1383,6 +1404,153 @@
     }
 
     // --- Helpers ---
+    // --- Settings ---
+    async function renderSettings() {
+      const tiers = getLoyaltyTiers()
+      const iconOptions = ['⭐', '🥉', '🥈', '🥇', '💎', '👑', '🏆', '🔥', '❤️', '🌟']
+      const colorOptions = [
+        { value: 'bg-gray-100 text-gray-600', label: 'Grau' },
+        { value: 'bg-amber-100 text-amber-700', label: 'Bronze' },
+        { value: 'bg-gray-200 text-gray-700', label: 'Silber' },
+        { value: 'bg-yellow-100 text-yellow-800', label: 'Gold' },
+        { value: 'bg-purple-100 text-purple-700', label: 'Lila' },
+        { value: 'bg-blue-100 text-blue-700', label: 'Blau' },
+        { value: 'bg-emerald-100 text-emerald-700', label: 'Grün' },
+        { value: 'bg-pink-100 text-pink-700', label: 'Pink' },
+      ]
+
+      document.getElementById('content').innerHTML = `
+        <!-- Loyalty / Treueprogramm -->
+        <div class="bg-white rounded-xl border border-gray-200 p-6 mb-6">
+          <div class="flex items-center justify-between mb-6">
+            <div>
+              <h3 class="font-semibold text-gray-900 text-lg">Treueprogramm</h3>
+              <p class="text-sm text-gray-500 mt-1">Konfiguriere die Treue-Stufen für deine Kunden. Mehr Buchungen = höherer Rang = bessere Vorteile.</p>
+            </div>
+          </div>
+
+          <div id="tiersEditor" class="space-y-4">
+            ${tiers.map((tier, idx) => `
+              <div class="tier-row border border-gray-200 rounded-xl p-4 ${idx === 0 ? 'bg-gray-50' : 'hover:border-brand-200'}" data-idx="${idx}">
+                <div class="flex items-center justify-between mb-3">
+                  <div class="flex items-center gap-3">
+                    <select name="tierIcon_${idx}" class="border border-gray-200 rounded-lg px-2 py-1 text-xl w-16 text-center" ${idx === 0 ? 'disabled' : ''}>
+                      ${iconOptions.map(ic => `<option value="${ic}" ${tier.icon === ic ? 'selected' : ''}>${ic}</option>`).join('')}
+                    </select>
+                    <input name="tierName_${idx}" value="${tier.name}" class="border border-gray-200 rounded-lg px-3 py-2 text-sm font-semibold w-32 ${idx === 0 ? 'bg-gray-100' : ''}" ${idx === 0 ? 'disabled' : ''} placeholder="Name">
+                    ${idx === 0 ? '<span class="text-xs text-gray-400">(Standard – nicht editierbar)</span>' : ''}
+                  </div>
+                  ${idx > 0 ? `<button type="button" onclick="removeTier(${idx})" class="text-red-400 hover:text-red-600 p-1"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>` : ''}
+                </div>
+
+                ${idx > 0 ? `
+                <div class="grid grid-cols-4 gap-4">
+                  <div>
+                    <label class="block text-xs text-gray-500 mb-1">Ab Buchungen</label>
+                    <input name="tierMinBookings_${idx}" type="number" min="1" value="${tier.minBookings}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                  </div>
+                  <div>
+                    <label class="block text-xs text-gray-500 mb-1">Ab Umsatz (EUR)</label>
+                    <input name="tierMinSpent_${idx}" type="number" min="0" step="10" value="${tier.minSpent}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                  </div>
+                  <div>
+                    <label class="block text-xs text-gray-500 mb-1">Rabatt (%)</label>
+                    <input name="tierDiscount_${idx}" type="number" min="0" max="100" value="${tier.discount}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                  </div>
+                  <div>
+                    <label class="block text-xs text-gray-500 mb-1">Farbe</label>
+                    <select name="tierColor_${idx}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                      ${colorOptions.map(c => `<option value="${c.value}" ${tier.color === c.value ? 'selected' : ''}>${c.label}</option>`).join('')}
+                    </select>
+                  </div>
+                </div>
+                <div class="mt-3">
+                  <label class="block text-xs text-gray-500 mb-1">Vorteile (je Zeile ein Vorteil)</label>
+                  <textarea name="tierPerks_${idx}" rows="2" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="z.B. 5% Rabatt auf alle Kurse&#10;Priorität bei Warteliste">${tier.perks.join('\n')}</textarea>
+                </div>
+                ` : `
+                <div class="text-sm text-gray-500">Alle neuen Kunden starten auf dieser Stufe. Keine Vorteile, kein Rabatt.</div>
+                `}
+              </div>
+            `).join('')}
+          </div>
+
+          <div class="flex items-center justify-between mt-4">
+            <button onclick="addTier()" class="flex items-center gap-2 text-sm text-brand-600 hover:text-brand-700 font-medium">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+              Neue Stufe hinzufügen
+            </button>
+            <button onclick="saveLoyaltySettings()" class="bg-brand-500 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-brand-600 transition-colors">
+              Treueprogramm speichern
+            </button>
+          </div>
+        </div>
+
+        <!-- Vorschau -->
+        <div class="bg-white rounded-xl border border-gray-200 p-6">
+          <h3 class="font-semibold text-gray-900 mb-4">Vorschau</h3>
+          <div class="flex gap-3 flex-wrap" id="tierPreview">
+            ${tiers.map(t => `
+              <div class="flex items-center gap-2 px-4 py-2 rounded-full ${t.color} text-sm font-medium">
+                ${t.icon} ${t.name}
+                ${t.discount > 0 ? `<span class="opacity-60">(${t.discount}%)</span>` : ''}
+              </div>
+            `).join('')}
+          </div>
+          <div class="mt-4 text-sm text-gray-500">
+            ${tiers.filter(t => t.minBookings > 0).map(t => `<div class="mb-1">${t.icon} <strong>${t.name}</strong>: ab ${t.minBookings} Buchungen + ${t.minSpent}€ Umsatz → ${t.discount}% Rabatt</div>`).join('')}
+          </div>
+        </div>
+      `
+    }
+
+    function addTier() {
+      const tiers = getLoyaltyTiers()
+      const lastTier = tiers[tiers.length - 1]
+      tiers.push({
+        name: 'Neuer Rang',
+        minBookings: (lastTier.minBookings || 0) + 5,
+        minSpent: (lastTier.minSpent || 0) + 200,
+        color: 'bg-purple-100 text-purple-700',
+        icon: '💎',
+        discount: (lastTier.discount || 0) + 5,
+        perks: [],
+      })
+      saveLoyaltyTiers(tiers)
+      renderSettings()
+    }
+
+    function removeTier(idx) {
+      const tiers = getLoyaltyTiers()
+      if (idx === 0 || !confirm(`Stufe "${tiers[idx].name}" wirklich löschen?`)) return
+      tiers.splice(idx, 1)
+      saveLoyaltyTiers(tiers)
+      renderSettings()
+    }
+
+    function saveLoyaltySettings() {
+      const rows = document.querySelectorAll('.tier-row')
+      const tiers = []
+      rows.forEach((row, idx) => {
+        const name = row.querySelector(`[name="tierName_${idx}"]`)?.value || 'Starter'
+        const icon = row.querySelector(`[name="tierIcon_${idx}"]`)?.value || '⭐'
+        if (idx === 0) {
+          tiers.push({ name: 'Starter', minBookings: 0, minSpent: 0, color: 'bg-gray-100 text-gray-600', icon: '⭐', discount: 0, perks: [] })
+          return
+        }
+        const minBookings = parseInt(row.querySelector(`[name="tierMinBookings_${idx}"]`)?.value || '0')
+        const minSpent = parseInt(row.querySelector(`[name="tierMinSpent_${idx}"]`)?.value || '0')
+        const discount = parseInt(row.querySelector(`[name="tierDiscount_${idx}"]`)?.value || '0')
+        const color = row.querySelector(`[name="tierColor_${idx}"]`)?.value || 'bg-gray-100 text-gray-600'
+        const perksText = row.querySelector(`[name="tierPerks_${idx}"]`)?.value || ''
+        const perks = perksText.split('\n').map(p => p.trim()).filter(Boolean)
+        tiers.push({ name, icon, minBookings, minSpent, color, discount, perks })
+      })
+      saveLoyaltyTiers(tiers)
+      alert('Treueprogramm gespeichert!')
+      renderSettings()
+    }
+
     function formatCurrency(amount) { return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(amount || 0) }
 
     function kpiCard(label, value, sub, bgClass, icon) {
