@@ -1002,6 +1002,10 @@
         <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
             <span class="font-semibold text-gray-900">${bookings.length} Buchungen</span>
+            <div class="flex gap-2">
+              <button onclick="exportData('bookings', 'csv')" class="px-3 py-1.5 text-xs bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium">CSV Export</button>
+              <button onclick="exportData('bookings', 'datev')" class="px-3 py-1.5 text-xs bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium">DATEV</button>
+            </div>
           </div>
           <table class="w-full">
             <thead class="bg-gray-50 text-xs text-gray-500 uppercase tracking-wider">
@@ -1409,6 +1413,10 @@
         <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
             <span class="font-semibold text-gray-900">${invoices.data.length} Rechnungen</span>
+            <div class="flex gap-2">
+              <button onclick="exportData('invoices', 'csv')" class="px-3 py-1.5 text-xs bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium">CSV</button>
+              <button onclick="exportData('invoices', 'datev')" class="px-3 py-1.5 text-xs bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium">DATEV</button>
+            </div>
           </div>
           ${invoices.data.length === 0 ? '<div class="p-8 text-center text-gray-400">Noch keine Rechnungen. Erstelle Rechnungen aus bestätigten Buchungen.</div>' : `
           <table class="w-full">
@@ -1749,6 +1757,18 @@
           </div>
         </div>
       `
+    }
+
+    async function exportData(type, format) {
+      const result = await api(`/providers/${currentProvider.id}/export`, 'POST', { type, format })
+      if (result.data?.fileUrl) {
+        const a = document.createElement('a')
+        a.href = result.data.fileUrl
+        a.download = `${type}_${new Date().toISOString().split('T')[0]}.${format === 'datev' ? 'csv' : format}`
+        a.click()
+      } else {
+        alert('Export konnte nicht erstellt werden.')
+      }
     }
 
     function copyToClipboard(btn, text) {
