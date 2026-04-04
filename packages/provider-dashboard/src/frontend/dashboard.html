@@ -686,29 +686,39 @@
               </div>
             </div>
 
-            <!-- Zeitplan -->
+            <!-- Zeitplan (Multi-Tag) -->
             <fieldset class="border border-gray-200 rounded-lg p-4">
               <legend class="text-sm font-medium text-gray-700 px-2">Zeitplan</legend>
-              <div class="grid grid-cols-4 gap-3">
-                <div>
-                  <label class="block text-xs text-gray-500 mb-1">Tag</label>
-                  <select name="scheduleDay" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
-                    ${days.map(d => `<option value="${d}" ${a.schedule.type === 'recurring' && a.schedule.slots[0]?.day === d ? 'selected' : ''}>${dayLabels[d]}</option>`).join('')}
-                  </select>
-                </div>
-                <div>
-                  <label class="block text-xs text-gray-500 mb-1">Von</label>
-                  <input name="startTime" type="time" value="${a.schedule.type === 'recurring' ? a.schedule.slots[0]?.startTime : '15:00'}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
-                </div>
-                <div>
-                  <label class="block text-xs text-gray-500 mb-1">Bis</label>
-                  <input name="endTime" type="time" value="${a.schedule.type === 'recurring' ? a.schedule.slots[0]?.endTime : '16:00'}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
-                </div>
-                <div>
-                  <label class="block text-xs text-gray-500 mb-1">Ab Datum</label>
-                  <input name="startDate" type="date" value="${a.schedule.startDate || new Date().toISOString().split('T')[0]}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
-                </div>
+              <div id="slotsContainer" class="space-y-2">
+                ${(a.schedule.type === 'recurring' ? a.schedule.slots : [{ day: 'MO', startTime: '15:00', endTime: '16:00' }]).map((slot, idx) => `
+                  <div class="slot-row grid grid-cols-4 gap-3 items-end" data-idx="${idx}">
+                    <div>
+                      <label class="block text-xs text-gray-500 mb-1">Tag</label>
+                      <select name="slotDay_${idx}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                        ${days.map(d => `<option value="${d}" ${slot.day === d ? 'selected' : ''}>${dayLabels[d]}</option>`).join('')}
+                      </select>
+                    </div>
+                    <div>
+                      <label class="block text-xs text-gray-500 mb-1">Von</label>
+                      <input name="slotStart_${idx}" type="time" value="${slot.startTime}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                    </div>
+                    <div>
+                      <label class="block text-xs text-gray-500 mb-1">Bis</label>
+                      <input name="slotEnd_${idx}" type="time" value="${slot.endTime}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                    </div>
+                    <div>
+                      ${idx > 0 ? `<button type="button" onclick="removeSlot(${idx})" class="px-3 py-2 text-xs text-red-500 hover:bg-red-50 rounded-lg border border-red-200">Entfernen</button>` : `
+                        <label class="block text-xs text-gray-500 mb-1">Ab Datum</label>
+                        <input name="startDate" type="date" value="${a.schedule.startDate || new Date().toISOString().split('T')[0]}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                      `}
+                    </div>
+                  </div>
+                `).join('')}
               </div>
+              <button type="button" onclick="addSlot()" id="addSlotBtn" class="mt-3 flex items-center gap-1 text-sm text-brand-600 hover:text-brand-700 font-medium">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                Weiteren Tag hinzufügen
+              </button>
             </fieldset>
 
             <!-- Preise -->
@@ -810,9 +820,15 @@
               </div>
             </fieldset>
 
-            <div class="flex items-center gap-2">
-              <input name="waitlistEnabled" type="checkbox" ${a.waitlistEnabled ? 'checked' : ''} class="rounded border-gray-300">
-              <label class="text-sm text-gray-700">Warteliste aktivieren</label>
+            <div class="flex items-center gap-6">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input name="waitlistEnabled" type="checkbox" ${a.waitlistEnabled ? 'checked' : ''} class="rounded border-gray-300">
+                <span class="text-sm text-gray-700">Warteliste aktivieren</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input name="trialEnabled" type="checkbox" ${(a.trialEnabled ?? true) ? 'checked' : ''} class="rounded border-gray-300">
+                <span class="text-sm text-gray-700">Schnupperstunde anbieten</span>
+              </label>
             </div>
 
             <div class="flex gap-3 pt-2">
@@ -825,6 +841,50 @@
         </div>
       `
       togglePackageSize()
+    }
+
+    let slotCount = 1
+
+    function addSlot() {
+      const container = document.getElementById('slotsContainer')
+      const days = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU']
+      const dayLabels = { MO: 'Mo', TU: 'Di', WE: 'Mi', TH: 'Do', FR: 'Fr', SA: 'Sa', SU: 'So' }
+      const allSlots = container.querySelectorAll('.slot-row')
+      if (allSlots.length >= 7) return
+
+      const idx = allSlots.length
+      const div = document.createElement('div')
+      div.className = 'slot-row grid grid-cols-4 gap-3 items-end fade-in'
+      div.dataset.idx = idx
+      div.innerHTML = `
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Tag</label>
+          <select name="slotDay_${idx}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+            ${days.map(d => `<option value="${d}">${dayLabels[d]}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Von</label>
+          <input name="slotStart_${idx}" type="time" value="15:00" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Bis</label>
+          <input name="slotEnd_${idx}" type="time" value="16:00" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+        </div>
+        <div>
+          <button type="button" onclick="this.closest('.slot-row').remove()" class="px-3 py-2 text-xs text-red-500 hover:bg-red-50 rounded-lg border border-red-200">Entfernen</button>
+        </div>
+      `
+      container.appendChild(div)
+      if (container.querySelectorAll('.slot-row').length >= 7) {
+        document.getElementById('addSlotBtn').style.display = 'none'
+      }
+    }
+
+    function removeSlot(idx) {
+      const row = document.querySelector(`.slot-row[data-idx="${idx}"]`)
+      if (row) row.remove()
+      document.getElementById('addSlotBtn').style.display = 'flex'
     }
 
     function togglePackageSize() {
@@ -859,6 +919,16 @@
         })
       }
 
+      // Alle Zeitplan-Slots sammeln
+      const slotRows = document.querySelectorAll('#slotsContainer .slot-row')
+      const slots = []
+      slotRows.forEach((row, i) => {
+        const day = row.querySelector(`[name^="slotDay"]`)?.value
+        const start = row.querySelector(`[name^="slotStart"]`)?.value
+        const end = row.querySelector(`[name^="slotEnd"]`)?.value
+        if (day && start && end) slots.push({ day, startTime: start, endTime: end })
+      })
+
       const body = {
         providerId: currentProvider.id,
         title: f.get('title'),
@@ -867,9 +937,10 @@
         ageRange: { min: parseInt(f.get('ageMin')), max: parseInt(f.get('ageMax')) },
         capacity: parseInt(f.get('capacity')),
         waitlistEnabled: !!f.get('waitlistEnabled'),
+        trialEnabled: !!f.get('trialEnabled'),
         schedule: {
           type: 'recurring',
-          slots: [{ day: f.get('scheduleDay'), startTime: f.get('startTime'), endTime: f.get('endTime') }],
+          slots: slots.length > 0 ? slots : [{ day: 'MO', startTime: '15:00', endTime: '16:00' }],
           startDate: f.get('startDate'),
         },
         pricing,

@@ -145,6 +145,7 @@ export interface Activity {
   waitlistEnabled: boolean
   pricing: PricingOption[]
   platformListing?: PlatformListing
+  trialEnabled: boolean       // Schnupperstunde anbieten?
   media: string[]           // URLs
   tags: string[]
   status: ActivityStatus

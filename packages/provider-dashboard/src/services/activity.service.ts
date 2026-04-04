@@ -17,7 +17,9 @@ export interface CreateActivityInput {
   schedule: Schedule
   capacity: number
   waitlistEnabled?: boolean
+  trialEnabled?: boolean
   pricing: Omit<PricingOption, 'id'>[]
+  platformListing?: { enabled: boolean; platformCapacity: number; featured: boolean; trialAvailable: boolean }
   media?: string[]
   tags?: string[]
 }
@@ -70,6 +72,8 @@ export const ActivityService = {
       schedule: input.schedule,
       capacity: input.capacity,
       waitlistEnabled: input.waitlistEnabled ?? false,
+      trialEnabled: input.trialEnabled ?? true,
+      platformListing: input.platformListing,
       pricing,
       media: input.media ?? [],
       tags: input.tags ?? [],
