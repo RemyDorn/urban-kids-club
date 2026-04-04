@@ -62,11 +62,12 @@ export const ReportingService = {
       ? allBookings.filter((b) => dateInPeriod(b.createdAt, dateRange.from, dateRange.to))
       : allBookings
 
-    // Umsatz: Paid minus Refunded
-    const paidBookings = bookings.filter((b) => b.paymentStatus === 'paid')
-    const refundedBookings = bookings.filter((b) => b.paymentStatus === 'refunded')
-    const totalRevenue = paidBookings.reduce((sum, b) => sum + b.amountPaid, 0)
-      - refundedBookings.reduce((sum, b) => sum + b.amountPaid, 0)
+    // Umsatz: Paid minus Refunded (single pass)
+    let totalRevenue = 0
+    for (const b of bookings) {
+      if (b.paymentStatus === 'paid') totalRevenue += b.amountPaid
+      else if (b.paymentStatus === 'refunded') totalRevenue -= b.amountPaid
+    }
 
     // Activities des Providers
     const activityIds = store.getFromIndex(store.indexes.activitiesByProvider, providerId)

@@ -153,14 +153,16 @@ export const CrmService = {
     const now = new Date()
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
 
-    return {
-      total: customers.length,
-      active: customers.filter((c) => c.tags.includes('active')).length,
-      inactive: customers.filter((c) => c.tags.includes('inactive')).length,
-      vip: customers.filter((c) => c.tags.includes('vip')).length,
-      prospects: customers.filter((c) => c.tags.includes('prospect')).length,
-      newThisMonth: customers.filter((c) => c.firstBookingAt && c.firstBookingAt >= monthStart).length,
+    const segments = { total: 0, active: 0, inactive: 0, vip: 0, prospects: 0, newThisMonth: 0 }
+    for (const c of customers) {
+      segments.total++
+      if (c.tags.includes('active')) segments.active++
+      if (c.tags.includes('inactive')) segments.inactive++
+      if (c.tags.includes('vip')) segments.vip++
+      if (c.tags.includes('prospect')) segments.prospects++
+      if (c.firstBookingAt && c.firstBookingAt >= monthStart) segments.newThisMonth++
     }
+    return segments
   },
 
   deleteNote(id: ID): boolean {

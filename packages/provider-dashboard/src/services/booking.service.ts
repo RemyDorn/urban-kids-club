@@ -379,15 +379,18 @@ export const BookingService = {
     noShow: number
     unpaid: number
   } {
-    const bookings = this.listByProvider(providerId)
-    return {
-      total: bookings.length,
-      confirmed: bookings.filter((b) => b.status === 'confirmed').length,
-      waitlisted: bookings.filter((b) => b.status === 'waitlisted').length,
-      cancelled: bookings.filter((b) => b.status === 'cancelled').length,
-      completed: bookings.filter((b) => b.status === 'completed').length,
-      noShow: bookings.filter((b) => b.status === 'no_show').length,
-      unpaid: bookings.filter((b) => b.paymentStatus === 'unpaid' && b.status === 'confirmed').length,
+    const ids = store.getFromIndex(store.indexes.bookingsByProvider, providerId)
+    const stats = { total: 0, confirmed: 0, waitlisted: 0, cancelled: 0, completed: 0, noShow: 0, unpaid: 0 }
+    for (const bid of ids) {
+      const b = store.state.bookings.get(bid)
+      if (!b) continue
+      stats.total++
+      if (b.status === 'confirmed') { stats.confirmed++; if (b.paymentStatus === 'unpaid') stats.unpaid++ }
+      else if (b.status === 'waitlisted') stats.waitlisted++
+      else if (b.status === 'cancelled') stats.cancelled++
+      else if (b.status === 'completed') stats.completed++
+      else if (b.status === 'no_show') stats.noShow++
     }
+    return stats
   },
 }

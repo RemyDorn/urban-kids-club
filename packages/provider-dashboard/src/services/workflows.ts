@@ -184,8 +184,10 @@ export const BackgroundJobs = {
         entry.status = 'expired'
         expiredWaitlistOffers++
 
-        const nextWaiting = Array.from(store.state.waitlistEntries.values())
-          .filter((e) => e.activityId === entry.activityId && e.status === 'waiting')
+        const waitlistIds = store.getFromIndex(store.indexes.waitlistByActivity, entry.activityId)
+        const nextWaiting = Array.from(waitlistIds)
+          .map((id) => store.state.waitlistEntries.get(id)!)
+          .filter((e) => e && e.status === 'waiting')
           .sort((a, b) => a.position - b.position)[0]
 
         if (nextWaiting) {
