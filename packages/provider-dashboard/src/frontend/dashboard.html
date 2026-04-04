@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="de" class="h-full bg-gray-50">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Urban Kids Club – Provider Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: { 50: '#f0f9ff', 100: '#e0f2fe', 200: '#bae6fd', 300: '#7dd3fc', 400: '#38bdf8', 500: '#0ea5e9', 600: '#0284c7', 700: '#0369a1', 800: '#075985', 900: '#0c4a6e' },
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    body { font-family: 'Inter', sans-serif; }
+    .fade-in { animation: fadeIn 0.3s ease-in; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .stat-card:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0,0,0,0.1); }
+    .stat-card { transition: all 0.2s ease; }
+    .nav-item.active { background: linear-gradient(135deg, #0ea5e9, #0284c7); color: white; }
+    .nav-item:not(.active):hover { background: #f0f9ff; }
+  </style>
+</head>
+<body class="h-full">
+  <div class="flex h-full">
+
+    <!-- Sidebar -->
+    <aside class="w-64 bg-white border-r border-gray-200 flex flex-col fixed h-full z-10">
+      <!-- Logo -->
+      <div class="p-5 border-b border-gray-100">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 bg-gradient-to-br from-brand-400 to-brand-600 rounded-xl flex items-center justify-center text-white font-bold text-lg">U</div>
+          <div>
+            <div class="font-bold text-gray-900 text-sm">Urban Kids Club</div>
+            <div class="text-xs text-gray-500">Provider Dashboard</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Provider Selector -->
+      <div class="p-4 border-b border-gray-100">
+        <select id="providerSelect" onchange="switchProvider(this.value)" class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+        </select>
+      </div>
+
+      <!-- Navigation -->
+      <nav class="flex-1 p-3 space-y-1 overflow-y-auto">
+        <button onclick="navigate('dashboard')" data-page="dashboard" class="nav-item active w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+          Dashboard
+        </button>
+        <button onclick="navigate('activities')" data-page="activities" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 transition-all">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+          Kurse
+        </button>
+        <button onclick="navigate('bookings')" data-page="bookings" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 transition-all">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+          Buchungen
+        </button>
+        <button onclick="navigate('customers')" data-page="customers" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 transition-all">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+          Kunden
+        </button>
+        <button onclick="navigate('trials')" data-page="trials" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 transition-all">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          Probestunden
+        </button>
+        <button onclick="navigate('invoices')" data-page="invoices" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 transition-all">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z"/></svg>
+          Rechnungen
+        </button>
+        <button onclick="navigate('team')" data-page="team" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 transition-all">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+          Team
+        </button>
+        <button onclick="navigate('holidays')" data-page="holidays" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 transition-all">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+          Ferien
+        </button>
+      </nav>
+
+      <!-- Footer -->
+      <div class="p-4 border-t border-gray-100 text-xs text-gray-400">
+        Urban Kids Club v0.1.0
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="flex-1 ml-64 overflow-y-auto">
+      <!-- Header -->
+      <header class="bg-white border-b border-gray-200 px-8 py-4 flex items-center justify-between sticky top-0 z-5">
+        <h1 id="pageTitle" class="text-xl font-bold text-gray-900">Dashboard</h1>
+        <div class="flex items-center gap-4">
+          <span id="providerName" class="text-sm text-gray-500"></span>
+          <div class="w-8 h-8 bg-brand-100 text-brand-700 rounded-full flex items-center justify-center text-sm font-bold" id="providerAvatar">?</div>
+        </div>
+      </header>
+
+      <!-- Content -->
+      <div id="content" class="p-8 fade-in">
+        <div class="text-gray-400">Lade...</div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const API = window.location.origin + '/api'
+    let currentProvider = null
+    let providers = []
+
+    // --- API Helper ---
+    async function api(path) {
+      const res = await fetch(API + path)
+      return res.json()
+    }
+
+    // --- Init ---
+    async function init() {
+      const res = await api('/providers')
+      providers = res.data
+      const select = document.getElementById('providerSelect')
+      select.innerHTML = providers.map(p => `<option value="${p.id}">${p.name}</option>`).join('')
+      if (providers.length > 0) {
+        currentProvider = providers[0]
+        updateProviderDisplay()
+        navigate('dashboard')
+      }
+    }
+
+    function switchProvider(id) {
+      currentProvider = providers.find(p => p.id === id)
+      updateProviderDisplay()
+      navigate(currentPage)
+    }
+
+    function updateProviderDisplay() {
+      document.getElementById('providerName').textContent = currentProvider.name
+      document.getElementById('providerAvatar').textContent = currentProvider.name[0]
+    }
+
+    let currentPage = 'dashboard'
+
+    function navigate(page) {
+      currentPage = page
+      document.querySelectorAll('.nav-item').forEach(el => {
+        el.classList.remove('active')
+        el.classList.add('text-gray-600')
+      })
+      const activeBtn = document.querySelector(`[data-page="${page}"]`)
+      if (activeBtn) { activeBtn.classList.add('active'); activeBtn.classList.remove('text-gray-600') }
+
+      const titles = { dashboard: 'Dashboard', activities: 'Kurse & Angebote', bookings: 'Buchungen', customers: 'Kunden (CRM)', trials: 'Probestunden', invoices: 'Rechnungen', team: 'Team', holidays: 'Ferien & Saisons' }
+      document.getElementById('pageTitle').textContent = titles[page] || page
+
+      const content = document.getElementById('content')
+      content.innerHTML = '<div class="text-gray-400">Lade...</div>'
+      content.classList.remove('fade-in')
+      void content.offsetWidth
+      content.classList.add('fade-in')
+
+      const renderers = { dashboard: renderDashboard, activities: renderActivities, bookings: renderBookings, customers: renderCustomers, trials: renderTrials, invoices: renderInvoices, team: renderTeam, holidays: renderHolidays }
+      if (renderers[page]) renderers[page]()
+    }
+
+    // --- Dashboard ---
+    async function renderDashboard() {
+      const [dash, stats, occupancy] = await Promise.all([
+        api(`/providers/${currentProvider.id}/dashboard`),
+        api(`/providers/${currentProvider.id}/bookings/stats`),
+        api(`/providers/${currentProvider.id}/reports/occupancy`),
+      ])
+      const d = dash.data
+      const s = stats.data
+
+      document.getElementById('content').innerHTML = `
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+          ${kpiCard('Aktive Kurse', d.publishedActivities, d.totalActivities + ' gesamt', 'bg-blue-50 text-blue-600', '📚')}
+          ${kpiCard('Buchungen', d.confirmedBookings, s.total + ' gesamt', 'bg-green-50 text-green-600', '✅')}
+          ${kpiCard('Unbezahlt', d.unpaidBookings, 'offene Zahlungen', 'bg-amber-50 text-amber-600', '💰')}
+          ${kpiCard('Auslastung', Math.round(d.averageOccupancy * 100) + '%', 'Durchschnitt', 'bg-purple-50 text-purple-600', '📊')}
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+          ${kpiCard('Umsatz', formatCurrency(d.totalRevenue), 'Gesamt', 'bg-emerald-50 text-emerald-600', '💶')}
+          ${kpiCard('Offene Rechnungen', formatCurrency(d.outstandingInvoices), '', 'bg-orange-50 text-orange-600', '📄')}
+          ${kpiCard('Probestunden', d.upcomingTrials, 'anstehend', 'bg-pink-50 text-pink-600', '🎯')}
+          ${kpiCard('Nachrichten', d.unreadMessages, 'ungelesen', 'bg-indigo-50 text-indigo-600', '✉️')}
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <!-- Booking Stats -->
+          <div class="bg-white rounded-xl border border-gray-200 p-6">
+            <h3 class="font-semibold text-gray-900 mb-4">Buchungs-Status</h3>
+            <div class="space-y-3">
+              ${statusBar('Bestätigt', s.confirmed, s.total, 'bg-green-500')}
+              ${statusBar('Warteliste', s.waitlisted, s.total, 'bg-amber-500')}
+              ${statusBar('Abgeschlossen', s.completed, s.total, 'bg-blue-500')}
+              ${statusBar('Storniert', s.cancelled, s.total, 'bg-red-400')}
+              ${statusBar('No-Show', s.noShow, s.total, 'bg-gray-400')}
+            </div>
+          </div>
+
+          <!-- Occupancy -->
+          <div class="bg-white rounded-xl border border-gray-200 p-6">
+            <h3 class="font-semibold text-gray-900 mb-4">Auslastung pro Kurs</h3>
+            <div class="space-y-3">
+              ${occupancy.data.map(o => `
+                <div class="flex items-center justify-between">
+                  <span class="text-sm text-gray-700 truncate flex-1">${o.title}</span>
+                  <div class="flex items-center gap-3 ml-4">
+                    <div class="w-32 bg-gray-100 rounded-full h-2">
+                      <div class="h-2 rounded-full ${o.occupancy > 0.8 ? 'bg-red-500' : o.occupancy > 0.5 ? 'bg-amber-500' : 'bg-green-500'}" style="width: ${Math.round(o.occupancy * 100)}%"></div>
+                    </div>
+                    <span class="text-xs font-medium text-gray-500 w-16 text-right">${o.booked}/${o.capacity}${o.waitlisted > 0 ? ` (+${o.waitlisted})` : ''}</span>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+      `
+    }
+
+    // --- Activities ---
+    async function renderActivities() {
+      const res = await api(`/providers/${currentProvider.id}/activities`)
+      const activities = res.data
+
+      document.getElementById('content').innerHTML = `
+        <div class="mb-6 flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <input type="text" id="actSearch" placeholder="Kurse durchsuchen..." class="border border-gray-200 rounded-lg px-4 py-2 text-sm w-64 focus:ring-2 focus:ring-brand-500" onkeyup="filterActivities()">
+          </div>
+          <span class="text-sm text-gray-500">${activities.length} Kurse</span>
+        </div>
+        <div id="activityList" class="grid gap-4">
+          ${activities.map(a => activityCard(a)).join('')}
+        </div>
+      `
+    }
+
+    function activityCard(a) {
+      const statusColors = { published: 'bg-green-100 text-green-700', draft: 'bg-gray-100 text-gray-600', cancelled: 'bg-red-100 text-red-700', archived: 'bg-gray-100 text-gray-500' }
+      const statusLabels = { published: 'Aktiv', draft: 'Entwurf', cancelled: 'Abgesagt', archived: 'Archiviert' }
+      const scheduleText = a.schedule.type === 'recurring' ? a.schedule.slots.map(s => s.day + ' ' + s.startTime + '–' + s.endTime).join(', ')
+        : a.schedule.type === 'camp' ? `Camp: ${a.schedule.startDate} – ${a.schedule.endDate}`
+        : `${a.schedule.date} ${a.schedule.startTime}–${a.schedule.endTime}`
+
+      return `
+        <div class="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-md transition-shadow">
+          <div class="flex items-start justify-between">
+            <div class="flex-1">
+              <div class="flex items-center gap-3 mb-2">
+                <h3 class="font-semibold text-gray-900">${a.title}</h3>
+                <span class="px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[a.status] || 'bg-gray-100'}">${statusLabels[a.status] || a.status}</span>
+              </div>
+              <p class="text-sm text-gray-500 mb-3 line-clamp-2">${a.description}</p>
+              <div class="flex flex-wrap gap-4 text-xs text-gray-500">
+                <span>📅 ${scheduleText}</span>
+                <span>👶 ${a.ageRange.min}–${a.ageRange.max} Jahre</span>
+                <span>👥 Kapazität: ${a.capacity}</span>
+                <span>🏷️ ${a.category}</span>
+                <span>💰 ${a.pricing.map(p => p.amount + '€ (' + p.label + ')').join(', ')}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      `
+    }
+
+    // --- Bookings ---
+    async function renderBookings() {
+      const res = await api(`/providers/${currentProvider.id}/bookings`)
+      const bookings = res.data
+
+      const statusColors = { confirmed: 'bg-green-100 text-green-700', waitlisted: 'bg-amber-100 text-amber-700', pending: 'bg-blue-100 text-blue-700', cancelled: 'bg-red-100 text-red-700', completed: 'bg-gray-100 text-gray-600', no_show: 'bg-gray-100 text-gray-500' }
+      const paymentColors = { paid: 'text-green-600', unpaid: 'text-red-500', partial: 'text-amber-500', refunded: 'text-gray-400' }
+
+      document.getElementById('content').innerHTML = `
+        <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+            <span class="font-semibold text-gray-900">${bookings.length} Buchungen</span>
+          </div>
+          <table class="w-full">
+            <thead class="bg-gray-50 text-xs text-gray-500 uppercase tracking-wider">
+              <tr>
+                <th class="px-6 py-3 text-left">Kind</th>
+                <th class="px-6 py-3 text-left">Kurs</th>
+                <th class="px-6 py-3 text-left">Status</th>
+                <th class="px-6 py-3 text-left">Zahlung</th>
+                <th class="px-6 py-3 text-left">Datum</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+              ${bookings.map(b => `
+                <tr class="hover:bg-gray-50">
+                  <td class="px-6 py-4">
+                    <div class="font-medium text-gray-900 text-sm">${b.child.name}</div>
+                    <div class="text-xs text-gray-500">${b.child.age} Jahre</div>
+                  </td>
+                  <td class="px-6 py-4 text-sm text-gray-700">${b.activityId.slice(0, 12)}...</td>
+                  <td class="px-6 py-4"><span class="px-2 py-1 rounded-full text-xs font-medium ${statusColors[b.status] || ''}">${b.status}</span></td>
+                  <td class="px-6 py-4 text-sm font-medium ${paymentColors[b.paymentStatus] || ''}">${b.paymentStatus}${b.amountPaid > 0 ? ' (' + b.amountPaid + '€)' : ''}</td>
+                  <td class="px-6 py-4 text-sm text-gray-500">${new Date(b.createdAt).toLocaleDateString('de-DE')}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `
+    }
+
+    // --- Customers ---
+    async function renderCustomers() {
+      const res = await api(`/providers/${currentProvider.id}/customers`)
+      const customers = res.data
+      const segments = res.segments
+
+      document.getElementById('content').innerHTML = `
+        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+          ${segmentCard('Gesamt', segments.total, 'bg-gray-50')}
+          ${segmentCard('Aktiv', segments.active, 'bg-green-50')}
+          ${segmentCard('Inaktiv', segments.inactive, 'bg-gray-50')}
+          ${segmentCard('VIP', segments.vip, 'bg-purple-50')}
+          ${segmentCard('Interessenten', segments.prospects, 'bg-blue-50')}
+          ${segmentCard('Neu (Monat)', segments.newThisMonth, 'bg-amber-50')}
+        </div>
+        <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <table class="w-full">
+            <thead class="bg-gray-50 text-xs text-gray-500 uppercase tracking-wider">
+              <tr>
+                <th class="px-6 py-3 text-left">Name</th>
+                <th class="px-6 py-3 text-left">E-Mail</th>
+                <th class="px-6 py-3 text-left">Kinder</th>
+                <th class="px-6 py-3 text-left">Buchungen</th>
+                <th class="px-6 py-3 text-left">Ausgaben</th>
+                <th class="px-6 py-3 text-left">Tags</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+              ${customers.map(c => `
+                <tr class="hover:bg-gray-50">
+                  <td class="px-6 py-4 font-medium text-sm text-gray-900">${c.name}</td>
+                  <td class="px-6 py-4 text-sm text-gray-500">${c.email}</td>
+                  <td class="px-6 py-4 text-sm text-gray-700">${c.children.map(ch => ch.name + ' (' + ch.age + ')').join(', ')}</td>
+                  <td class="px-6 py-4 text-sm text-gray-700">${c.bookingCount}</td>
+                  <td class="px-6 py-4 text-sm font-medium text-gray-900">${formatCurrency(c.totalSpent)}</td>
+                  <td class="px-6 py-4">${c.tags.map(t => `<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium ${tagColor(t)} mr-1">${t}</span>`).join('')}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `
+    }
+
+    // --- Trials ---
+    async function renderTrials() {
+      const [trials, stats] = await Promise.all([
+        api(`/providers/${currentProvider.id}/trials`),
+        api(`/providers/${currentProvider.id}/trials/stats`),
+      ])
+      const s = stats.data
+
+      document.getElementById('content').innerHTML = `
+        <div class="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+          ${kpiCardSmall('Gesamt', s.total)}
+          ${kpiCardSmall('Abgeschlossen', s.completed)}
+          ${kpiCardSmall('Konvertiert', s.converted)}
+          ${kpiCardSmall('No-Show', s.noShow)}
+          ${kpiCardSmall('Conversion Rate', Math.round(s.conversionRate * 100) + '%')}
+        </div>
+        <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <table class="w-full">
+            <thead class="bg-gray-50 text-xs text-gray-500 uppercase tracking-wider">
+              <tr><th class="px-6 py-3 text-left">Kind</th><th class="px-6 py-3 text-left">Datum</th><th class="px-6 py-3 text-left">Zeit</th><th class="px-6 py-3 text-left">Status</th></tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+              ${trials.data.map(t => `
+                <tr class="hover:bg-gray-50">
+                  <td class="px-6 py-4 text-sm font-medium text-gray-900">${t.child.name} (${t.child.age} J.)</td>
+                  <td class="px-6 py-4 text-sm text-gray-700">${t.scheduledDate}</td>
+                  <td class="px-6 py-4 text-sm text-gray-700">${t.scheduledTime}</td>
+                  <td class="px-6 py-4"><span class="px-2 py-1 rounded-full text-xs font-medium ${trialStatusColor(t.status)}">${t.status}</span></td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `
+    }
+
+    // --- Invoices ---
+    async function renderInvoices() {
+      const [invoices, outstanding, vatSummary] = await Promise.all([
+        api(`/providers/${currentProvider.id}/invoices`),
+        api(`/providers/${currentProvider.id}/invoices/outstanding`),
+        api(`/providers/${currentProvider.id}/invoices/vat-summary/2026`),
+      ])
+      const o = outstanding.data
+      const v = vatSummary.data
+
+      document.getElementById('content').innerHTML = `
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          ${kpiCardSmall('Offene Rechnungen', o.count)}
+          ${kpiCardSmall('Offener Betrag', formatCurrency(o.total))}
+          ${kpiCardSmall('MwSt 2026', formatCurrency(v.totalVat))}
+          ${kpiCardSmall('Brutto 2026', formatCurrency(v.totalGross))}
+        </div>
+        <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          ${invoices.data.length === 0 ? '<div class="p-8 text-center text-gray-400">Noch keine Rechnungen erstellt. Rechnungen werden aus Buchungen generiert.</div>' : `
+          <table class="w-full">
+            <thead class="bg-gray-50 text-xs text-gray-500 uppercase tracking-wider">
+              <tr><th class="px-6 py-3 text-left">Nr.</th><th class="px-6 py-3 text-left">Betrag</th><th class="px-6 py-3 text-left">Status</th><th class="px-6 py-3 text-left">Fällig</th></tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+              ${invoices.data.map(i => `
+                <tr class="hover:bg-gray-50">
+                  <td class="px-6 py-4 text-sm font-medium text-gray-900">${i.number}</td>
+                  <td class="px-6 py-4 text-sm text-gray-900">${formatCurrency(i.total)}</td>
+                  <td class="px-6 py-4"><span class="px-2 py-1 rounded-full text-xs font-medium ${invoiceStatusColor(i.status)}">${i.status}</span></td>
+                  <td class="px-6 py-4 text-sm text-gray-500">${new Date(i.dueDate).toLocaleDateString('de-DE')}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>`}
+        </div>
+      `
+    }
+
+    // --- Team ---
+    async function renderTeam() {
+      const res = await api(`/providers/${currentProvider.id}/team`)
+      const members = res.data
+      const roleLabels = { owner: 'Inhaber', admin: 'Admin', instructor: 'Trainer', assistant: 'Assistent' }
+      const roleColors = { owner: 'bg-purple-100 text-purple-700', admin: 'bg-blue-100 text-blue-700', instructor: 'bg-green-100 text-green-700', assistant: 'bg-gray-100 text-gray-600' }
+
+      document.getElementById('content').innerHTML = `
+        <div class="grid gap-4">
+          ${members.map(m => `
+            <div class="bg-white rounded-xl border border-gray-200 p-5 flex items-center justify-between hover:shadow-md transition-shadow">
+              <div class="flex items-center gap-4">
+                <div class="w-12 h-12 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-lg font-bold">${m.name[0]}</div>
+                <div>
+                  <div class="font-semibold text-gray-900">${m.name}</div>
+                  <div class="text-sm text-gray-500">${m.email}</div>
+                </div>
+              </div>
+              <div class="flex items-center gap-3">
+                <span class="px-3 py-1 rounded-full text-xs font-medium ${roleColors[m.role] || 'bg-gray-100'}">${roleLabels[m.role] || m.role}</span>
+                <span class="px-3 py-1 rounded-full text-xs font-medium ${m.active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}">${m.active ? 'Aktiv' : 'Inaktiv'}</span>
+                ${m.specializations?.length ? `<span class="text-xs text-gray-400">${m.specializations.join(', ')}</span>` : ''}
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `
+    }
+
+    // --- Holidays ---
+    async function renderHolidays() {
+      const [holidays, seasons, bundeslaender] = await Promise.all([
+        api(`/providers/${currentProvider.id}/holidays`),
+        api(`/providers/${currentProvider.id}/seasons`),
+        api('/holidays/bundeslaender'),
+      ])
+
+      document.getElementById('content').innerHTML = `
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <!-- Aktive Saison -->
+          <div class="bg-white rounded-xl border border-gray-200 p-6">
+            <h3 class="font-semibold text-gray-900 mb-4">Saisons</h3>
+            ${seasons.data.length === 0 ? '<p class="text-sm text-gray-400">Keine Saisons angelegt</p>' : ''}
+            <div class="space-y-3">
+              ${seasons.data.map(s => `
+                <div class="flex items-center justify-between p-3 rounded-lg ${s.isActive ? 'bg-brand-50 border border-brand-200' : 'bg-gray-50'}">
+                  <div>
+                    <div class="text-sm font-medium text-gray-900">${s.name}</div>
+                    <div class="text-xs text-gray-500">${s.startDate} – ${s.endDate}</div>
+                  </div>
+                  ${s.isActive ? '<span class="px-2 py-1 rounded-full text-xs font-medium bg-brand-100 text-brand-700">Aktiv</span>' : ''}
+                </div>
+              `).join('')}
+            </div>
+            ${seasons.currentSeason ? `<div class="mt-4 p-3 bg-green-50 rounded-lg text-sm text-green-700">Aktuelle Saison: <strong>${seasons.currentSeason.name}</strong></div>` : ''}
+          </div>
+
+          <!-- Ferien -->
+          <div class="bg-white rounded-xl border border-gray-200 p-6">
+            <h3 class="font-semibold text-gray-900 mb-4">Ferien (${holidays.data.length} eingetragen)</h3>
+            <div class="space-y-2 max-h-80 overflow-y-auto">
+              ${holidays.data.map(h => `
+                <div class="flex items-center justify-between p-2 rounded hover:bg-gray-50">
+                  <span class="text-sm text-gray-700">${h.name}</span>
+                  <span class="text-xs text-gray-400">${h.startDate} – ${h.endDate}</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+
+        <!-- Bundesländer -->
+        <div class="mt-6 bg-white rounded-xl border border-gray-200 p-6">
+          <h3 class="font-semibold text-gray-900 mb-4">Verfügbare Bundesländer</h3>
+          <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
+            ${bundeslaender.data.map(bl => `
+              <div class="text-center p-3 rounded-lg bg-gray-50 hover:bg-brand-50 transition-colors cursor-pointer" title="${bl.name}">
+                <div class="font-bold text-gray-900 text-lg">${bl.code}</div>
+                <div class="text-xs text-gray-500 truncate">${bl.name}</div>
+                <div class="text-xs text-gray-400">${bl.holidayCount} Ferien</div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `
+    }
+
+    // --- Helpers ---
+    function formatCurrency(amount) { return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(amount || 0) }
+
+    function kpiCard(label, value, sub, bgClass, icon) {
+      return `<div class="stat-card bg-white rounded-xl border border-gray-200 p-5 cursor-default">
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-sm font-medium text-gray-500">${label}</span>
+          <span class="w-10 h-10 rounded-lg ${bgClass} flex items-center justify-center text-lg">${icon}</span>
+        </div>
+        <div class="text-2xl font-bold text-gray-900">${value}</div>
+        ${sub ? `<div class="text-xs text-gray-400 mt-1">${sub}</div>` : ''}
+      </div>`
+    }
+
+    function kpiCardSmall(label, value) {
+      return `<div class="bg-white rounded-xl border border-gray-200 p-4 text-center">
+        <div class="text-2xl font-bold text-gray-900">${value}</div>
+        <div class="text-xs text-gray-500 mt-1">${label}</div>
+      </div>`
+    }
+
+    function statusBar(label, count, total, color) {
+      const pct = total > 0 ? Math.round((count / total) * 100) : 0
+      return `<div class="flex items-center gap-3">
+        <span class="text-sm text-gray-600 w-28">${label}</span>
+        <div class="flex-1 bg-gray-100 rounded-full h-2"><div class="${color} h-2 rounded-full" style="width:${pct}%"></div></div>
+        <span class="text-sm font-medium text-gray-700 w-10 text-right">${count}</span>
+      </div>`
+    }
+
+    function segmentCard(label, value, bg) {
+      return `<div class="${bg} rounded-xl p-4 text-center"><div class="text-xl font-bold text-gray-900">${value}</div><div class="text-xs text-gray-500">${label}</div></div>`
+    }
+
+    function tagColor(tag) {
+      const m = { active: 'bg-green-100 text-green-700', inactive: 'bg-gray-100 text-gray-600', vip: 'bg-purple-100 text-purple-700', prospect: 'bg-blue-100 text-blue-700', returning: 'bg-amber-100 text-amber-700' }
+      return m[tag] || 'bg-gray-100 text-gray-600'
+    }
+
+    function trialStatusColor(s) {
+      const m = { scheduled: 'bg-blue-100 text-blue-700', completed: 'bg-green-100 text-green-700', converted: 'bg-purple-100 text-purple-700', no_show: 'bg-red-100 text-red-700', cancelled: 'bg-gray-100 text-gray-600' }
+      return m[s] || 'bg-gray-100 text-gray-600'
+    }
+
+    function invoiceStatusColor(s) {
+      const m = { draft: 'bg-gray-100 text-gray-600', sent: 'bg-blue-100 text-blue-700', paid: 'bg-green-100 text-green-700', overdue: 'bg-red-100 text-red-700', cancelled: 'bg-gray-100 text-gray-500' }
+      return m[s] || 'bg-gray-100 text-gray-600'
+    }
+
+    // Init
+    init()
+  </script>
+</body>
+</html>

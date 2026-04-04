@@ -856,6 +856,7 @@ export function registerRoutes(router: Router) {
     res.json(openApiSpec)
   })
 
+
   // ============================================================
   // HEALTH CHECK
   // ============================================================
