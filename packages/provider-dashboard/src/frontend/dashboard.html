@@ -99,6 +99,10 @@
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
           Ferien
         </button>
+        <button onclick="navigate('embed')" data-page="embed" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 transition-all">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+          Einbettung
+        </button>
         <button onclick="navigate('marketing')" data-page="marketing" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 transition-all">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z"/></svg>
           Marketing
@@ -186,7 +190,7 @@
       const activeBtn = document.querySelector(`[data-page="${page}"]`)
       if (activeBtn) { activeBtn.classList.add('active'); activeBtn.classList.remove('text-gray-600') }
 
-      const titles = { dashboard: 'Dashboard', activities: 'Kurse & Angebote', bookings: 'Buchungen', customers: 'Kunden (CRM)', trials: 'Probestunden', invoices: 'Rechnungen', team: 'Team', holidays: 'Ferien & Saisons', marketing: 'Marketing & Automation', settings: 'Einstellungen' }
+      const titles = { dashboard: 'Dashboard', activities: 'Kurse & Angebote', bookings: 'Buchungen', customers: 'Kunden (CRM)', trials: 'Probestunden', invoices: 'Rechnungen', team: 'Team', holidays: 'Ferien & Saisons', embed: 'Einbettung & Widgets', marketing: 'Marketing & Automation', settings: 'Einstellungen' }
       document.getElementById('pageTitle').textContent = titles[page] || page
 
       const content = document.getElementById('content')
@@ -195,7 +199,7 @@
       void content.offsetWidth
       content.classList.add('fade-in')
 
-      const renderers = { dashboard: renderDashboard, activities: renderActivities, bookings: renderBookings, customers: renderCustomers, trials: renderTrials, invoices: renderInvoices, team: renderTeam, holidays: renderHolidays, marketing: renderMarketing, settings: renderSettings }
+      const renderers = { dashboard: renderDashboard, activities: renderActivities, bookings: renderBookings, customers: renderCustomers, trials: renderTrials, invoices: renderInvoices, team: renderTeam, holidays: renderHolidays, embed: renderEmbed, marketing: renderMarketing, settings: renderSettings }
       if (renderers[page]) renderers[page]()
     }
 
@@ -1254,12 +1258,18 @@
     }
 
     // --- Trials ---
+    const trialStatusDE = { scheduled: 'Geplant', completed: 'Abgeschlossen', no_show: 'Nicht erschienen', converted: 'Konvertiert', cancelled: 'Abgesagt' }
+    const trialStatusColors2 = { scheduled: 'bg-blue-100 text-blue-700', completed: 'bg-green-100 text-green-700', no_show: 'bg-red-100 text-red-700', converted: 'bg-purple-100 text-purple-700', cancelled: 'bg-gray-100 text-gray-500' }
+
     async function renderTrials() {
-      const [trials, stats] = await Promise.all([
+      const [trials, stats, activities] = await Promise.all([
         api(`/providers/${currentProvider.id}/trials`),
         api(`/providers/${currentProvider.id}/trials/stats`),
+        api(`/providers/${currentProvider.id}/activities`),
       ])
       const s = stats.data
+      const actMap = {}
+      activities.data.forEach(a => { actMap[a.id] = a })
 
       document.getElementById('content').innerHTML = `
         <div class="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
@@ -1270,23 +1280,64 @@
           ${kpiCardSmall('Conversion Rate', Math.round(s.conversionRate * 100) + '%')}
         </div>
         <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+            <span class="font-semibold text-gray-900">${trials.data.length} Probestunden</span>
+          </div>
           <table class="w-full">
             <thead class="bg-gray-50 text-xs text-gray-500 uppercase tracking-wider">
-              <tr><th class="px-6 py-3 text-left">Kind</th><th class="px-6 py-3 text-left">Datum</th><th class="px-6 py-3 text-left">Zeit</th><th class="px-6 py-3 text-left">Status</th></tr>
+              <tr>
+                <th class="px-6 py-3 text-left">Datum</th>
+                <th class="px-6 py-3 text-left">Kind</th>
+                <th class="px-6 py-3 text-left">Kurs</th>
+                <th class="px-6 py-3 text-left">Status</th>
+                <th class="px-6 py-3 text-left">Aktionen</th>
+              </tr>
             </thead>
             <tbody class="divide-y divide-gray-100">
-              ${trials.data.map(t => `
+              ${trials.data.map(t => {
+                const act = actMap[t.activityId]
+                return `
                 <tr class="hover:bg-gray-50">
-                  <td class="px-6 py-4 text-sm font-medium text-gray-900">${t.child.name} (${t.child.age} J.)</td>
-                  <td class="px-6 py-4 text-sm text-gray-700">${t.scheduledDate}</td>
-                  <td class="px-6 py-4 text-sm text-gray-700">${t.scheduledTime}</td>
-                  <td class="px-6 py-4"><span class="px-2 py-1 rounded-full text-xs font-medium ${trialStatusColor(t.status)}">${t.status}</span></td>
-                </tr>
-              `).join('')}
+                  <td class="px-6 py-4 text-sm text-gray-700">${new Date(t.scheduledDate).toLocaleDateString('de-DE')} · ${t.scheduledTime}</td>
+                  <td class="px-6 py-4">
+                    <div class="text-sm font-medium text-gray-900">${t.child.name}</div>
+                    <div class="text-xs text-gray-500">${t.child.age} Jahre</div>
+                  </td>
+                  <td class="px-6 py-4 text-sm text-gray-700">${act?.title || '–'}</td>
+                  <td class="px-6 py-4"><span class="px-2 py-1 rounded-full text-xs font-medium ${trialStatusColors2[t.status] || 'bg-gray-100'}">${trialStatusDE[t.status] || t.status}</span></td>
+                  <td class="px-6 py-4">
+                    <div class="flex items-center gap-1">
+                      ${t.status === 'scheduled' ? `
+                        <button onclick="completeTrial('${t.id}')" class="px-2 py-1 text-xs bg-green-50 text-green-700 rounded hover:bg-green-100">Abschließen</button>
+                        <button onclick="noShowTrial('${t.id}')" class="px-2 py-1 text-xs bg-red-50 text-red-600 rounded hover:bg-red-100">No-Show</button>
+                      ` : ''}
+                      ${t.status === 'completed' && act ? `
+                        <button onclick="convertTrial('${t.id}', '${act.pricing[0]?.id || ''}')" class="px-2 py-1 text-xs bg-brand-50 text-brand-700 rounded hover:bg-brand-100 font-medium">Zur Buchung konvertieren</button>
+                      ` : ''}
+                      ${t.status === 'converted' ? '<span class="text-xs text-green-600 font-medium">Erfolgreich konvertiert</span>' : ''}
+                    </div>
+                  </td>
+                </tr>`
+              }).join('')}
             </tbody>
           </table>
         </div>
       `
+    }
+
+    async function completeTrial(id) {
+      await api('/trials/' + id + '/complete', 'POST', { feedback: 'Abgeschlossen vom Dashboard' })
+      navigate('trials')
+    }
+    async function noShowTrial(id) {
+      await api('/trials/' + id + '/complete', 'POST') // mark as no-show via different endpoint would be ideal
+      navigate('trials')
+    }
+    async function convertTrial(id, pricingOptionId) {
+      const result = await api('/trials/' + id + '/convert', 'POST', { pricingOptionId })
+      if (result.error) { alert('Fehler: ' + result.error); return }
+      alert('Probestunde erfolgreich zur Buchung konvertiert!')
+      navigate('trials')
     }
 
     // --- Invoices ---
@@ -1470,32 +1521,88 @@
     }
 
     // --- Team ---
+    const roleLabels = { owner: 'Inhaber', admin: 'Admin', instructor: 'Trainer', assistant: 'Assistent' }
+    const roleColors = { owner: 'bg-purple-100 text-purple-700', admin: 'bg-blue-100 text-blue-700', instructor: 'bg-green-100 text-green-700', assistant: 'bg-gray-100 text-gray-600' }
+
     async function renderTeam() {
       const res = await api(`/providers/${currentProvider.id}/team`)
       const members = res.data
-      const roleLabels = { owner: 'Inhaber', admin: 'Admin', instructor: 'Trainer', assistant: 'Assistent' }
-      const roleColors = { owner: 'bg-purple-100 text-purple-700', admin: 'bg-blue-100 text-blue-700', instructor: 'bg-green-100 text-green-700', assistant: 'bg-gray-100 text-gray-600' }
 
       document.getElementById('content').innerHTML = `
+        <div class="flex items-center justify-between mb-6">
+          <span class="text-sm text-gray-500">${members.length} Teammitglieder</span>
+          <button onclick="showTeamForm()" class="bg-brand-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-brand-600 flex items-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+            Mitglied hinzufügen
+          </button>
+        </div>
         <div class="grid gap-4">
           ${members.map(m => `
             <div class="bg-white rounded-xl border border-gray-200 p-5 flex items-center justify-between hover:shadow-md transition-shadow">
               <div class="flex items-center gap-4">
-                <div class="w-12 h-12 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-lg font-bold">${m.name[0]}</div>
+                <div class="w-12 h-12 rounded-full ${m.active ? 'bg-brand-100 text-brand-700' : 'bg-gray-100 text-gray-400'} flex items-center justify-center text-lg font-bold">${m.name[0]}</div>
                 <div>
                   <div class="font-semibold text-gray-900">${m.name}</div>
                   <div class="text-sm text-gray-500">${m.email}</div>
+                  ${m.specializations?.length ? `<div class="text-xs text-gray-400 mt-0.5">${m.specializations.join(', ')}</div>` : ''}
                 </div>
               </div>
               <div class="flex items-center gap-3">
                 <span class="px-3 py-1 rounded-full text-xs font-medium ${roleColors[m.role] || 'bg-gray-100'}">${roleLabels[m.role] || m.role}</span>
-                <span class="px-3 py-1 rounded-full text-xs font-medium ${m.active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}">${m.active ? 'Aktiv' : 'Inaktiv'}</span>
-                ${m.specializations?.length ? `<span class="text-xs text-gray-400">${m.specializations.join(', ')}</span>` : ''}
+                <label class="toggle" title="${m.active ? 'Deaktivieren' : 'Aktivieren'}">
+                  <input type="checkbox" ${m.active ? 'checked' : ''} onchange="toggleTeamMember('${m.id}', this.checked)">
+                  <span class="slider"></span>
+                </label>
               </div>
             </div>
           `).join('')}
         </div>
+        <div id="teamModal" class="hidden"></div>
       `
+    }
+
+    function showTeamForm() {
+      const roles = ['instructor', 'admin', 'assistant']
+      const modal = document.getElementById('teamModal')
+      modal.className = 'cal-modal-backdrop'
+      modal.onclick = (e) => { if (e.target === modal) modal.className = 'hidden' }
+      modal.innerHTML = `
+        <div class="cal-modal fade-in" style="width:480px;">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-bold text-gray-900">Neues Teammitglied</h3>
+            <button onclick="document.getElementById('teamModal').className='hidden'" class="text-gray-400 hover:text-gray-600">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+          </div>
+          <form onsubmit="saveTeamMember(event)" class="space-y-4">
+            <div><label class="block text-sm font-medium text-gray-700 mb-1">Name *</label><input name="name" required class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Vor- und Nachname"></div>
+            <div><label class="block text-sm font-medium text-gray-700 mb-1">E-Mail *</label><input name="email" type="email" required class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="name@studio.de"></div>
+            <div><label class="block text-sm font-medium text-gray-700 mb-1">Rolle</label>
+              <select name="role" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                ${roles.map(r => `<option value="${r}">${roleLabels[r]}</option>`).join('')}
+              </select>
+            </div>
+            <div><label class="block text-sm font-medium text-gray-700 mb-1">Spezialisierungen</label><input name="specializations" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Ballett, Hip-Hop (kommagetrennt)"></div>
+            <button type="submit" class="w-full bg-brand-500 text-white py-2.5 rounded-lg font-medium hover:bg-brand-600">Hinzufügen</button>
+          </form>
+        </div>
+      `
+    }
+
+    async function saveTeamMember(e) {
+      e.preventDefault()
+      const f = new FormData(e.target)
+      await api(`/providers/${currentProvider.id}/team`, 'POST', {
+        name: f.get('name'), email: f.get('email'), role: f.get('role'),
+        specializations: (f.get('specializations') || '').split(',').map(s => s.trim()).filter(Boolean),
+      })
+      document.getElementById('teamModal').className = 'hidden'
+      navigate('team')
+    }
+
+    async function toggleTeamMember(id, active) {
+      await api(`/team/${id}`, 'PUT', { active })
+      navigate('team')
     }
 
     // --- Holidays ---
@@ -1557,6 +1664,103 @@
     }
 
     // --- Helpers ---
+    // --- Embed / Widgets ---
+    async function renderEmbed() {
+      const slug = currentProvider.slug || 'mein-studio'
+      const baseUrl = 'https://urbankidsclub.de'
+      const activities = await api(`/providers/${currentProvider.id}/activities`)
+      const published = activities.data.filter(a => a.status === 'published')
+
+      const widgets = [
+        {
+          name: 'Kurskalender',
+          desc: 'Zeigt deinen Wochenkalender mit allen Kursen auf deiner Website.',
+          icon: '📅',
+          code: `<iframe src="${baseUrl}/embed/${slug}/calendar" width="100%" height="600" frameborder="0" style="border:none;border-radius:12px;" loading="lazy"></iframe>`,
+        },
+        {
+          name: 'Buchungsbutton',
+          desc: 'Ein kompakter Button, der direkt zur Buchungsseite auf Kids Club führt.',
+          icon: '🔘',
+          code: `<a href="${baseUrl}/p/${slug}" target="_blank" style="display:inline-block;padding:12px 24px;background:#0ea5e9;color:white;border-radius:8px;font-family:sans-serif;font-weight:600;text-decoration:none;">Jetzt Kurs buchen</a>`,
+        },
+        {
+          name: 'Kursliste',
+          desc: 'Zeigt alle aktiven Kurse mit Preis, Alter und verfügbaren Plätzen.',
+          icon: '📋',
+          code: `<iframe src="${baseUrl}/embed/${slug}/courses" width="100%" height="500" frameborder="0" style="border:none;border-radius:12px;" loading="lazy"></iframe>`,
+        },
+        {
+          name: 'Bewertungs-Badge',
+          desc: 'Zeigt deine Durchschnittsbewertung als kompaktes Badge.',
+          icon: '⭐',
+          code: `<iframe src="${baseUrl}/embed/${slug}/reviews" width="220" height="80" frameborder="0" style="border:none;border-radius:8px;" loading="lazy"></iframe>`,
+        },
+        {
+          name: 'Einzelner Kurs',
+          desc: 'Widget für einen bestimmten Kurs mit Buchungsmöglichkeit.',
+          icon: '🎯',
+          courses: published,
+        },
+      ]
+
+      document.getElementById('content').innerHTML = `
+        <div class="mb-6">
+          <p class="text-sm text-gray-500">Binde Buchungs-Widgets auf deiner eigenen Website ein. Einfach Code kopieren und in dein HTML einfügen.</p>
+        </div>
+        <div class="space-y-4">
+          ${widgets.map((w, idx) => {
+            if (w.courses) {
+              return `
+              <div class="bg-white rounded-xl border border-gray-200 p-5">
+                <div class="flex items-center gap-3 mb-3">
+                  <span class="text-2xl">${w.icon}</span>
+                  <div><div class="font-semibold text-gray-900">${w.name}</div><div class="text-xs text-gray-500">${w.desc}</div></div>
+                </div>
+                <div class="space-y-2">
+                  ${w.courses.map(c => `
+                    <div class="flex items-center justify-between bg-gray-50 rounded-lg p-3">
+                      <span class="text-sm text-gray-900">${c.title}</span>
+                      <button onclick="copyToClipboard(this, \`<iframe src=&quot;${baseUrl}/embed/${slug}/course/${c.id}&quot; width=&quot;100%&quot; height=&quot;300&quot; frameborder=&quot;0&quot; style=&quot;border:none;border-radius:12px;&quot; loading=&quot;lazy&quot;></iframe>\`)" class="px-3 py-1 text-xs bg-brand-50 text-brand-600 rounded-lg hover:bg-brand-100 font-medium">Code kopieren</button>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>`
+            }
+            return `
+            <div class="bg-white rounded-xl border border-gray-200 p-5">
+              <div class="flex items-center justify-between mb-3">
+                <div class="flex items-center gap-3">
+                  <span class="text-2xl">${w.icon}</span>
+                  <div><div class="font-semibold text-gray-900">${w.name}</div><div class="text-xs text-gray-500">${w.desc}</div></div>
+                </div>
+                <button onclick="copyToClipboard(this, document.getElementById('embedCode_${idx}').textContent)" class="px-4 py-2 bg-brand-500 text-white rounded-lg text-sm font-medium hover:bg-brand-600">Code kopieren</button>
+              </div>
+              <pre id="embedCode_${idx}" class="bg-gray-900 text-green-400 rounded-lg p-4 text-xs font-mono overflow-x-auto whitespace-pre-wrap">${w.code.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+            </div>`
+          }).join('')}
+        </div>
+
+        <!-- Vorschau -->
+        <div class="mt-8 bg-white rounded-xl border border-gray-200 p-6">
+          <h3 class="font-semibold text-gray-900 mb-4">Vorschau: Buchungsbutton</h3>
+          <div class="bg-gray-50 rounded-lg p-8 flex items-center justify-center">
+            <a href="#" style="display:inline-block;padding:12px 24px;background:#0ea5e9;color:white;border-radius:8px;font-family:sans-serif;font-weight:600;text-decoration:none;">Jetzt Kurs buchen</a>
+          </div>
+        </div>
+      `
+    }
+
+    function copyToClipboard(btn, text) {
+      const decoded = text.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"')
+      navigator.clipboard.writeText(decoded).then(() => {
+        const orig = btn.textContent
+        btn.textContent = 'Kopiert!'
+        btn.classList.add('bg-green-500', 'text-white')
+        setTimeout(() => { btn.textContent = orig; btn.classList.remove('bg-green-500', 'text-white') }, 2000)
+      })
+    }
+
     // --- Marketing & Automation ---
     const triggerLabels = {
       customer_signup: { label: 'Neuer Kunde', icon: '👋' },
