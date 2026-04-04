@@ -1295,17 +1295,20 @@
     const paymentMethodLabels = { sepa_direct_debit: 'SEPA-Lastschrift', bank_transfer: 'Überweisung', cash: 'Bar', card: 'Kreditkarte', paypal: 'PayPal', stripe: 'Stripe' }
 
     async function renderInvoices() {
-      const [invoices, bookings, outstanding, vatSummary, activities] = await Promise.all([
+      const [invoices, bookings, outstanding, vatSummary, activities, parents] = await Promise.all([
         api(`/providers/${currentProvider.id}/invoices`),
         api(`/providers/${currentProvider.id}/bookings`),
         api(`/providers/${currentProvider.id}/invoices/outstanding`),
         api(`/providers/${currentProvider.id}/invoices/vat-summary/${new Date().getFullYear()}`),
         api(`/providers/${currentProvider.id}/activities`),
+        api('/parents'),
       ])
       const o = outstanding.data
       const v = vatSummary.data
       const actMap = {}
       activities.data.forEach(a => { actMap[a.id] = a })
+      const parentMap = {}
+      parents.data.forEach(p => { parentMap[p.id] = p })
 
       // Unbilled bookings (confirmed, no invoice)
       const invoicedBookingIds = new Set()
@@ -1379,7 +1382,7 @@
                 return `
                 <tr class="hover:bg-gray-50 ${isOverdue ? 'bg-red-50/50' : ''}">
                   <td class="px-6 py-4 text-sm font-mono font-medium text-gray-900">${inv.number}</td>
-                  <td class="px-6 py-4 text-sm text-gray-700">${inv.parentId.slice(0, 10)}</td>
+                  <td class="px-6 py-4 text-sm text-gray-700">${parentMap[inv.parentId]?.name || inv.parentId}</td>
                   <td class="px-6 py-4 text-xs text-gray-500">${(inv.lineItems || []).map(li => li.description).join(', ').substring(0, 40)}</td>
                   <td class="px-6 py-4 text-sm text-gray-700 text-right">${formatCurrency(inv.subtotal)}</td>
                   <td class="px-6 py-4 text-sm text-gray-500 text-right">${formatCurrency(inv.tax)}</td>
