@@ -124,7 +124,7 @@
         <h1 id="pageTitle" class="text-xl font-bold text-gray-900">Dashboard</h1>
         <div class="flex items-center gap-4">
           <span id="providerName" class="text-sm text-gray-500"></span>
-          <div class="w-8 h-8 bg-brand-100 text-brand-700 rounded-full flex items-center justify-center text-sm font-bold" id="providerAvatar">?</div>
+          <button onclick="navigate('settings')" class="w-8 h-8 bg-brand-100 text-brand-700 rounded-full flex items-center justify-center text-sm font-bold hover:bg-brand-200 transition-colors cursor-pointer" id="providerAvatar" title="Profil & Einstellungen">?</button>
         </div>
       </header>
 
@@ -1778,7 +1778,254 @@
     }
 
     // --- Settings ---
+    // --- Provider settings persistence ---
+    function getProviderSettings() {
+      try { return JSON.parse(localStorage.getItem('provSettings_' + currentProvider?.id) || '{}') } catch { return {} }
+    }
+    function saveProviderSettings(s) { localStorage.setItem('provSettings_' + currentProvider?.id, JSON.stringify(s)) }
+
+    let settingsTab = 'company'
+
     async function renderSettings() {
+      const p = currentProvider
+      const s = getProviderSettings()
+
+      document.getElementById('content').innerHTML = `
+        <!-- Settings Tabs -->
+        <div class="flex gap-1 mb-6 border-b border-gray-200">
+          <button onclick="settingsTab='company'; renderSettings()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${settingsTab === 'company' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}">Unternehmen</button>
+          <button onclick="settingsTab='finance'; renderSettings()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${settingsTab === 'finance' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}">Steuern & Finanzen</button>
+          <button onclick="settingsTab='loyalty'; renderSettings()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${settingsTab === 'loyalty' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}">Treueprogramm</button>
+          <button onclick="settingsTab='legal'; renderSettings()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${settingsTab === 'legal' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}">Rechtliches</button>
+        </div>
+        <div id="settingsContent"></div>
+      `
+
+      const sc = document.getElementById('settingsContent')
+      if (settingsTab === 'company') sc.innerHTML = renderCompanyTab(p, s)
+      else if (settingsTab === 'finance') sc.innerHTML = renderFinanceTab(p, s)
+      else if (settingsTab === 'loyalty') sc.innerHTML = renderLoyaltyTab()
+      else if (settingsTab === 'legal') sc.innerHTML = renderLegalTab(s)
+    }
+
+    function renderCompanyTab(p, s) {
+      return `
+        <div class="max-w-2xl space-y-6">
+          <div class="bg-white rounded-xl border border-gray-200 p-6">
+            <h3 class="font-semibold text-gray-900 mb-4">Unternehmensprofil</h3>
+            <div class="space-y-4">
+              <div class="flex items-center gap-4 mb-4">
+                <div class="w-16 h-16 bg-brand-100 text-brand-700 rounded-xl flex items-center justify-center text-2xl font-bold">${p.name[0]}</div>
+                <div>
+                  <div class="font-bold text-gray-900">${p.name}</div>
+                  <div class="text-sm text-gray-500">${p.slug}.urbankidsclub.de</div>
+                </div>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Unternehmensname</label>
+                <input id="sCompanyName" value="${s.companyName || p.name}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Rechtsform</label>
+                <select id="sLegalForm" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                  ${['Einzelunternehmen', 'GbR', 'GmbH', 'UG (haftungsbeschränkt)', 'e.V.', 'gGmbH', 'Freiberufler', 'Sonstiges'].map(f => `<option ${(s.legalForm || '') === f ? 'selected' : ''}>${f}</option>`).join('')}
+                </select>
+              </div>
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">E-Mail</label>
+                  <input id="sEmail" value="${s.email || p.contact.email}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Telefon</label>
+                  <input id="sPhone" value="${s.phone || p.contact.phone || ''}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                </div>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Website</label>
+                <input id="sWebsite" value="${s.website || p.contact.website || ''}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="https://">
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-xl border border-gray-200 p-6">
+            <h3 class="font-semibold text-gray-900 mb-4">Adresse</h3>
+            <div class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Straße + Hausnummer</label>
+                <input id="sStreet" value="${s.street || p.address.street}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+              </div>
+              <div class="grid grid-cols-3 gap-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">PLZ</label>
+                  <input id="sZip" value="${s.zip || p.address.zip}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                </div>
+                <div class="col-span-2">
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Stadt</label>
+                  <input id="sCity" value="${s.city || p.address.city}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                </div>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Bundesland</label>
+                <select id="sBundesland" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                  <option value="">– Bitte wählen –</option>
+                  ${['Baden-Württemberg','Bayern','Berlin','Brandenburg','Bremen','Hamburg','Hessen','Mecklenburg-Vorpommern','Niedersachsen','Nordrhein-Westfalen','Rheinland-Pfalz','Saarland','Sachsen','Sachsen-Anhalt','Schleswig-Holstein','Thüringen'].map(bl => `<option ${(s.bundesland || '') === bl ? 'selected' : ''}>${bl}</option>`).join('')}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-xl border border-gray-200 p-6">
+            <h3 class="font-semibold text-gray-900 mb-4">Beschreibung & Kategorien</h3>
+            <div class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Beschreibung (öffentlich)</label>
+                <textarea id="sDescription" rows="3" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">${s.description || p.description}</textarea>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Kategorien</label>
+                <input id="sCategories" value="${(s.categories || p.categories || []).join(', ')}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Tanz, Ballett, Hip-Hop">
+                <div class="text-xs text-gray-400 mt-1">Kommagetrennt</div>
+              </div>
+            </div>
+          </div>
+
+          <button onclick="saveCompanySettings()" class="bg-brand-500 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-brand-600">Unternehmensdaten speichern</button>
+        </div>
+      `
+    }
+
+    function renderFinanceTab(p, s) {
+      return `
+        <div class="max-w-2xl space-y-6">
+          <div class="bg-white rounded-xl border border-gray-200 p-6">
+            <h3 class="font-semibold text-gray-900 mb-4">Steuerdaten</h3>
+            <div class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Steuernummer</label>
+                <input id="sTaxId" value="${s.taxId || ''}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="z.B. 123/456/78901">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">USt-IdNr. (falls vorhanden)</label>
+                <input id="sVatId" value="${s.vatId || ''}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="z.B. DE123456789">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Standard-MwSt-Satz</label>
+                <select id="sVatRate" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                  <option value="19" ${(s.vatRate || '19') === '19' ? 'selected' : ''}>19% (Standard)</option>
+                  <option value="7" ${s.vatRate === '7' ? 'selected' : ''}>7% (ermäßigt)</option>
+                  <option value="0" ${s.vatRate === '0' ? 'selected' : ''}>0% (befreit / Kleinunternehmer)</option>
+                </select>
+              </div>
+              <div class="flex items-center gap-2">
+                <input type="checkbox" id="sKleinunternehmer" ${s.kleinunternehmer ? 'checked' : ''} class="rounded border-gray-300">
+                <label class="text-sm text-gray-700">Kleinunternehmerregelung (§19 UStG) – keine MwSt ausweisen</label>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-xl border border-gray-200 p-6">
+            <h3 class="font-semibold text-gray-900 mb-4">Bankverbindung</h3>
+            <div class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Kontoinhaber</label>
+                <input id="sBankHolder" value="${s.bankHolder || s.companyName || p.name}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">IBAN</label>
+                <input id="sIban" value="${s.iban || ''}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="DE89 3704 0044 0532 0130 00">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">BIC</label>
+                <input id="sBic" value="${s.bic || ''}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="COBADEFFXXX">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Kreditinstitut</label>
+                <input id="sBankName" value="${s.bankName || ''}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="z.B. Sparkasse Köln">
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-xl border border-gray-200 p-6">
+            <h3 class="font-semibold text-gray-900 mb-4">SEPA-Lastschrift</h3>
+            <div class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Gläubiger-ID (SEPA Creditor Identifier)</label>
+                <input id="sSepaCreditorId" value="${s.sepaCreditorId || ''}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="DE98ZZZ09999999999">
+                <div class="text-xs text-gray-400 mt-1">Beantragen bei der Deutschen Bundesbank</div>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Zahlungsziel (Tage)</label>
+                <input id="sPaymentTerms" type="number" value="${s.paymentTerms || 14}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-xl border border-gray-200 p-6">
+            <h3 class="font-semibold text-gray-900 mb-4">Rechnungseinstellungen</h3>
+            <div class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Rechnungspräfix</label>
+                <input id="sInvoicePrefix" value="${s.invoicePrefix || 'INV'}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">E-Rechnung Standard</label>
+                <select id="sEInvoiceFormat" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                  <option value="none" ${(s.eInvoiceFormat || 'none') === 'none' ? 'selected' : ''}>Keine E-Rechnung</option>
+                  <option value="zugferd" ${s.eInvoiceFormat === 'zugferd' ? 'selected' : ''}>ZUGFeRD (PDF + XML)</option>
+                  <option value="xrechnung" ${s.eInvoiceFormat === 'xrechnung' ? 'selected' : ''}>XRechnung (XML)</option>
+                </select>
+                <div class="text-xs text-gray-400 mt-1">Ab 2028 Pflicht für alle B2B-Rechnungen</div>
+              </div>
+            </div>
+          </div>
+
+          <button onclick="saveFinanceSettings()" class="bg-brand-500 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-brand-600">Finanzdaten speichern</button>
+        </div>
+      `
+    }
+
+    function renderLegalTab(s) {
+      return `
+        <div class="max-w-2xl space-y-6">
+          <div class="bg-white rounded-xl border border-gray-200 p-6">
+            <h3 class="font-semibold text-gray-900 mb-4">Impressum</h3>
+            <div class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Vertretungsberechtigte Person</label>
+                <input id="sLegalPerson" value="${s.legalPerson || ''}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Vor- und Nachname">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Registergericht & -nummer (falls vorhanden)</label>
+                <input id="sRegister" value="${s.register || ''}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="z.B. Amtsgericht Köln, HRB 12345">
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-xl border border-gray-200 p-6">
+            <h3 class="font-semibold text-gray-900 mb-4">Datenschutz (DSGVO)</h3>
+            <div class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Datenschutzbeauftragter (falls benannt)</label>
+                <input id="sDpo" value="${s.dpo || ''}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Name + E-Mail">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Link zur Datenschutzerklärung</label>
+                <input id="sPrivacyUrl" value="${s.privacyUrl || ''}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="https://...">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Link zu AGB</label>
+                <input id="sTermsUrl" value="${s.termsUrl || ''}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="https://...">
+              </div>
+            </div>
+          </div>
+
+          <button onclick="saveLegalSettings()" class="bg-brand-500 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-brand-600">Rechtliches speichern</button>
+        </div>
+      `
+    }
+
+    function renderLoyaltyTab() {
       const tiers = getLoyaltyTiers()
       const iconOptions = ['⭐', '🥉', '🥈', '🥇', '💎', '👑', '🏆', '🔥', '❤️', '🌟']
       const colorOptions = [
@@ -1792,7 +2039,7 @@
         { value: 'bg-pink-100 text-pink-700', label: 'Pink' },
       ]
 
-      document.getElementById('content').innerHTML = `
+      return `
         <!-- Loyalty / Treueprogramm -->
         <div class="bg-white rounded-xl border border-gray-200 p-6 mb-6">
           <div class="flex items-center justify-between mb-6">
@@ -1877,6 +2124,52 @@
       `
     }
 
+    function saveCompanySettings() {
+      const s = getProviderSettings()
+      s.companyName = document.getElementById('sCompanyName')?.value
+      s.legalForm = document.getElementById('sLegalForm')?.value
+      s.email = document.getElementById('sEmail')?.value
+      s.phone = document.getElementById('sPhone')?.value
+      s.website = document.getElementById('sWebsite')?.value
+      s.street = document.getElementById('sStreet')?.value
+      s.zip = document.getElementById('sZip')?.value
+      s.city = document.getElementById('sCity')?.value
+      s.bundesland = document.getElementById('sBundesland')?.value
+      s.description = document.getElementById('sDescription')?.value
+      s.categories = (document.getElementById('sCategories')?.value || '').split(',').map(c => c.trim()).filter(Boolean)
+      saveProviderSettings(s)
+      alert('Unternehmensdaten gespeichert!')
+    }
+
+    function saveFinanceSettings() {
+      const s = getProviderSettings()
+      s.taxId = document.getElementById('sTaxId')?.value
+      s.vatId = document.getElementById('sVatId')?.value
+      s.vatRate = document.getElementById('sVatRate')?.value
+      s.kleinunternehmer = document.getElementById('sKleinunternehmer')?.checked
+      s.bankHolder = document.getElementById('sBankHolder')?.value
+      s.iban = document.getElementById('sIban')?.value
+      s.bic = document.getElementById('sBic')?.value
+      s.bankName = document.getElementById('sBankName')?.value
+      s.sepaCreditorId = document.getElementById('sSepaCreditorId')?.value
+      s.paymentTerms = document.getElementById('sPaymentTerms')?.value
+      s.invoicePrefix = document.getElementById('sInvoicePrefix')?.value
+      s.eInvoiceFormat = document.getElementById('sEInvoiceFormat')?.value
+      saveProviderSettings(s)
+      alert('Finanzdaten gespeichert!')
+    }
+
+    function saveLegalSettings() {
+      const s = getProviderSettings()
+      s.legalPerson = document.getElementById('sLegalPerson')?.value
+      s.register = document.getElementById('sRegister')?.value
+      s.dpo = document.getElementById('sDpo')?.value
+      s.privacyUrl = document.getElementById('sPrivacyUrl')?.value
+      s.termsUrl = document.getElementById('sTermsUrl')?.value
+      saveProviderSettings(s)
+      alert('Rechtliches gespeichert!')
+    }
+
     function addTier() {
       const tiers = getLoyaltyTiers()
       const lastTier = tiers[tiers.length - 1]
@@ -1890,15 +2183,15 @@
         perks: [],
       })
       saveLoyaltyTiers(tiers)
-      renderSettings()
+      settingsTab = 'loyalty'; renderSettings()
     }
 
     function removeTier(idx) {
       const tiers = getLoyaltyTiers()
-      if (idx === 0 || !confirm(`Stufe "${tiers[idx].name}" wirklich löschen?`)) return
+      if (idx === 0 || !confirm('Stufe "' + tiers[idx].name + '" wirklich löschen?')) return
       tiers.splice(idx, 1)
       saveLoyaltyTiers(tiers)
-      renderSettings()
+      settingsTab = 'loyalty'; renderSettings()
     }
 
     function saveLoyaltySettings() {
@@ -1921,7 +2214,7 @@
       })
       saveLoyaltyTiers(tiers)
       alert('Treueprogramm gespeichert!')
-      renderSettings()
+      settingsTab = 'loyalty'; renderSettings()
     }
 
     function formatCurrency(amount) { return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(amount || 0) }
