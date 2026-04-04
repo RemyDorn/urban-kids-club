@@ -869,7 +869,7 @@
                     const img = (a.images || [])[i]
                     return `<div class="relative group">
                       <div class="w-24 h-24 rounded-lg border-2 border-dashed ${img ? 'border-brand-300 bg-brand-50' : 'border-gray-200 bg-gray-50'} flex items-center justify-center overflow-hidden cursor-pointer hover:border-brand-400" onclick="document.getElementById('imgInput_${i}').click()">
-                        ${img ? `<img src="${img}" class="w-full h-full object-cover" id="imgPrev_${i}" onerror="this.parentElement.innerHTML='<span class=\\'text-gray-400 text-2xl\\'>+</span>'">` : `<span class="text-gray-400 text-2xl">+</span>`}
+                        ${img ? `<img src="${img}" class="w-full h-full object-cover" id="imgPrev_${i}">` : `<div class="text-center"><div class="text-gray-400 text-xl">+</div><div class="text-gray-300 text-xs">${i === 0 ? '800x600' : '800x600'}</div></div>`}
                       </div>
                       ${img ? `<button type="button" onclick="removeImage(${i})" class="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100">x</button>` : ''}
                       <input type="file" id="imgInput_${i}" accept="image/*" class="hidden" onchange="handleImageUpload(${i}, this)">
@@ -878,7 +878,7 @@
                     </div>`
                   }).join('')}
                 </div>
-                <div class="text-xs text-gray-400">Bilder werden automatisch auf max. 800px komprimiert. Erlaubt: JPG, PNG, WebP (max. 5 MB).</div>
+                <div class="text-xs text-gray-400">Empfohlen: <strong>800 x 600 px</strong> (4:3 Querformat) · JPG, PNG oder WebP · Max. 5 MB · Wird automatisch komprimiert</div>
               </div>
             </fieldset>
 
@@ -2530,7 +2530,11 @@
                     ${s.logo ? `<img src="${s.logo}" class="w-full h-full object-contain">` : '<span class="text-gray-400 text-2xl">+</span>'}
                   </div>
                   <input type="file" id="logoUpload" accept="image/*" class="hidden" onchange="uploadProviderImage('logo', this, 200)">
-                  <div class="text-xs text-gray-400">Quadratisch, wird auf 200px komprimiert</div>
+                  <div class="text-xs text-gray-400 space-y-0.5">
+                    <div>Empfohlen: <strong>200 x 200 px</strong> (quadratisch)</div>
+                    <div>Format: PNG oder SVG mit transparentem Hintergrund</div>
+                    <div>Max. 5 MB – wird auf 200px komprimiert</div>
+                  </div>
                 </div>
                 <input type="hidden" id="sLogo" value="${s.logo || ''}">
               </div>
@@ -2538,11 +2542,11 @@
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-2">Titelbild / Header</label>
                 <div class="w-full h-32 rounded-xl border-2 border-dashed ${s.cover ? 'border-brand-300' : 'border-gray-200'} flex items-center justify-center overflow-hidden cursor-pointer hover:border-brand-400" onclick="document.getElementById('coverUpload').click()">
-                  ${s.cover ? `<img src="${s.cover}" class="w-full h-full object-cover">` : '<div class="text-gray-400 text-center"><div class="text-2xl">+</div><div class="text-xs">Titelbild hochladen</div></div>'}
+                  ${s.cover ? `<img src="${s.cover}" class="w-full h-full object-cover">` : '<div class="text-gray-400 text-center"><div class="text-2xl">+</div><div class="text-xs mt-1">1200 x 400 px empfohlen</div></div>'}
                 </div>
                 <input type="file" id="coverUpload" accept="image/*" class="hidden" onchange="uploadProviderImage('cover', this, 1200)">
                 <input type="hidden" id="sCover" value="${s.cover || ''}">
-                <div class="text-xs text-gray-400 mt-1">Banner für Profilseite, wird auf 1200px Breite komprimiert</div>
+                <div class="text-xs text-gray-400 mt-1">Empfohlen: <strong>1200 x 400 px</strong> (3:1 Querformat) · Banner auf Profilseite & Plattform · Max. 5 MB</div>
               </div>
               <!-- Galerie Upload -->
               <div>
@@ -2560,7 +2564,7 @@
                     </div>`
                   }).join('')}
                 </div>
-                <div class="text-xs text-gray-400 mt-2">Studio, Räume, Atmosphäre – automatisch auf 800px komprimiert</div>
+                <div class="text-xs text-gray-400 mt-2">Empfohlen: <strong>800 x 600 px</strong> (4:3 Querformat) · Studio, Räume, Atmosphäre · Max. 5 MB pro Bild</div>
               </div>
               <!-- Branding -->
               <div>
