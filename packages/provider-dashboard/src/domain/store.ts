@@ -17,9 +17,27 @@ import type {
   Review,
   Invoice,
   Message,
+  Coupon,
+  CouponRedemption,
+  TrialLesson,
+  Season,
+  Holiday,
+  SepaMandate,
+  PaymentRecord,
+  ProviderDocument,
+  ConsentRecord,
+  Notification,
+  NotificationPreference,
+  CalendarEvent,
+  WaitlistEntry,
+  WidgetConfig,
+  ContactNote,
+  ExportRequest,
+  AuditLogEntry,
 } from '../types'
 
 export interface StoreState {
+  // Kern-Entitäten
   providers: Map<ID, Provider>
   locations: Map<ID, Location>
   teamMembers: Map<ID, TeamMember>
@@ -30,11 +48,31 @@ export interface StoreState {
   reviews: Map<ID, Review>
   invoices: Map<ID, Invoice>
   messages: Map<ID, Message>
+
+  // 130%-Features
+  coupons: Map<ID, Coupon>
+  couponRedemptions: Map<ID, CouponRedemption>
+  trialLessons: Map<ID, TrialLesson>
+  seasons: Map<ID, Season>
+  holidays: Map<ID, Holiday>
+  sepaMandates: Map<ID, SepaMandate>
+  payments: Map<ID, PaymentRecord>
+  documents: Map<ID, ProviderDocument>
+  consents: Map<ID, ConsentRecord>
+  notifications: Map<ID, Notification>
+  notificationPreferences: Map<ID, NotificationPreference>
+  calendarEvents: Map<ID, CalendarEvent>
+  waitlistEntries: Map<ID, WaitlistEntry>
+  widgetConfigs: Map<ID, WidgetConfig>
+  contactNotes: Map<ID, ContactNote>
+  exportRequests: Map<ID, ExportRequest>
+  auditLog: Map<ID, AuditLogEntry>
 }
 
 // --- Sekundärindizes für schnelle Lookups ---
 
 export interface StoreIndexes {
+  // Kern
   locationsByProvider: Map<ID, Set<ID>>
   teamByProvider: Map<ID, Set<ID>>
   activitiesByProvider: Map<ID, Set<ID>>
@@ -45,13 +83,48 @@ export interface StoreIndexes {
   bookingsByParent: Map<ID, Set<ID>>
   attendanceByBooking: Map<ID, Set<ID>>
   attendanceByActivity: Map<ID, Set<ID>>
-  attendanceByDate: Map<string, Set<ID>>   // "YYYY-MM-DD" → attendance IDs
+  attendanceByDate: Map<string, Set<ID>>
   reviewsByProvider: Map<ID, Set<ID>>
   reviewsByActivity: Map<ID, Set<ID>>
   invoicesByProvider: Map<ID, Set<ID>>
   invoicesByParent: Map<ID, Set<ID>>
   messagesByProvider: Map<ID, Set<ID>>
   messagesByParent: Map<ID, Set<ID>>
+
+  // 130%-Features
+  couponsByProvider: Map<ID, Set<ID>>
+  couponByCode: Map<string, ID>              // code → coupon ID (unique lookup)
+  redemptionsByCoupon: Map<ID, Set<ID>>
+  redemptionsByParent: Map<ID, Set<ID>>
+  trialsByProvider: Map<ID, Set<ID>>
+  trialsByActivity: Map<ID, Set<ID>>
+  trialsByParent: Map<ID, Set<ID>>
+  seasonsByProvider: Map<ID, Set<ID>>
+  holidaysByProvider: Map<ID, Set<ID>>
+  mandatesByProvider: Map<ID, Set<ID>>
+  mandatesByParent: Map<ID, Set<ID>>
+  paymentsByProvider: Map<ID, Set<ID>>
+  paymentsByParent: Map<ID, Set<ID>>
+  paymentsByBooking: Map<ID, Set<ID>>
+  paymentsByInvoice: Map<ID, Set<ID>>
+  documentsByProvider: Map<ID, Set<ID>>
+  documentsByTeamMember: Map<ID, Set<ID>>
+  consentsByParent: Map<ID, Set<ID>>
+  consentsByProvider: Map<ID, Set<ID>>
+  notificationsByRecipient: Map<ID, Set<ID>>
+  preferencesByUser: Map<ID, Set<ID>>
+  calendarByProvider: Map<ID, Set<ID>>
+  calendarByDate: Map<string, Set<ID>>
+  calendarByLocation: Map<ID, Set<ID>>
+  calendarByInstructor: Map<ID, Set<ID>>
+  waitlistByActivity: Map<ID, Set<ID>>
+  waitlistByParent: Map<ID, Set<ID>>
+  widgetsByProvider: Map<ID, Set<ID>>
+  notesByParent: Map<ID, Set<ID>>
+  notesByProvider: Map<ID, Set<ID>>
+  exportsByProvider: Map<ID, Set<ID>>
+  auditByProvider: Map<ID, Set<ID>>
+  auditByEntity: Map<string, Set<ID>>        // "entityType:entityId" → audit IDs
 }
 
 class Store {
@@ -70,6 +143,23 @@ class Store {
       reviews: new Map(),
       invoices: new Map(),
       messages: new Map(),
+      coupons: new Map(),
+      couponRedemptions: new Map(),
+      trialLessons: new Map(),
+      seasons: new Map(),
+      holidays: new Map(),
+      sepaMandates: new Map(),
+      payments: new Map(),
+      documents: new Map(),
+      consents: new Map(),
+      notifications: new Map(),
+      notificationPreferences: new Map(),
+      calendarEvents: new Map(),
+      waitlistEntries: new Map(),
+      widgetConfigs: new Map(),
+      contactNotes: new Map(),
+      exportRequests: new Map(),
+      auditLog: new Map(),
     }
 
     this.indexes = {
@@ -90,6 +180,39 @@ class Store {
       invoicesByParent: new Map(),
       messagesByProvider: new Map(),
       messagesByParent: new Map(),
+      couponsByProvider: new Map(),
+      couponByCode: new Map(),
+      redemptionsByCoupon: new Map(),
+      redemptionsByParent: new Map(),
+      trialsByProvider: new Map(),
+      trialsByActivity: new Map(),
+      trialsByParent: new Map(),
+      seasonsByProvider: new Map(),
+      holidaysByProvider: new Map(),
+      mandatesByProvider: new Map(),
+      mandatesByParent: new Map(),
+      paymentsByProvider: new Map(),
+      paymentsByParent: new Map(),
+      paymentsByBooking: new Map(),
+      paymentsByInvoice: new Map(),
+      documentsByProvider: new Map(),
+      documentsByTeamMember: new Map(),
+      consentsByParent: new Map(),
+      consentsByProvider: new Map(),
+      notificationsByRecipient: new Map(),
+      preferencesByUser: new Map(),
+      calendarByProvider: new Map(),
+      calendarByDate: new Map(),
+      calendarByLocation: new Map(),
+      calendarByInstructor: new Map(),
+      waitlistByActivity: new Map(),
+      waitlistByParent: new Map(),
+      widgetsByProvider: new Map(),
+      notesByParent: new Map(),
+      notesByProvider: new Map(),
+      exportsByProvider: new Map(),
+      auditByProvider: new Map(),
+      auditByEntity: new Map(),
     }
   }
 

@@ -273,3 +273,315 @@ export interface Message {
   read: boolean
   sentAt: Date
 }
+
+// --- Gutscheine & Rabatte (130%-Feature) ---
+
+export type CouponType = 'percentage' | 'fixed_amount' | 'free_trial'
+
+export interface Coupon {
+  id: ID
+  providerId: ID
+  code: string              // z.B. "SOMMER2026"
+  type: CouponType
+  value: number             // Prozent oder Betrag
+  currency?: Currency
+  activityIds?: ID[]        // Beschränkung auf bestimmte Kurse (leer = alle)
+  maxUses: number           // 0 = unbegrenzt
+  usedCount: number
+  minBookingAmount?: number
+  validFrom: Date
+  validUntil: Date
+  active: boolean
+  createdAt: Date
+}
+
+export interface CouponRedemption {
+  id: ID
+  couponId: ID
+  bookingId: ID
+  parentId: ID
+  discountAmount: number
+  redeemedAt: Date
+}
+
+// --- Probestunden / Trial Lessons (130%-Feature) ---
+
+export type TrialStatus = 'scheduled' | 'completed' | 'no_show' | 'converted' | 'cancelled'
+
+export interface TrialLesson {
+  id: ID
+  activityId: ID
+  providerId: ID
+  parentId: ID
+  child: ChildInfo
+  scheduledDate: string     // "YYYY-MM-DD"
+  scheduledTime: string     // "HH:mm"
+  status: TrialStatus
+  convertedToBookingId?: ID // Falls aus Probestunde eine Buchung wurde
+  feedback?: string         // Feedback vom Provider
+  parentFeedback?: string   // Feedback vom Elternteil
+  createdAt: Date
+  updatedAt: Date
+}
+
+// --- Saisons & Schulferien (130%-Feature) ---
+
+export type SeasonType = 'school_term' | 'holiday' | 'summer_break' | 'winter_break' | 'custom'
+
+export interface Season {
+  id: ID
+  providerId: ID
+  name: string              // "Schuljahr 2026/27 - 1. Halbjahr"
+  type: SeasonType
+  startDate: string
+  endDate: string
+  isActive: boolean
+  createdAt: Date
+}
+
+export interface Holiday {
+  id: ID
+  providerId: ID
+  name: string              // "Herbstferien NRW 2026"
+  startDate: string
+  endDate: string
+  cancelActivities: boolean // Kurse automatisch absagen?
+  region?: string           // Bundesland
+}
+
+// --- SEPA & Zahlungen (130%-Feature) ---
+
+export type PaymentMethod = 'sepa_direct_debit' | 'bank_transfer' | 'cash' | 'card' | 'paypal'
+
+export type SepaStatus = 'pending' | 'active' | 'failed' | 'cancelled'
+
+export interface SepaMandate {
+  id: ID
+  providerId: ID
+  parentId: ID
+  mandateReference: string  // "MNDT-2026-0001"
+  iban: string              // Verschlüsselt speichern!
+  bic?: string
+  accountHolder: string
+  signedAt: Date
+  status: SepaStatus
+  createdAt: Date
+}
+
+export interface PaymentRecord {
+  id: ID
+  providerId: ID
+  parentId: ID
+  bookingId?: ID
+  invoiceId?: ID
+  method: PaymentMethod
+  amount: number
+  currency: Currency
+  reference: string         // Verwendungszweck
+  status: 'pending' | 'completed' | 'failed' | 'refunded'
+  sepaMandateId?: ID
+  processedAt?: Date
+  createdAt: Date
+}
+
+// --- Dokumente & Compliance (130%-Feature) ---
+
+export type DocumentType =
+  | 'fuehrungszeugnis'      // Erweitertes Führungszeugnis
+  | 'insurance'             // Haftpflichtversicherung
+  | 'first_aid'             // Erste-Hilfe-Nachweis
+  | 'qualification'         // Qualifikationsnachweis
+  | 'contract'              // AGB / Vertrag
+  | 'consent_form'          // Einverständniserklärung
+  | 'medical_form'          // Gesundheitsbogen
+  | 'photo_consent'         // Foto-Einwilligung
+  | 'data_processing'       // Auftragsverarbeitung (DSGVO)
+  | 'custom'
+
+export type DocumentStatus = 'valid' | 'expiring_soon' | 'expired' | 'pending_review'
+
+export interface ProviderDocument {
+  id: ID
+  providerId: ID
+  teamMemberId?: ID         // Falls Dokument einem Trainer gehört
+  type: DocumentType
+  name: string
+  fileUrl?: string
+  issuedAt?: Date
+  expiresAt?: Date
+  status: DocumentStatus
+  verifiedBy?: string       // Admin der Plattform
+  verifiedAt?: Date
+  notes?: string
+  createdAt: Date
+}
+
+export interface ConsentRecord {
+  id: ID
+  parentId: ID
+  childName: string
+  providerId: ID
+  documentType: DocumentType
+  consentGiven: boolean
+  consentedAt: Date
+  ipAddress?: string
+  revokedAt?: Date
+}
+
+// --- Benachrichtigungen (130%-Feature) ---
+
+export type NotificationType =
+  | 'booking_confirmed'
+  | 'booking_cancelled'
+  | 'booking_reminder'      // 24h vorher
+  | 'waitlist_promoted'
+  | 'payment_received'
+  | 'payment_overdue'
+  | 'invoice_sent'
+  | 'activity_cancelled'
+  | 'activity_changed'
+  | 'trial_reminder'
+  | 'review_request'
+  | 'message_received'
+  | 'document_expiring'
+  | 'season_starting'
+  | 'custom'
+
+export type NotificationChannel = 'email' | 'push' | 'sms' | 'in_app'
+
+export interface Notification {
+  id: ID
+  recipientType: 'parent' | 'provider' | 'team_member'
+  recipientId: ID
+  type: NotificationType
+  channel: NotificationChannel
+  title: string
+  body: string
+  data?: Record<string, string>  // Kontext-Daten (activityId, bookingId, etc.)
+  read: boolean
+  sentAt: Date
+  readAt?: Date
+}
+
+export interface NotificationPreference {
+  id: ID
+  userId: ID
+  userType: 'parent' | 'provider'
+  type: NotificationType
+  channels: NotificationChannel[]
+  enabled: boolean
+}
+
+// --- Kalender & Konflikte (130%-Feature) ---
+
+export interface CalendarEvent {
+  id: ID
+  providerId: ID
+  activityId?: ID
+  locationId?: ID
+  instructorId?: ID
+  title: string
+  description?: string
+  date: string              // "YYYY-MM-DD"
+  startTime: string         // "HH:mm"
+  endTime: string           // "HH:mm"
+  recurring: boolean
+  recurrenceRule?: string   // iCal RRULE
+  color?: string            // Farbkodierung im Kalender
+  type: 'activity' | 'blocked' | 'holiday' | 'meeting' | 'custom'
+}
+
+export interface CalendarConflict {
+  eventA: CalendarEvent
+  eventB: CalendarEvent
+  conflictType: 'room_overlap' | 'instructor_overlap' | 'time_overlap'
+  description: string
+}
+
+// --- Warteliste erweitert ---
+
+export interface WaitlistEntry {
+  id: ID
+  activityId: ID
+  parentId: ID
+  child: ChildInfo
+  position: number
+  priority: 'normal' | 'sibling' | 'returning' | 'high'  // Geschwister / Stammkunden bevorzugt
+  addedAt: Date
+  notifiedAt?: Date
+  expiresAt?: Date          // Frist zur Annahme des Platzes
+  status: 'waiting' | 'offered' | 'accepted' | 'declined' | 'expired'
+}
+
+// --- Widget & Einbettung (130%-Feature) ---
+
+export interface WidgetConfig {
+  id: ID
+  providerId: ID
+  type: 'booking_button' | 'course_list' | 'calendar' | 'review_badge'
+  theme: 'light' | 'dark' | 'auto'
+  primaryColor?: string
+  activityIds?: ID[]        // Beschränkung auf bestimmte Kurse
+  showPrices: boolean
+  showAvailability: boolean
+  showReviews: boolean
+  embedCode?: string        // Generierter HTML/JS Code
+  createdAt: Date
+}
+
+// --- Kontakte / CRM (130%-Feature) ---
+
+export type ContactTag = 'prospect' | 'active' | 'inactive' | 'vip' | 'problem' | string
+
+export interface ContactNote {
+  id: ID
+  parentId: ID
+  providerId: ID
+  authorId: ID              // TeamMember ID
+  content: string
+  createdAt: Date
+}
+
+export interface ParentExtended extends Parent {
+  tags: ContactTag[]
+  notes: ContactNote[]
+  totalSpent: number
+  bookingCount: number
+  firstBookingAt?: Date
+  lastBookingAt?: Date
+  preferredPaymentMethod?: PaymentMethod
+  language: string          // "de", "en", "tr", etc.
+  source?: string           // "website", "instagram", "referral", "walk_in"
+}
+
+// --- Export & Integration (130%-Feature) ---
+
+export type ExportFormat = 'csv' | 'pdf' | 'xlsx' | 'json' | 'datev'
+
+export interface ExportRequest {
+  id: ID
+  providerId: ID
+  type: 'bookings' | 'invoices' | 'attendance' | 'customers' | 'revenue'
+  format: ExportFormat
+  dateRange?: { from: string; to: string }
+  filters?: Record<string, string>
+  status: 'pending' | 'processing' | 'completed' | 'failed'
+  fileUrl?: string
+  createdAt: Date
+  completedAt?: Date
+}
+
+// --- Audit Log (Compliance) ---
+
+export interface AuditLogEntry {
+  id: ID
+  providerId: ID
+  userId: ID
+  userType: 'provider' | 'team_member' | 'parent' | 'admin'
+  action: string            // "booking.created", "invoice.sent", "activity.published"
+  entityType: string
+  entityId: ID
+  changes?: Record<string, { old: unknown; new: unknown }>
+  ipAddress?: string
+  timestamp: Date
+}

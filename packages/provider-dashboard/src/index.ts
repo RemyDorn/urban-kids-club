@@ -8,13 +8,37 @@
 // Typen
 export * from './types'
 
-// Services
+// Kern-Services (100% – Plattform-relevant)
 export {
   ProviderService,
   ActivityService,
   BookingService,
   AttendanceService,
+  LocationService,
+  TeamService,
+  ParentService,
+  ReviewService,
+  MessageService,
+} from './services'
+
+// 130%-Features (Provider-Mehrwert)
+export {
+  WaitlistService,
+  CouponService,
+  CalendarService,
+  TrialService,
+  NotificationService,
+  SepaMandateService,
+  PaymentService,
   InvoiceService,
+  DocumentService,
+  ConsentService,
+  SeasonService,
+  HolidayService,
+  AuditService,
+  WidgetService,
+  CrmService,
+  ExportService,
   ReportingService,
 } from './services'
 
