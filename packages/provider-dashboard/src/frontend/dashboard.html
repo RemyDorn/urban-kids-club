@@ -60,11 +60,7 @@
 
       <!-- Navigation -->
       <nav class="flex-1 p-3 space-y-1 overflow-y-auto">
-        <button onclick="navigate('calendar')" data-page="calendar" class="nav-item active w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-          Kalender
-        </button>
-        <button onclick="navigate('dashboard')" data-page="dashboard" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 transition-all">
+        <button onclick="navigate('dashboard')" data-page="dashboard" class="nav-item active w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
           Dashboard
         </button>
@@ -142,7 +138,7 @@
       if (providers.length > 0) {
         currentProvider = providers[0]
         updateProviderDisplay()
-        navigate('calendar')
+        navigate('dashboard')
       }
     }
 
@@ -168,7 +164,7 @@
       const activeBtn = document.querySelector(`[data-page="${page}"]`)
       if (activeBtn) { activeBtn.classList.add('active'); activeBtn.classList.remove('text-gray-600') }
 
-      const titles = { calendar: 'Kalender', dashboard: 'Dashboard', activities: 'Kurse & Angebote', bookings: 'Buchungen', customers: 'Kunden (CRM)', trials: 'Probestunden', invoices: 'Rechnungen', team: 'Team', holidays: 'Ferien & Saisons' }
+      const titles = { dashboard: 'Dashboard', activities: 'Kurse & Angebote', bookings: 'Buchungen', customers: 'Kunden (CRM)', trials: 'Probestunden', invoices: 'Rechnungen', team: 'Team', holidays: 'Ferien & Saisons' }
       document.getElementById('pageTitle').textContent = titles[page] || page
 
       const content = document.getElementById('content')
@@ -177,7 +173,7 @@
       void content.offsetWidth
       content.classList.add('fade-in')
 
-      const renderers = { calendar: renderCalendar, dashboard: renderDashboard, activities: renderActivities, bookings: renderBookings, customers: renderCustomers, trials: renderTrials, invoices: renderInvoices, team: renderTeam, holidays: renderHolidays }
+      const renderers = { dashboard: renderDashboard, activities: renderActivities, bookings: renderBookings, customers: renderCustomers, trials: renderTrials, invoices: renderInvoices, team: renderTeam, holidays: renderHolidays }
       if (renderers[page]) renderers[page]()
     }
 
@@ -208,12 +204,19 @@
       { bg: 'bg-indigo-50', border: 'border-indigo-400', text: 'text-indigo-800', bar: 'bg-indigo-400' },
     ]
 
+    // renderCalendar for standalone page (kept for backwards compat)
     async function renderCalendar() {
+      document.getElementById('content').innerHTML = '<div id="standaloneCalendar" class="mb-4"></div><div id="calModal" class="hidden"></div>'
+      await renderCalendarInto('standaloneCalendar')
+    }
+
+    // Core calendar renderer – renders into any container
+    async function renderCalendarInto(containerId) {
+      activeCalContainer = containerId
       const start = fmtDate(calWeekStart)
       const end = fmtDate(addDays(calWeekStart, 6))
       const today = fmtDate(new Date())
 
-      // Sync calendar first, then fetch
       await api(`/providers/${currentProvider.id}/calendar/sync`)
       const [calData, activities, occupancy, bookingsRes] = await Promise.all([
         api(`/providers/${currentProvider.id}/calendar?start=${start}&end=${end}`),
@@ -255,7 +258,9 @@
       const todayBookings = bookingsRes.data.filter(b => b.status === 'confirmed').length
       const weekEvents = events.filter(e => e.type === 'activity').length
 
-      document.getElementById('content').innerHTML = `
+      const calContainer = document.getElementById(containerId)
+      if (!calContainer) return
+      calContainer.innerHTML = `
         <!-- Calendar Header -->
         <div class="flex items-center justify-between mb-6">
           <div class="flex items-center gap-4">
@@ -319,8 +324,6 @@
           </div>
         </div>
 
-        <!-- Modal -->
-        <div id="calModal" class="hidden"></div>
       `
 
       // Place events on the grid
@@ -456,9 +459,10 @@
       `
     }
 
-    function calPrev() { calWeekStart = addDays(calWeekStart, -7); renderCalendar() }
-    function calNext() { calWeekStart = addDays(calWeekStart, 7); renderCalendar() }
-    function calToday() { calWeekStart = getMonday(new Date()); renderCalendar() }
+    let activeCalContainer = 'dashboardCalendar'
+    function calPrev() { calWeekStart = addDays(calWeekStart, -7); renderCalendarInto(activeCalContainer) }
+    function calNext() { calWeekStart = addDays(calWeekStart, 7); renderCalendarInto(activeCalContainer) }
+    function calToday() { calWeekStart = getMonday(new Date()); renderCalendarInto(activeCalContainer) }
 
     // --- Dashboard ---
     async function renderDashboard() {
@@ -471,6 +475,10 @@
       const s = stats.data
 
       document.getElementById('content').innerHTML = `
+        <!-- Kalender oben -->
+        <div id="dashboardCalendar" class="mb-8"></div>
+
+        <!-- KPI Cards -->
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
           ${kpiCard('Aktive Kurse', d.publishedActivities, d.totalActivities + ' gesamt', 'bg-blue-50 text-blue-600', '📚')}
           ${kpiCard('Buchungen', d.confirmedBookings, s.total + ' gesamt', 'bg-green-50 text-green-600', '✅')}
@@ -516,7 +524,13 @@
             </div>
           </div>
         </div>
+
+        <!-- Event Detail Modal -->
+        <div id="calModal" class="hidden"></div>
       `
+
+      // Kalender ins Dashboard rendern
+      await renderCalendarInto('dashboardCalendar')
     }
 
     // --- Activities ---
