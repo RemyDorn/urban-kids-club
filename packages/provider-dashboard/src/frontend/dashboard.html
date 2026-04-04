@@ -885,11 +885,21 @@
                 <div id="platformFields" class="${pl.enabled ? '' : 'hidden'} mt-3 space-y-3 pl-7">
                   <div class="grid grid-cols-2 gap-4">
                     <div>
-                      <label class="block text-xs text-gray-600 mb-1">Plätze über Plattform</label>
+                      <label class="block text-xs text-gray-600 mb-1">Kontingent für Plattform</label>
                       <div class="flex items-center gap-2">
-                        <input name="platformCapacity" type="number" min="1" max="100" value="${pl.platformCapacity}" class="w-20 border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                        <input name="platformCapacity" type="number" min="0" max="100" value="${pl.platformCapacity}" class="w-20 border border-gray-200 rounded-lg px-3 py-2 text-sm">
                         <span class="text-xs text-gray-500">von ${a.capacity} gesamt</span>
                       </div>
+                      <div class="text-xs text-gray-400 mt-1">0 = alle Plätze, Plattform füllt nur was übrig bleibt</div>
+                    </div>
+                    <div>
+                      <label class="block text-xs text-gray-600 mb-1">Priorität</label>
+                      <select name="platformPriority" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                        <option value="provider_first" ${(pl.priorityMode || 'provider_first') === 'provider_first' ? 'selected' : ''}>Eigene Buchungen zuerst</option>
+                        <option value="equal" ${pl.priorityMode === 'equal' ? 'selected' : ''}>Gleichberechtigt (first come)</option>
+                        <option value="platform_first" ${pl.priorityMode === 'platform_first' ? 'selected' : ''}>Plattform-Plätze reserviert</option>
+                      </select>
+                      <div class="text-xs text-gray-400 mt-1">"Eigene zuerst": Plattform bekommt nur was du nicht selbst füllst</div>
                     </div>
                   </div>
                   <label class="flex items-center gap-2 cursor-pointer">
@@ -1065,10 +1075,11 @@
         pricing,
         platformListing: f.get('platformEnabled') ? {
           enabled: true,
-          platformCapacity: parseInt(f.get('platformCapacity') || '3'),
+          platformCapacity: parseInt(f.get('platformCapacity') || '0'),
+          priorityMode: f.get('platformPriority') || 'provider_first',
           featured: !!f.get('platformFeatured'),
           trialAvailable: !!f.get('platformTrial'),
-        } : { enabled: false, platformCapacity: 0, featured: false, trialAvailable: false },
+        } : { enabled: false, platformCapacity: 0, priorityMode: 'provider_first', featured: false, trialAvailable: false },
         tags: [],
         color: f.get('color') || undefined,
         images: [f.get('imgData_0'), f.get('imgData_1'), f.get('imgData_2')].filter(Boolean),
@@ -1116,6 +1127,7 @@
                 <th class="px-6 py-3 text-left">Kurs</th>
                 <th class="px-6 py-3 text-left">Status</th>
                 <th class="px-6 py-3 text-left">Zahlung</th>
+                <th class="px-6 py-3 text-left">Quelle</th>
                 <th class="px-6 py-3 text-left">Aktionen</th>
               </tr>
             </thead>
@@ -1137,6 +1149,9 @@
                   <td class="px-6 py-4">
                     <span class="text-sm font-medium ${paymentColors[b.paymentStatus] || ''}">${paymentLabelsDE[b.paymentStatus] || b.paymentStatus}</span>
                     ${b.amountPaid > 0 ? `<span class="text-xs text-gray-400 ml-1">(${b.amountPaid}€)</span>` : ''}
+                  </td>
+                  <td class="px-6 py-4">
+                    <span class="px-2 py-0.5 rounded text-xs font-medium ${b.source === 'platform' ? 'bg-brand-100 text-brand-700' : 'bg-gray-100 text-gray-600'}">${b.source === 'platform' ? 'Kids Club' : 'Direkt'}</span>
                   </td>
                   <td class="px-6 py-4">
                     <div class="flex items-center gap-2">

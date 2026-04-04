@@ -18,6 +18,7 @@ export interface CreateBookingInput {
   child: ChildInfo
   pricingOptionId: ID
   couponCode?: string
+  source?: 'direct' | 'platform'  // Default: 'direct'
   notes?: string
 }
 
@@ -60,16 +61,38 @@ export const BookingService = {
     const pricingOption = activity.pricing.find((p) => p.id === input.pricingOptionId)
     if (!pricingOption) return { error: 'Preisoption nicht gefunden' }
 
-    // --- Kapazität & Warteliste ---
+    // --- Kapazität & Warteliste (mit Plattform-Priorität) ---
     const capacityCheck = Validators.activityHasCapacity(input.activityId)
     let status: BookingStatus = 'confirmed'
     let waitlisted = false
+    const source = input.source ?? 'direct'
+    const pl = activity.platformListing
 
     if (capacityCheck.errors[0] === WAITLIST_SIGNAL) {
-      status = 'waitlisted'
-      waitlisted = true
+      // Kurs voll – aber direkte Buchungen haben Vorrang bei provider_first
+      if (source === 'direct' && pl?.enabled && pl.priorityMode === 'provider_first') {
+        // Direkte Buchung verdrängt Plattform-Kontingent → trotzdem bestätigen
+        status = 'confirmed'
+      } else {
+        status = 'waitlisted'
+        waitlisted = true
+      }
     } else if (!capacityCheck.valid) {
       return { error: capacityCheck.errors[0] }
+    }
+
+    // Plattform-Buchung: Prüfe ob Plattform-Kontingent noch frei
+    if (source === 'platform' && pl?.enabled) {
+      const existingPlatformBookings = store.getFromIndex(store.indexes.bookingsByActivity, input.activityId)
+      let platformCount = 0
+      for (const bid of existingPlatformBookings) {
+        const b = store.state.bookings.get(bid)
+        if (b && b.source === 'platform' && b.status !== 'cancelled') platformCount++
+      }
+      if (platformCount >= pl.platformCapacity) {
+        if (activity.waitlistEnabled) { status = 'waitlisted'; waitlisted = true }
+        else return { error: 'Plattform-Kontingent ausgeschöpft' }
+      }
     }
 
     // --- Gutschein validieren ---
@@ -143,6 +166,7 @@ export const BookingService = {
       paymentStatus: finalAmount === 0 ? 'paid' : 'unpaid',
       amountPaid: 0,
       currency: pricingOption.currency,
+      source: input.source ?? 'direct',
       notes: input.notes,
       createdAt: now,
       updatedAt: now,

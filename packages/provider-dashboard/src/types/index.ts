@@ -153,7 +153,12 @@ export type Schedule = RecurringSchedule | SingleSchedule | CampSchedule
 
 export interface PlatformListing {
   enabled: boolean            // Auf Kids Club Plattform listen?
-  platformCapacity: number    // Wie viele Plätze über die Plattform buchbar?
+  platformCapacity: number    // Kontingent: Wie viele Plätze für die Plattform?
+  priorityMode: 'provider_first' | 'equal' | 'platform_first'
+  // provider_first (Standard): Direkte Buchungen haben Vorrang.
+  //   Plattform-Plätze werden erst genutzt wenn Provider sie nicht selbst füllt.
+  // equal: Alle Plätze gleichberechtigt (first come first served).
+  // platform_first: Plattform-Kontingent ist reserviert.
   featured: boolean           // Hervorgehoben auf der Plattform?
   trialAvailable: boolean     // Probestunde über Plattform buchbar?
 }
@@ -214,6 +219,7 @@ export interface Booking {
   paymentStatus: PaymentStatus
   amountPaid: number
   currency: Currency
+  source: 'direct' | 'platform'  // Direkt beim Provider oder über Kids Club Plattform
   notes?: string
   createdAt: Date
   updatedAt: Date
