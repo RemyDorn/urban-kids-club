@@ -858,12 +858,31 @@
                   </div>
                 </div>
               </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Bilder (URLs, kommagetrennt)</label>
-                <input name="images" value="${(a.images || []).join(', ')}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Hauptbild-URL, Galerie-1, Galerie-2">
-                <div class="text-xs text-gray-400 mt-1">Erstes Bild = Hauptbild</div>
-              </div>
             </div>
+
+            <!-- Kursbilder -->
+            <fieldset class="border border-gray-200 rounded-lg p-4">
+              <legend class="text-sm font-medium text-gray-700 px-2">Kursbilder</legend>
+              <div class="space-y-3">
+                <div>
+                  <label class="block text-xs text-gray-500 mb-1">Hauptbild (URL)</label>
+                  <input name="imageMain" value="${(a.images || [])[0] || ''}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="https://example.com/kurs-hauptbild.jpg">
+                </div>
+                <div>
+                  <label class="block text-xs text-gray-500 mb-1">Galerie-Bild 2 (URL)</label>
+                  <input name="image2" value="${(a.images || [])[1] || ''}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="https://...">
+                </div>
+                <div>
+                  <label class="block text-xs text-gray-500 mb-1">Galerie-Bild 3 (URL)</label>
+                  <input name="image3" value="${(a.images || [])[2] || ''}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="https://...">
+                </div>
+                ${(a.images || []).length > 0 ? `
+                <div class="flex gap-2 mt-2">
+                  ${(a.images || []).filter(Boolean).map(img => `<img src="${img}" class="w-16 h-16 object-cover rounded-lg border border-gray-200" onerror="this.style.display='none'">`).join('')}
+                </div>` : ''}
+                <div class="text-xs text-gray-400">Bilder werden im Kurs, auf der Kids Club Plattform und in Einbettungen angezeigt.</div>
+              </div>
+            </fieldset>
 
             <div class="flex items-center gap-6">
               <label class="flex items-center gap-2 cursor-pointer">
@@ -997,7 +1016,7 @@
         } : { enabled: false, platformCapacity: 0, featured: false, trialAvailable: false },
         tags: [],
         color: f.get('color') || undefined,
-        images: (f.get('images') || '').split(',').map(s => s.trim()).filter(Boolean),
+        images: [f.get('imageMain'), f.get('image2'), f.get('image3')].map(s => (s || '').trim()).filter(Boolean),
       }
 
       if (editId) {
@@ -2428,6 +2447,41 @@
             </div>
           </div>
 
+          <div class="bg-white rounded-xl border border-gray-200 p-6">
+            <h3 class="font-semibold text-gray-900 mb-4">Bilder & Branding</h3>
+            <div class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Logo (URL)</label>
+                <input id="sLogo" value="${s.logo || ''}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="https://example.com/logo.png">
+                ${s.logo ? `<img src="${s.logo}" class="mt-2 h-16 object-contain rounded border border-gray-200" onerror="this.style.display='none'">` : ''}
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Titelbild / Header (URL)</label>
+                <input id="sCover" value="${s.cover || ''}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="https://example.com/header.jpg">
+                ${s.cover ? `<img src="${s.cover}" class="mt-2 w-full h-32 object-cover rounded-lg border border-gray-200" onerror="this.style.display='none'">` : ''}
+                <div class="text-xs text-gray-400 mt-1">Wird als Banner auf der Kids Club Profilseite und Einbettungen angezeigt</div>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Galerie-Bilder (bis zu 5)</label>
+                <div class="space-y-2">
+                  ${[0,1,2,3,4].map(i => `<input id="sGallery${i}" value="${(s.gallery || [])[i] || ''}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Galerie-Bild ${i+1} URL">`).join('')}
+                </div>
+                ${(s.gallery || []).filter(Boolean).length > 0 ? `
+                <div class="flex gap-2 mt-2">
+                  ${(s.gallery || []).filter(Boolean).map(img => `<img src="${img}" class="w-20 h-20 object-cover rounded-lg border border-gray-200" onerror="this.style.display='none'">`).join('')}
+                </div>` : ''}
+                <div class="text-xs text-gray-400 mt-1">Bilder des Studios, Räume, Atmosphäre – für Eltern und die Plattform</div>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Primärfarbe (Branding)</label>
+                <div class="flex items-center gap-3">
+                  <input id="sBrandColor" type="color" value="${s.brandColor || '#0ea5e9'}" class="w-10 h-10 rounded-lg border border-gray-200 cursor-pointer">
+                  <span class="text-sm text-gray-500">Wird auf der Profilseite und in Widgets verwendet</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <button onclick="saveCompanySettings()" class="bg-brand-500 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-brand-600">Unternehmensdaten speichern</button>
         </div>
       `
@@ -2675,6 +2729,10 @@
       s.bundesland = document.getElementById('sBundesland')?.value
       s.description = document.getElementById('sDescription')?.value
       s.categories = (document.getElementById('sCategories')?.value || '').split(',').map(c => c.trim()).filter(Boolean)
+      s.logo = document.getElementById('sLogo')?.value
+      s.cover = document.getElementById('sCover')?.value
+      s.gallery = [0,1,2,3,4].map(i => document.getElementById('sGallery' + i)?.value).filter(Boolean)
+      s.brandColor = document.getElementById('sBrandColor')?.value
       saveProviderSettings(s)
       alert('Unternehmensdaten gespeichert!')
     }
