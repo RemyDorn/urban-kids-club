@@ -3,6 +3,7 @@
 // ============================================================
 
 import { ProviderService } from '../services/provider.service'
+import { CalendarService } from '../services/calendar.service'
 import { LocationService } from '../services/location.service'
 import { TeamService } from '../services/team.service'
 import { ActivityService } from '../services/activity.service'
@@ -266,6 +267,9 @@ export function seedDemoData() {
     validFrom: new Date('2026-05-01'),
     validUntil: new Date('2026-06-28'),
   })
+
+  // Kalender-Events aus Aktivitäten generieren
+  CalendarService.syncActivitiesToCalendar(provider.id)
 
   console.log(`✓ ${ProviderService.count()} Provider`)
   console.log(`✓ ${LocationService.listByProvider(provider.id).length} Standorte`)

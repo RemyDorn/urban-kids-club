@@ -25,6 +25,15 @@
     .stat-card { transition: all 0.2s ease; }
     .nav-item.active { background: linear-gradient(135deg, #0ea5e9, #0284c7); color: white; }
     .nav-item:not(.active):hover { background: #f0f9ff; }
+    /* Calendar */
+    .cal-grid { display: grid; grid-template-columns: 60px repeat(7, 1fr); }
+    .cal-hour { height: 64px; border-bottom: 1px solid #f3f4f6; }
+    .cal-event { position: absolute; left: 2px; right: 2px; border-radius: 6px; padding: 4px 8px; font-size: 12px; overflow: hidden; cursor: pointer; transition: all 0.15s; border-left: 3px solid; }
+    .cal-event:hover { transform: scale(1.02); box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 10 !important; }
+    .cal-day-col { position: relative; border-left: 1px solid #f3f4f6; }
+    .cal-today { background: #f0f9ff; }
+    .cal-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 50; display: flex; align-items: center; justify-content: center; }
+    .cal-modal { background: white; border-radius: 16px; padding: 24px; width: 480px; max-height: 80vh; overflow-y: auto; box-shadow: 0 25px 50px rgba(0,0,0,0.25); }
   </style>
 </head>
 <body class="h-full">
@@ -51,7 +60,11 @@
 
       <!-- Navigation -->
       <nav class="flex-1 p-3 space-y-1 overflow-y-auto">
-        <button onclick="navigate('dashboard')" data-page="dashboard" class="nav-item active w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all">
+        <button onclick="navigate('calendar')" data-page="calendar" class="nav-item active w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+          Kalender
+        </button>
+        <button onclick="navigate('dashboard')" data-page="dashboard" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 transition-all">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
           Dashboard
         </button>
@@ -129,7 +142,7 @@
       if (providers.length > 0) {
         currentProvider = providers[0]
         updateProviderDisplay()
-        navigate('dashboard')
+        navigate('calendar')
       }
     }
 
@@ -155,7 +168,7 @@
       const activeBtn = document.querySelector(`[data-page="${page}"]`)
       if (activeBtn) { activeBtn.classList.add('active'); activeBtn.classList.remove('text-gray-600') }
 
-      const titles = { dashboard: 'Dashboard', activities: 'Kurse & Angebote', bookings: 'Buchungen', customers: 'Kunden (CRM)', trials: 'Probestunden', invoices: 'Rechnungen', team: 'Team', holidays: 'Ferien & Saisons' }
+      const titles = { calendar: 'Kalender', dashboard: 'Dashboard', activities: 'Kurse & Angebote', bookings: 'Buchungen', customers: 'Kunden (CRM)', trials: 'Probestunden', invoices: 'Rechnungen', team: 'Team', holidays: 'Ferien & Saisons' }
       document.getElementById('pageTitle').textContent = titles[page] || page
 
       const content = document.getElementById('content')
@@ -164,9 +177,288 @@
       void content.offsetWidth
       content.classList.add('fade-in')
 
-      const renderers = { dashboard: renderDashboard, activities: renderActivities, bookings: renderBookings, customers: renderCustomers, trials: renderTrials, invoices: renderInvoices, team: renderTeam, holidays: renderHolidays }
+      const renderers = { calendar: renderCalendar, dashboard: renderDashboard, activities: renderActivities, bookings: renderBookings, customers: renderCustomers, trials: renderTrials, invoices: renderInvoices, team: renderTeam, holidays: renderHolidays }
       if (renderers[page]) renderers[page]()
     }
+
+    // --- Calendar (Hauptansicht) ---
+    let calWeekStart = getMonday(new Date())
+
+    function getMonday(d) {
+      const date = new Date(d)
+      const day = date.getDay()
+      const diff = date.getDate() - day + (day === 0 ? -6 : 1)
+      date.setDate(diff)
+      date.setHours(0, 0, 0, 0)
+      return date
+    }
+
+    function addDays(d, n) { const r = new Date(d); r.setDate(r.getDate() + n); return r }
+    function fmtDate(d) { return d.toISOString().split('T')[0] }
+    function fmtDateShort(d) { return d.toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'short' }) }
+
+    const eventColors = [
+      { bg: 'bg-blue-50', border: 'border-blue-400', text: 'text-blue-800', bar: 'bg-blue-400' },
+      { bg: 'bg-emerald-50', border: 'border-emerald-400', text: 'text-emerald-800', bar: 'bg-emerald-400' },
+      { bg: 'bg-purple-50', border: 'border-purple-400', text: 'text-purple-800', bar: 'bg-purple-400' },
+      { bg: 'bg-amber-50', border: 'border-amber-400', text: 'text-amber-800', bar: 'bg-amber-400' },
+      { bg: 'bg-pink-50', border: 'border-pink-400', text: 'text-pink-800', bar: 'bg-pink-400' },
+      { bg: 'bg-teal-50', border: 'border-teal-400', text: 'text-teal-800', bar: 'bg-teal-400' },
+      { bg: 'bg-orange-50', border: 'border-orange-400', text: 'text-orange-800', bar: 'bg-orange-400' },
+      { bg: 'bg-indigo-50', border: 'border-indigo-400', text: 'text-indigo-800', bar: 'bg-indigo-400' },
+    ]
+
+    async function renderCalendar() {
+      const start = fmtDate(calWeekStart)
+      const end = fmtDate(addDays(calWeekStart, 6))
+      const today = fmtDate(new Date())
+
+      // Sync calendar first, then fetch
+      await api(`/providers/${currentProvider.id}/calendar/sync`)
+      const [calData, activities, occupancy, bookingsRes] = await Promise.all([
+        api(`/providers/${currentProvider.id}/calendar?start=${start}&end=${end}`),
+        api(`/providers/${currentProvider.id}/activities`),
+        api(`/providers/${currentProvider.id}/reports/occupancy`),
+        api(`/providers/${currentProvider.id}/bookings`),
+      ])
+
+      const events = calData.data
+      const conflicts = calData.conflicts || []
+      const actMap = {}
+      activities.data.forEach(a => { actMap[a.id] = a })
+      const occMap = {}
+      occupancy.data.forEach(o => { occMap[o.activityId] = o })
+      // Color per activity
+      const colorMap = {}
+      let colorIdx = 0
+      activities.data.forEach(a => { colorMap[a.id] = eventColors[colorIdx++ % eventColors.length] })
+
+      // Days
+      const days = []
+      for (let i = 0; i < 7; i++) days.push(addDays(calWeekStart, i))
+
+      // Hours 7-21
+      const hours = []
+      for (let h = 7; h <= 21; h++) hours.push(h)
+
+      const hourHeight = 64 // px per hour
+
+      // Group events by day
+      const eventsByDay = {}
+      days.forEach(d => { eventsByDay[fmtDate(d)] = [] })
+      events.forEach(e => {
+        if (eventsByDay[e.date]) eventsByDay[e.date].push(e)
+      })
+
+      // Mini stats
+      const todayEvents = eventsByDay[today] || []
+      const todayBookings = bookingsRes.data.filter(b => b.status === 'confirmed').length
+      const weekEvents = events.filter(e => e.type === 'activity').length
+
+      document.getElementById('content').innerHTML = `
+        <!-- Calendar Header -->
+        <div class="flex items-center justify-between mb-6">
+          <div class="flex items-center gap-4">
+            <button onclick="calPrev()" class="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+              <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+            </button>
+            <button onclick="calToday()" class="px-4 py-1.5 text-sm font-medium bg-brand-500 text-white rounded-lg hover:bg-brand-600 transition-colors">Heute</button>
+            <button onclick="calNext()" class="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+              <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+            </button>
+            <h2 class="text-lg font-semibold text-gray-900">
+              ${calWeekStart.toLocaleDateString('de-DE', { day: 'numeric', month: 'long' })} – ${addDays(calWeekStart, 6).toLocaleDateString('de-DE', { day: 'numeric', month: 'long', year: 'numeric' })}
+            </h2>
+          </div>
+          <div class="flex items-center gap-6 text-sm">
+            <div class="flex items-center gap-2">
+              <div class="w-3 h-3 rounded-full bg-brand-500"></div>
+              <span class="text-gray-600"><strong>${todayEvents.length}</strong> Kurse heute</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <div class="w-3 h-3 rounded-full bg-emerald-500"></div>
+              <span class="text-gray-600"><strong>${weekEvents}</strong> diese Woche</span>
+            </div>
+            ${conflicts.length > 0 ? `<div class="flex items-center gap-2"><div class="w-3 h-3 rounded-full bg-red-500"></div><span class="text-red-600 font-medium">${conflicts.length} Konflikte!</span></div>` : ''}
+          </div>
+        </div>
+
+        ${conflicts.length > 0 ? `
+        <div class="mb-4 p-4 bg-red-50 border border-red-200 rounded-xl">
+          <div class="font-medium text-red-800 mb-2">Konflikte erkannt:</div>
+          ${conflicts.map(c => `<div class="text-sm text-red-700">- ${c.description}</div>`).join('')}
+        </div>` : ''}
+
+        <!-- Calendar Grid -->
+        <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <!-- Day Headers -->
+          <div class="cal-grid border-b border-gray-200">
+            <div class="p-2"></div>
+            ${days.map(d => {
+              const isToday = fmtDate(d) === today
+              return `<div class="p-3 text-center border-l border-gray-100 ${isToday ? 'bg-brand-50' : ''}">
+                <div class="text-xs text-gray-500 uppercase">${d.toLocaleDateString('de-DE', { weekday: 'short' })}</div>
+                <div class="text-lg font-bold ${isToday ? 'text-brand-600' : 'text-gray-900'}">${d.getDate()}</div>
+                ${isToday ? '<div class="w-2 h-2 rounded-full bg-brand-500 mx-auto mt-1"></div>' : ''}
+              </div>`
+            }).join('')}
+          </div>
+
+          <!-- Time Grid -->
+          <div class="cal-grid overflow-y-auto" style="max-height: 680px;">
+            <!-- Hours + Day Columns -->
+            ${hours.map(h => `
+              <div class="cal-hour flex items-start justify-end pr-2 pt-1">
+                <span class="text-xs text-gray-400">${h}:00</span>
+              </div>
+              ${days.map(d => {
+                const isToday = fmtDate(d) === today
+                return `<div class="cal-hour cal-day-col ${isToday ? 'cal-today' : ''}" data-date="${fmtDate(d)}" data-hour="${h}"></div>`
+              }).join('')}
+            `).join('')}
+          </div>
+        </div>
+
+        <!-- Modal -->
+        <div id="calModal" class="hidden"></div>
+      `
+
+      // Place events on the grid
+      days.forEach((d, dayIdx) => {
+        const dayEvents = eventsByDay[fmtDate(d)] || []
+        const col = dayIdx + 1 // 0 is the hour label column
+
+        dayEvents.forEach(event => {
+          const startParts = event.startTime.split(':')
+          const endParts = event.endTime.split(':')
+          const startH = parseInt(startParts[0]) + parseInt(startParts[1]) / 60
+          const endH = parseInt(endParts[0]) + parseInt(endParts[1]) / 60
+          const duration = endH - startH
+
+          const topOffset = (startH - 7) * hourHeight
+          const height = Math.max(duration * hourHeight - 4, 24)
+
+          const activity = actMap[event.activityId]
+          const occ = occMap[event.activityId]
+          const color = colorMap[event.activityId] || eventColors[0]
+          const occPct = occ ? Math.round(occ.occupancy * 100) : 0
+          const occText = occ ? `${occ.booked}/${occ.capacity}` : ''
+
+          // Find the day column cells
+          const dayCols = document.querySelectorAll(`.cal-day-col[data-date="${fmtDate(d)}"]`)
+          if (dayCols.length > 0) {
+            const container = dayCols[0].parentElement
+            // We need a positioned container for absolute events
+          }
+
+          // Use overlay approach: insert into first hour cell of the day column
+          const firstCell = document.querySelector(`.cal-day-col[data-date="${fmtDate(d)}"][data-hour="7"]`)
+          if (firstCell && !firstCell.style.position) {
+            firstCell.style.position = 'relative'
+            // Make all cells in this column relative containers
+            document.querySelectorAll(`.cal-day-col[data-date="${fmtDate(d)}"]`).forEach(c => c.style.position = 'relative')
+          }
+
+          if (firstCell) {
+            const eventEl = document.createElement('div')
+            eventEl.className = `cal-event ${color.bg} ${color.text} border-l-4 ${color.border}`
+            eventEl.style.top = `${topOffset}px`
+            eventEl.style.height = `${height}px`
+            eventEl.style.zIndex = '5'
+            eventEl.onclick = () => showEventDetail(event, activity, occ)
+
+            const showOcc = height > 40
+            eventEl.innerHTML = `
+              <div class="font-semibold truncate" style="font-size: 11px; line-height: 1.3;">${event.title}</div>
+              <div class="truncate" style="font-size: 10px; opacity: 0.8;">${event.startTime} – ${event.endTime}</div>
+              ${showOcc && occ ? `
+                <div class="flex items-center gap-1 mt-1">
+                  <div class="flex-1 bg-white/60 rounded-full h-1.5"><div class="${color.bar} h-1.5 rounded-full" style="width:${occPct}%"></div></div>
+                  <span style="font-size:9px;" class="font-medium">${occText}</span>
+                </div>
+              ` : ''}
+            `
+            firstCell.appendChild(eventEl)
+          }
+        })
+      })
+    }
+
+    function showEventDetail(event, activity, occ) {
+      const occPct = occ ? Math.round(occ.occupancy * 100) : 0
+      const modal = document.getElementById('calModal')
+      modal.className = 'cal-modal-backdrop'
+      modal.onclick = (e) => { if (e.target === modal) modal.className = 'hidden' }
+      modal.innerHTML = `
+        <div class="cal-modal fade-in">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-bold text-gray-900">${event.title}</h3>
+            <button onclick="document.getElementById('calModal').className='hidden'" class="text-gray-400 hover:text-gray-600">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+          </div>
+
+          <div class="space-y-4">
+            <div class="grid grid-cols-2 gap-4">
+              <div class="bg-gray-50 rounded-lg p-3">
+                <div class="text-xs text-gray-500 mb-1">Datum</div>
+                <div class="font-semibold text-gray-900">${new Date(event.date).toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
+              </div>
+              <div class="bg-gray-50 rounded-lg p-3">
+                <div class="text-xs text-gray-500 mb-1">Uhrzeit</div>
+                <div class="font-semibold text-gray-900">${event.startTime} – ${event.endTime}</div>
+              </div>
+            </div>
+
+            ${activity ? `
+              <div class="bg-gray-50 rounded-lg p-3">
+                <div class="text-xs text-gray-500 mb-1">Beschreibung</div>
+                <div class="text-sm text-gray-700">${activity.description}</div>
+              </div>
+              <div class="grid grid-cols-3 gap-3">
+                <div class="bg-gray-50 rounded-lg p-3 text-center">
+                  <div class="text-xs text-gray-500">Altersgruppe</div>
+                  <div class="font-bold text-gray-900">${activity.ageRange.min}–${activity.ageRange.max} J.</div>
+                </div>
+                <div class="bg-gray-50 rounded-lg p-3 text-center">
+                  <div class="text-xs text-gray-500">Kategorie</div>
+                  <div class="font-bold text-gray-900">${activity.category}</div>
+                </div>
+                <div class="bg-gray-50 rounded-lg p-3 text-center">
+                  <div class="text-xs text-gray-500">Preis</div>
+                  <div class="font-bold text-gray-900">${activity.pricing.map(p => p.amount + '€').join(' / ')}</div>
+                </div>
+              </div>
+            ` : ''}
+
+            ${occ ? `
+              <div class="bg-white border border-gray-200 rounded-lg p-4">
+                <div class="flex items-center justify-between mb-3">
+                  <span class="font-medium text-gray-900">Auslastung</span>
+                  <span class="text-2xl font-bold ${occPct > 80 ? 'text-red-600' : occPct > 50 ? 'text-amber-600' : 'text-green-600'}">${occPct}%</span>
+                </div>
+                <div class="w-full bg-gray-100 rounded-full h-3 mb-2">
+                  <div class="h-3 rounded-full transition-all ${occPct > 80 ? 'bg-red-500' : occPct > 50 ? 'bg-amber-500' : 'bg-green-500'}" style="width:${occPct}%"></div>
+                </div>
+                <div class="flex justify-between text-sm">
+                  <span class="text-gray-500">Gebucht: <strong>${occ.booked}</strong> / ${occ.capacity}</span>
+                  ${occ.waitlisted > 0 ? `<span class="text-amber-600 font-medium">${occ.waitlisted} auf Warteliste</span>` : `<span class="text-green-600">${occ.capacity - occ.booked} Plätze frei</span>`}
+                </div>
+              </div>
+            ` : ''}
+
+            <div class="flex gap-3">
+              <button onclick="navigate('bookings'); document.getElementById('calModal').className='hidden'" class="flex-1 bg-brand-500 text-white py-2 rounded-lg font-medium hover:bg-brand-600 transition-colors text-sm">Buchungen anzeigen</button>
+              <button onclick="navigate('activities'); document.getElementById('calModal').className='hidden'" class="flex-1 bg-gray-100 text-gray-700 py-2 rounded-lg font-medium hover:bg-gray-200 transition-colors text-sm">Kurs bearbeiten</button>
+            </div>
+          </div>
+        </div>
+      `
+    }
+
+    function calPrev() { calWeekStart = addDays(calWeekStart, -7); renderCalendar() }
+    function calNext() { calWeekStart = addDays(calWeekStart, 7); renderCalendar() }
+    function calToday() { calWeekStart = getMonday(new Date()); renderCalendar() }
 
     // --- Dashboard ---
     async function renderDashboard() {
