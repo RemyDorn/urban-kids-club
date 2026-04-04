@@ -10,7 +10,7 @@
   "scripts": {
     "typecheck": "tsc -b packages/provider-dashboard/tsconfig.json",
     "dev": "cd packages/provider-dashboard && npx tsx src/api/server.ts",
-    "test": "echo 'TODO: test framework'"
+    "test": "node --import tsx --test packages/provider-dashboard/src/__tests__/*.test.ts"
   },
   "devDependencies": {
     "typescript": "^5.4.0",

@@ -637,6 +637,11 @@ export function registerRoutes(router: Router) {
     res.status(201).json({ data: holidays, count: holidays.length })
   })
 
+  router.get('/api/holidays/bundeslaender', (_req, res) => {
+    const laender = HolidayService.getAvailableBundeslaender()
+    res.json({ data: laender })
+  })
+
   // ============================================================
   // CONTRACTS (Scheinselbständigkeit)
   // ============================================================

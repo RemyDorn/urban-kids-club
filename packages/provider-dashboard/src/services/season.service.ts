@@ -105,14 +105,7 @@ export interface CreateHolidayInput {
   region?: string
 }
 
-// Vordefinierte deutsche Schulferien (Beispiel NRW 2026)
-export const GERMAN_HOLIDAYS_NRW_2026 = [
-  { name: 'Osterferien NRW 2026', startDate: '2026-03-30', endDate: '2026-04-11' },
-  { name: 'Pfingstferien NRW 2026', startDate: '2026-05-26', endDate: '2026-05-26' },
-  { name: 'Sommerferien NRW 2026', startDate: '2026-06-29', endDate: '2026-08-11' },
-  { name: 'Herbstferien NRW 2026', startDate: '2026-10-12', endDate: '2026-10-24' },
-  { name: 'Weihnachtsferien NRW 2026', startDate: '2026-12-21', endDate: '2027-01-05' },
-]
+import { SCHULFERIEN_2026, BUNDESLAND_NAMES, ALL_BUNDESLAENDER, type Bundesland } from './holidays-de'
 
 export const HolidayService = {
 
@@ -176,9 +169,24 @@ export const HolidayService = {
     return dates
   },
 
-  // NRW-Ferien als Vorlage importieren
-  importGermanHolidays(providerId: ID, region: string = 'NRW'): Holiday[] {
-    const templates = region === 'NRW' ? GERMAN_HOLIDAYS_NRW_2026 : []
+  // Ferien für ein Bundesland importieren (alle 16 Bundesländer verfügbar)
+  importGermanHolidays(providerId: ID, region: string = 'NW'): Holiday[] {
+    const bundesland = region as Bundesland
+    const templates = SCHULFERIEN_2026[bundesland] ?? []
+
+    if (templates.length === 0) {
+      // Fallback: versuche Alias-Mapping und Namen-Suche
+      const aliases: Record<string, Bundesland> = { 'NRW': 'NW', 'BAYERN': 'BY', 'BERLIN': 'BE', 'HAMBURG': 'HH', 'HESSEN': 'HE', 'SACHSEN': 'SN', 'BREMEN': 'HB', 'SAARLAND': 'SL' }
+      const alias = aliases[region.toUpperCase()]
+      if (alias) return this.importGermanHolidays(providerId, alias)
+
+      const found = ALL_BUNDESLAENDER.find((bl) =>
+        BUNDESLAND_NAMES[bl].toLowerCase().includes(region.toLowerCase())
+      )
+      if (found) return this.importGermanHolidays(providerId, found)
+      return []
+    }
+
     return templates.map((t) =>
       this.create({
         providerId,
@@ -186,9 +194,18 @@ export const HolidayService = {
         startDate: t.startDate,
         endDate: t.endDate,
         cancelActivities: true,
-        region,
+        region: `${bundesland} (${BUNDESLAND_NAMES[bundesland]})`,
       })
     )
+  },
+
+  // Alle verfügbaren Bundesländer
+  getAvailableBundeslaender(): Array<{ code: string; name: string; holidayCount: number }> {
+    return ALL_BUNDESLAENDER.map((bl) => ({
+      code: bl,
+      name: BUNDESLAND_NAMES[bl],
+      holidayCount: SCHULFERIEN_2026[bl].length,
+    }))
   },
 
   delete(id: ID): boolean {

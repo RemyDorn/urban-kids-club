@@ -242,7 +242,7 @@ export function seedDemoData() {
   })
   SeasonService.activate(season.id)
 
-  HolidayService.importGermanHolidays(provider.id, 'NRW')
+  HolidayService.importGermanHolidays(provider.id, 'NW')
 
   // --- Gutschein ---
   CouponService.create({

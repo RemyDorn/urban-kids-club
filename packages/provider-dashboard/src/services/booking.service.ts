@@ -65,13 +65,11 @@ export const BookingService = {
     let status: BookingStatus = 'confirmed'
     let waitlisted = false
 
-    if (!capacityCheck.valid) {
-      if (capacityCheck.errors[0] === WAITLIST_SIGNAL) {
-        status = 'waitlisted'
-        waitlisted = true
-      } else {
-        return { error: capacityCheck.errors[0] }
-      }
+    if (capacityCheck.errors[0] === WAITLIST_SIGNAL) {
+      status = 'waitlisted'
+      waitlisted = true
+    } else if (!capacityCheck.valid) {
+      return { error: capacityCheck.errors[0] }
     }
 
     // --- Gutschein validieren ---
