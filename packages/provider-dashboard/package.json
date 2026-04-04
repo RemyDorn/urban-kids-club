@@ -1,0 +1,15 @@
+{
+  "name": "@urban-kids-club/provider-dashboard",
+  "version": "0.1.0",
+  "description": "SaaS-Software für Kursanbieter – eigenständig nutzbar, nahtlos in Urban Kids Club integriert",
+  "main": "src/index.ts",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "echo 'TODO: tests'"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}
