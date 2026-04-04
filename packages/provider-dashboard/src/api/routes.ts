@@ -847,6 +847,19 @@ export function registerRoutes(router: Router) {
   // HEALTH CHECK
   // ============================================================
 
+  // ============================================================
+  // OPENAPI SPEC
+  // ============================================================
+
+  router.get('/api/openapi.json', async (_req, res) => {
+    const { openApiSpec } = await import('./openapi')
+    res.json(openApiSpec)
+  })
+
+  // ============================================================
+  // HEALTH CHECK
+  // ============================================================
+
   router.get('/api/health', (_req, res) => {
     res.json({
       status: 'ok',
