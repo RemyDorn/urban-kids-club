@@ -20,6 +20,8 @@ export interface CreateActivityInput {
   trialEnabled?: boolean
   pricing: Omit<PricingOption, 'id'>[]
   platformListing?: { enabled: boolean; platformCapacity: number; featured: boolean; trialAvailable: boolean }
+  color?: string
+  images?: string[]
   media?: string[]
   tags?: string[]
 }
@@ -74,6 +76,8 @@ export const ActivityService = {
       waitlistEnabled: input.waitlistEnabled ?? false,
       trialEnabled: input.trialEnabled ?? true,
       platformListing: input.platformListing,
+      color: input.color,
+      images: input.images ?? [],
       pricing,
       media: input.media ?? [],
       tags: input.tags ?? [],

@@ -860,27 +860,25 @@
               </div>
             </div>
 
-            <!-- Kursbilder -->
+            <!-- Kursbilder (Upload) -->
             <fieldset class="border border-gray-200 rounded-lg p-4">
-              <legend class="text-sm font-medium text-gray-700 px-2">Kursbilder</legend>
-              <div class="space-y-3">
-                <div>
-                  <label class="block text-xs text-gray-500 mb-1">Hauptbild (URL)</label>
-                  <input name="imageMain" value="${(a.images || [])[0] || ''}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="https://example.com/kurs-hauptbild.jpg">
+              <legend class="text-sm font-medium text-gray-700 px-2">Kursbilder (max. 3)</legend>
+              <div id="courseImageUpload" class="space-y-3">
+                <div class="flex gap-3" id="imagePreviewRow">
+                  ${[0,1,2].map(i => {
+                    const img = (a.images || [])[i]
+                    return `<div class="relative group">
+                      <div class="w-24 h-24 rounded-lg border-2 border-dashed ${img ? 'border-brand-300 bg-brand-50' : 'border-gray-200 bg-gray-50'} flex items-center justify-center overflow-hidden cursor-pointer hover:border-brand-400" onclick="document.getElementById('imgInput_${i}').click()">
+                        ${img ? `<img src="${img}" class="w-full h-full object-cover" id="imgPrev_${i}" onerror="this.parentElement.innerHTML='<span class=\\'text-gray-400 text-2xl\\'>+</span>'">` : `<span class="text-gray-400 text-2xl">+</span>`}
+                      </div>
+                      ${img ? `<button type="button" onclick="removeImage(${i})" class="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100">x</button>` : ''}
+                      <input type="file" id="imgInput_${i}" accept="image/*" class="hidden" onchange="handleImageUpload(${i}, this)">
+                      <input type="hidden" name="imgData_${i}" value="${img || ''}">
+                      <div class="text-xs text-center text-gray-400 mt-1">${i === 0 ? 'Hauptbild' : 'Galerie ' + (i+1)}</div>
+                    </div>`
+                  }).join('')}
                 </div>
-                <div>
-                  <label class="block text-xs text-gray-500 mb-1">Galerie-Bild 2 (URL)</label>
-                  <input name="image2" value="${(a.images || [])[1] || ''}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="https://...">
-                </div>
-                <div>
-                  <label class="block text-xs text-gray-500 mb-1">Galerie-Bild 3 (URL)</label>
-                  <input name="image3" value="${(a.images || [])[2] || ''}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="https://...">
-                </div>
-                ${(a.images || []).length > 0 ? `
-                <div class="flex gap-2 mt-2">
-                  ${(a.images || []).filter(Boolean).map(img => `<img src="${img}" class="w-16 h-16 object-cover rounded-lg border border-gray-200" onerror="this.style.display='none'">`).join('')}
-                </div>` : ''}
-                <div class="text-xs text-gray-400">Bilder werden im Kurs, auf der Kids Club Plattform und in Einbettungen angezeigt.</div>
+                <div class="text-xs text-gray-400">Bilder werden automatisch auf max. 800px komprimiert. Erlaubt: JPG, PNG, WebP (max. 5 MB).</div>
               </div>
             </fieldset>
 
@@ -1016,7 +1014,7 @@
         } : { enabled: false, platformCapacity: 0, featured: false, trialAvailable: false },
         tags: [],
         color: f.get('color') || undefined,
-        images: [f.get('imageMain'), f.get('image2'), f.get('image3')].map(s => (s || '').trim()).filter(Boolean),
+        images: [f.get('imgData_0'), f.get('imgData_1'), f.get('imgData_2')].filter(Boolean),
       }
 
       if (editId) {
@@ -2236,6 +2234,80 @@
       ta.selectionStart = ta.selectionEnd = start + variable.length
     }
 
+    // --- Image Upload + Compression ---
+    function handleImageUpload(idx, input) {
+      const file = input.files[0]
+      if (!file) return
+      if (file.size > 5 * 1024 * 1024) { alert('Datei zu groß (max. 5 MB)'); return }
+      if (!file.type.startsWith('image/')) { alert('Nur Bilddateien erlaubt'); return }
+      compressImage(file, 800, 0.8, (dataUrl) => {
+        const hidden = document.querySelector(`[name="imgData_${idx}"]`)
+        if (hidden) hidden.value = dataUrl
+        const container = input.closest('.relative')
+        const imgArea = container.querySelector('.w-24')
+        imgArea.innerHTML = `<img src="${dataUrl}" class="w-full h-full object-cover">`
+        imgArea.className = imgArea.className.replace('border-gray-200 bg-gray-50', 'border-brand-300 bg-brand-50')
+      })
+    }
+
+    function compressImage(file, maxSize, quality, callback) {
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        const img = new Image()
+        img.onload = () => {
+          const canvas = document.createElement('canvas')
+          let w = img.width, h = img.height
+          if (w > maxSize || h > maxSize) {
+            if (w > h) { h = Math.round(h * maxSize / w); w = maxSize }
+            else { w = Math.round(w * maxSize / h); h = maxSize }
+          }
+          canvas.width = w; canvas.height = h
+          const ctx = canvas.getContext('2d')
+          ctx.drawImage(img, 0, 0, w, h)
+          callback(canvas.toDataURL('image/jpeg', quality))
+        }
+        img.src = e.target.result
+      }
+      reader.readAsDataURL(file)
+    }
+
+    function uploadProviderImage(key, input, maxPx) {
+      const file = input.files[0]
+      if (!file) return
+      if (file.size > 5 * 1024 * 1024) { alert('Datei zu groß (max. 5 MB)'); return }
+      compressImage(file, maxPx || 800, 0.8, (dataUrl) => {
+        if (key === 'logo') {
+          document.getElementById('sLogo').value = dataUrl
+          input.closest('div').querySelector('.w-20').innerHTML = `<img src="${dataUrl}" class="w-full h-full object-contain">`
+        } else if (key === 'cover') {
+          document.getElementById('sCover').value = dataUrl
+          input.closest('div').querySelector('.h-32').innerHTML = `<img src="${dataUrl}" class="w-full h-full object-cover">`
+        } else if (key.startsWith('gallery_')) {
+          const idx = parseInt(key.split('_')[1])
+          document.getElementById('sGallery' + idx).value = dataUrl
+          input.closest('.relative').querySelector('.w-24').innerHTML = `<img src="${dataUrl}" class="w-full h-full object-cover">`
+        }
+      })
+    }
+
+    function removeProviderImage(type, idx) {
+      if (type === 'gallery') {
+        document.getElementById('sGallery' + idx).value = ''
+        const el = document.getElementById('galleryUpload_' + idx)?.closest('.relative')?.querySelector('.w-24')
+        if (el) el.innerHTML = '<span class="text-gray-400 text-xl">+</span>'
+      }
+    }
+
+    function removeImage(idx) {
+      const hidden = document.querySelector(`[name="imgData_${idx}"]`)
+      if (hidden) hidden.value = ''
+      const container = document.getElementById('imgInput_' + idx)?.closest('.relative')
+      if (container) {
+        const imgArea = container.querySelector('.w-24')
+        imgArea.innerHTML = '<span class="text-gray-400 text-2xl">+</span>'
+      }
+    }
+
     function renderTrackingTab() {
       const pixels = getPixelSettings()
       return `
@@ -2449,34 +2521,53 @@
 
           <div class="bg-white rounded-xl border border-gray-200 p-6">
             <h3 class="font-semibold text-gray-900 mb-4">Bilder & Branding</h3>
-            <div class="space-y-4">
+            <div class="space-y-5">
+              <!-- Logo Upload -->
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Logo (URL)</label>
-                <input id="sLogo" value="${s.logo || ''}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="https://example.com/logo.png">
-                ${s.logo ? `<img src="${s.logo}" class="mt-2 h-16 object-contain rounded border border-gray-200" onerror="this.style.display='none'">` : ''}
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Titelbild / Header (URL)</label>
-                <input id="sCover" value="${s.cover || ''}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="https://example.com/header.jpg">
-                ${s.cover ? `<img src="${s.cover}" class="mt-2 w-full h-32 object-cover rounded-lg border border-gray-200" onerror="this.style.display='none'">` : ''}
-                <div class="text-xs text-gray-400 mt-1">Wird als Banner auf der Kids Club Profilseite und Einbettungen angezeigt</div>
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Galerie-Bilder (bis zu 5)</label>
-                <div class="space-y-2">
-                  ${[0,1,2,3,4].map(i => `<input id="sGallery${i}" value="${(s.gallery || [])[i] || ''}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Galerie-Bild ${i+1} URL">`).join('')}
+                <label class="block text-sm font-medium text-gray-700 mb-2">Logo</label>
+                <div class="flex items-center gap-4">
+                  <div class="w-20 h-20 rounded-xl border-2 border-dashed ${s.logo ? 'border-brand-300' : 'border-gray-200'} flex items-center justify-center overflow-hidden cursor-pointer hover:border-brand-400" onclick="document.getElementById('logoUpload').click()">
+                    ${s.logo ? `<img src="${s.logo}" class="w-full h-full object-contain">` : '<span class="text-gray-400 text-2xl">+</span>'}
+                  </div>
+                  <input type="file" id="logoUpload" accept="image/*" class="hidden" onchange="uploadProviderImage('logo', this, 200)">
+                  <div class="text-xs text-gray-400">Quadratisch, wird auf 200px komprimiert</div>
                 </div>
-                ${(s.gallery || []).filter(Boolean).length > 0 ? `
-                <div class="flex gap-2 mt-2">
-                  ${(s.gallery || []).filter(Boolean).map(img => `<img src="${img}" class="w-20 h-20 object-cover rounded-lg border border-gray-200" onerror="this.style.display='none'">`).join('')}
-                </div>` : ''}
-                <div class="text-xs text-gray-400 mt-1">Bilder des Studios, Räume, Atmosphäre – für Eltern und die Plattform</div>
+                <input type="hidden" id="sLogo" value="${s.logo || ''}">
               </div>
+              <!-- Titelbild Upload -->
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Primärfarbe (Branding)</label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Titelbild / Header</label>
+                <div class="w-full h-32 rounded-xl border-2 border-dashed ${s.cover ? 'border-brand-300' : 'border-gray-200'} flex items-center justify-center overflow-hidden cursor-pointer hover:border-brand-400" onclick="document.getElementById('coverUpload').click()">
+                  ${s.cover ? `<img src="${s.cover}" class="w-full h-full object-cover">` : '<div class="text-gray-400 text-center"><div class="text-2xl">+</div><div class="text-xs">Titelbild hochladen</div></div>'}
+                </div>
+                <input type="file" id="coverUpload" accept="image/*" class="hidden" onchange="uploadProviderImage('cover', this, 1200)">
+                <input type="hidden" id="sCover" value="${s.cover || ''}">
+                <div class="text-xs text-gray-400 mt-1">Banner für Profilseite, wird auf 1200px Breite komprimiert</div>
+              </div>
+              <!-- Galerie Upload -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Studio-Galerie (bis zu 5 Bilder)</label>
+                <div class="flex gap-3 flex-wrap">
+                  ${[0,1,2,3,4].map(i => {
+                    const img = (s.gallery || [])[i]
+                    return `<div class="relative group">
+                      <div class="w-24 h-24 rounded-lg border-2 border-dashed ${img ? 'border-brand-300' : 'border-gray-200'} flex items-center justify-center overflow-hidden cursor-pointer hover:border-brand-400" onclick="document.getElementById('galleryUpload_${i}').click()">
+                        ${img ? `<img src="${img}" class="w-full h-full object-cover">` : '<span class="text-gray-400 text-xl">+</span>'}
+                      </div>
+                      ${img ? `<button type="button" onclick="removeProviderImage('gallery', ${i})" class="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100">x</button>` : ''}
+                      <input type="file" id="galleryUpload_${i}" accept="image/*" class="hidden" onchange="uploadProviderImage('gallery_${i}', this, 800)">
+                      <input type="hidden" id="sGallery${i}" value="${img || ''}">
+                    </div>`
+                  }).join('')}
+                </div>
+                <div class="text-xs text-gray-400 mt-2">Studio, Räume, Atmosphäre – automatisch auf 800px komprimiert</div>
+              </div>
+              <!-- Branding -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Primärfarbe</label>
                 <div class="flex items-center gap-3">
                   <input id="sBrandColor" type="color" value="${s.brandColor || '#0ea5e9'}" class="w-10 h-10 rounded-lg border border-gray-200 cursor-pointer">
-                  <span class="text-sm text-gray-500">Wird auf der Profilseite und in Widgets verwendet</span>
+                  <span class="text-sm text-gray-500">Profilseite & Widgets</span>
                 </div>
               </div>
             </div>
