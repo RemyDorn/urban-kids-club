@@ -250,15 +250,26 @@
     // Core calendar renderer – renders into any container
     async function renderCalendarInto(containerId) {
       activeCalContainer = containerId
+      const calContainer = document.getElementById(containerId)
+      if (!calContainer) { console.error('Calendar container not found:', containerId); return }
+
       const start = fmtDate(calWeekStart)
       const end = fmtDate(addDays(calWeekStart, 6))
       const today = fmtDate(new Date())
 
-      const [activities, occupancy, holidays] = await Promise.all([
-        api(`/providers/${currentProvider.id}/activities`),
-        api(`/providers/${currentProvider.id}/reports/occupancy`),
-        api(`/providers/${currentProvider.id}/holidays`),
-      ])
+      let activities, occupancy, holidays
+      try {
+        const results = await Promise.all([
+          api(`/providers/${currentProvider.id}/activities`),
+          api(`/providers/${currentProvider.id}/reports/occupancy`),
+          api(`/providers/${currentProvider.id}/holidays`),
+        ])
+        activities = results[0]; occupancy = results[1]; holidays = results[2]
+      } catch (err) {
+        console.error('Calendar data fetch error:', err)
+        calContainer.innerHTML = '<div class="text-red-500 text-sm p-4">Kalender konnte nicht geladen werden.</div>'
+        return
+      }
 
       const actMap = {}
       activities.data.forEach(a => { actMap[a.id] = a })
@@ -323,8 +334,6 @@
       const todayBookings = bookingsRes.data.filter(b => b.status === 'confirmed').length
       const weekEvents = events.filter(e => e.type === 'activity').length
 
-      const calContainer = document.getElementById(containerId)
-      if (!calContainer) return
       calContainer.innerHTML = `
         <!-- Calendar Header -->
         <div class="flex items-center justify-between mb-6">
