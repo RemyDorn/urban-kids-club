@@ -1,0 +1,23 @@
+{
+  "name": "urban-kids-club",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Plattform für Kinderkurse – Eltern finden und buchen, Anbieter verwalten ihr Business",
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "typecheck": "tsc -b packages/provider-dashboard/tsconfig.json",
+    "dev": "cd packages/provider-dashboard && npx tsx src/api/server.ts",
+    "test": "echo 'TODO: test framework'"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "tsx": "^4.7.0",
+    "@types/node": "^20.11.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
