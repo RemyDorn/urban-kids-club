@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Urban Kids Club – Kurse finden &amp; buchen</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: { 50:'#f0f9ff',100:'#e0f2fe',200:'#bae6fd',300:'#7dd3fc',400:'#38bdf8',500:'#0ea5e9',600:'#0284c7',700:'#0369a1',800:'#075985',900:'#0c4a6e' },
+            accent: { 400:'#fb923c',500:'#f97316',600:'#ea580c' }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    [x-cloak] { display: none !important; }
+    .card-hover { transition: transform .15s, box-shadow .15s; }
+    .card-hover:hover { transform: translateY(-4px); box-shadow: 0 12px 24px rgba(0,0,0,.1); }
+    .modal-bg { background: rgba(0,0,0,.45); }
+    .category-icon { width:48px; height:48px; display:flex; align-items:center; justify-content:center; border-radius:12px; font-size:24px; }
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-800 antialiased">
+
+  <!-- ============ HEADER ============ -->
+  <header class="bg-white shadow-sm sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+      <a href="/" class="flex items-center gap-2 shrink-0">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center text-white font-bold text-lg">U</div>
+        <span class="text-xl font-bold bg-gradient-to-r from-brand-600 to-brand-400 bg-clip-text text-transparent hidden sm:inline">Urban Kids Club</span>
+      </a>
+      <div class="flex-1 max-w-xl hidden md:block">
+        <input id="headerSearch" type="text" placeholder="Suche nach Kursen, Standort..." class="w-full px-4 py-2 rounded-full border border-gray-200 focus:border-brand-400 focus:ring-2 focus:ring-brand-100 outline-none text-sm" />
+      </div>
+      <div class="flex items-center gap-3">
+        <button class="text-sm text-gray-500 hover:text-brand-600">Anmelden</button>
+        <button class="text-sm bg-brand-500 hover:bg-brand-600 text-white px-4 py-2 rounded-full font-medium">Registrieren</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ============ HERO ============ -->
+  <section class="bg-gradient-to-br from-brand-500 via-brand-400 to-sky-300 text-white py-16 md:py-24">
+    <div class="max-w-4xl mx-auto px-4 text-center">
+      <h1 class="text-3xl md:text-5xl font-extrabold leading-tight mb-4">Entdecke die besten Kurse<br>für dein Kind</h1>
+      <p class="text-lg md:text-xl opacity-90 mb-10">Tanz, Musik, Sport, Kreativ &amp; STEM – alles in deiner Nähe</p>
+
+      <div class="bg-white rounded-2xl shadow-xl p-4 md:p-6 max-w-3xl mx-auto">
+        <form id="heroSearchForm" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+          <select id="filterCategory" class="rounded-lg border border-gray-200 px-3 py-2.5 text-gray-700 text-sm focus:ring-2 focus:ring-brand-200 outline-none">
+            <option value="">Alle Kategorien</option>
+            <option value="dance">Tanz</option>
+            <option value="music">Musik</option>
+            <option value="sports">Sport</option>
+            <option value="creative">Kreativ</option>
+            <option value="stem">STEM</option>
+          </select>
+          <select id="filterAge" class="rounded-lg border border-gray-200 px-3 py-2.5 text-gray-700 text-sm focus:ring-2 focus:ring-brand-200 outline-none">
+            <option value="">Jedes Alter</option>
+            <option value="2">ab 2 Jahre</option>
+            <option value="4">ab 4 Jahre</option>
+            <option value="6">ab 6 Jahre</option>
+            <option value="8">ab 8 Jahre</option>
+            <option value="10">ab 10 Jahre</option>
+            <option value="12">ab 12 Jahre</option>
+          </select>
+          <input id="filterCity" type="text" placeholder="Stadt / PLZ" class="rounded-lg border border-gray-200 px-3 py-2.5 text-gray-700 text-sm focus:ring-2 focus:ring-brand-200 outline-none" />
+          <button type="submit" class="bg-accent-500 hover:bg-accent-600 text-white font-semibold rounded-lg px-6 py-2.5 text-sm transition-colors">Kurse finden</button>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ COURSE GRID ============ -->
+  <main class="max-w-7xl mx-auto px-4 py-12">
+    <div class="flex items-center justify-between mb-8">
+      <h2 class="text-2xl font-bold text-gray-900">Verfügbare Kurse</h2>
+      <span id="courseCount" class="text-sm text-gray-500"></span>
+    </div>
+    <div id="courseGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+      <!-- Cards inserted by JS -->
+    </div>
+    <div id="loadingState" class="text-center py-20">
+      <div class="inline-block w-8 h-8 border-4 border-brand-200 border-t-brand-500 rounded-full animate-spin"></div>
+      <p class="mt-3 text-gray-400 text-sm">Kurse werden geladen...</p>
+    </div>
+    <div id="emptyState" class="hidden text-center py-20">
+      <p class="text-4xl mb-3">&#128269;</p>
+      <p class="text-gray-500">Keine Kurse gefunden. Versuche andere Filter.</p>
+    </div>
+  </main>
+
+  <!-- ============ COURSE DETAIL MODAL ============ -->
+  <div id="detailModal" class="fixed inset-0 z-50 hidden">
+    <div class="modal-bg absolute inset-0" id="modalOverlay"></div>
+    <div class="relative z-10 flex items-start justify-center min-h-screen pt-8 pb-16 px-4">
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
+        <div id="modalHeader" class="h-48 relative flex items-end p-6">
+          <button id="modalClose" class="absolute top-4 right-4 w-8 h-8 bg-white/80 rounded-full flex items-center justify-center text-gray-600 hover:bg-white">&times;</button>
+          <div>
+            <span id="modalCategory" class="inline-block text-xs font-semibold px-2 py-1 rounded-full bg-white/90 text-brand-600 mb-2"></span>
+            <h2 id="modalTitle" class="text-2xl font-bold text-white drop-shadow"></h2>
+          </div>
+        </div>
+        <div class="p-6 space-y-6">
+          <div class="flex flex-wrap gap-4 text-sm text-gray-600">
+            <span id="modalAge" class="flex items-center gap-1">&#128118; <span></span></span>
+            <span id="modalSchedule" class="flex items-center gap-1">&#128197; <span></span></span>
+            <span id="modalSpots" class="flex items-center gap-1">&#127915; <span></span></span>
+          </div>
+          <p id="modalDescription" class="text-gray-700 leading-relaxed"></p>
+
+          <!-- Pricing -->
+          <div>
+            <h3 class="font-semibold text-gray-900 mb-3">Preise</h3>
+            <div id="modalPricing" class="grid gap-2"></div>
+          </div>
+
+          <!-- Provider -->
+          <div id="modalProvider" class="flex items-center gap-3 bg-gray-50 rounded-xl p-4">
+            <div class="w-10 h-10 rounded-full bg-brand-100 text-brand-600 flex items-center justify-center font-bold text-sm"></div>
+            <div>
+              <p class="font-medium text-gray-900"></p>
+              <p class="text-xs text-gray-500"></p>
+            </div>
+          </div>
+
+          <!-- Reviews -->
+          <div id="modalReviews">
+            <h3 class="font-semibold text-gray-900 mb-3">Bewertungen</h3>
+            <div id="reviewsList" class="space-y-3"></div>
+          </div>
+
+          <!-- Booking CTAs -->
+          <div class="flex gap-3 pt-2">
+            <button id="btnTrial" class="flex-1 border-2 border-brand-500 text-brand-600 hover:bg-brand-50 font-semibold py-3 rounded-xl transition-colors">Probestunde buchen</button>
+            <button id="btnBook" class="flex-1 bg-accent-500 hover:bg-accent-600 text-white font-semibold py-3 rounded-xl transition-colors">Jetzt buchen</button>
+          </div>
+
+          <!-- Booking Form (hidden by default) -->
+          <form id="bookingForm" class="hidden space-y-4 border-t pt-6">
+            <h3 class="font-semibold text-gray-900">Buchung abschliessen</h3>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs font-medium text-gray-500 mb-1">Name des Kindes</label>
+                <input name="childName" required class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-200 outline-none" />
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-500 mb-1">Alter</label>
+                <input name="childAge" type="number" min="1" max="18" required class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-200 outline-none" />
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-500 mb-1">Eltern-Name</label>
+                <input name="parentName" required class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-200 outline-none" />
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-500 mb-1">E-Mail</label>
+                <input name="parentEmail" type="email" required class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-200 outline-none" />
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-500 mb-1">Notfallkontakt</label>
+                <input name="emergencyContact" required class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-200 outline-none" />
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-500 mb-1">Notfallnummer</label>
+                <input name="emergencyPhone" type="tel" required class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-200 outline-none" />
+              </div>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-500 mb-1">Medizinische Hinweise (optional)</label>
+              <textarea name="medicalNotes" rows="2" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-200 outline-none"></textarea>
+            </div>
+            <button type="submit" class="w-full bg-accent-500 hover:bg-accent-600 text-white font-semibold py-3 rounded-xl transition-colors">Buchung absenden</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ FOOTER ============ -->
+  <footer class="bg-gray-900 text-gray-300 mt-16">
+    <div class="max-w-7xl mx-auto px-4 py-12 grid grid-cols-2 md:grid-cols-4 gap-8">
+      <div>
+        <div class="flex items-center gap-2 mb-4">
+          <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center text-white font-bold text-sm">U</div>
+          <span class="font-bold text-white">Urban Kids Club</span>
+        </div>
+        <p class="text-sm text-gray-400">Die Plattform für Kinderkurse in deiner Stadt.</p>
+      </div>
+      <div>
+        <h4 class="font-semibold text-white mb-3 text-sm">Plattform</h4>
+        <ul class="space-y-2 text-sm"><li><a href="#" class="hover:text-white">Kurse finden</a></li><li><a href="#" class="hover:text-white">Anbieter</a></li><li><a href="#" class="hover:text-white">Kategorien</a></li></ul>
+      </div>
+      <div>
+        <h4 class="font-semibold text-white mb-3 text-sm">Rechtliches</h4>
+        <ul class="space-y-2 text-sm"><li><a href="#" class="hover:text-white">Datenschutz</a></li><li><a href="#" class="hover:text-white">Impressum</a></li><li><a href="#" class="hover:text-white">AGB</a></li></ul>
+      </div>
+      <div>
+        <h4 class="font-semibold text-white mb-3 text-sm">Für Anbieter</h4>
+        <ul class="space-y-2 text-sm"><li><a href="http://localhost:3000" class="hover:text-white">Provider Dashboard</a></li><li><a href="#" class="hover:text-white">Über uns</a></li></ul>
+      </div>
+    </div>
+    <div class="border-t border-gray-800 text-center text-xs text-gray-500 py-4">&copy; 2026 Urban Kids Club. Alle Rechte vorbehalten.</div>
+  </footer>
+
+  <!-- ============ JAVASCRIPT ============ -->
+  <script>
+  (function() {
+    'use strict';
+
+    // --- Helpers ---
+    function escapeHtml(str) {
+      if (str == null) return '';
+      return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+    }
+
+    const CATEGORY_META = {
+      dance:    { label: 'Tanz',    icon: '&#128131;', color: 'bg-pink-100 text-pink-600',   headerBg: 'from-pink-400 to-pink-600' },
+      music:    { label: 'Musik',   icon: '&#127925;', color: 'bg-purple-100 text-purple-600', headerBg: 'from-purple-400 to-purple-600' },
+      sports:   { label: 'Sport',   icon: '&#9917;',   color: 'bg-green-100 text-green-600',  headerBg: 'from-green-400 to-green-600' },
+      creative: { label: 'Kreativ', icon: '&#127912;', color: 'bg-yellow-100 text-yellow-700', headerBg: 'from-yellow-400 to-orange-500' },
+      stem:     { label: 'STEM',    icon: '&#129516;', color: 'bg-blue-100 text-blue-600',    headerBg: 'from-blue-400 to-indigo-600' },
+    };
+
+    function catMeta(c) { return CATEGORY_META[c] || { label: c || 'Kurs', icon: '&#128218;', color: 'bg-gray-100 text-gray-600', headerBg: 'from-gray-400 to-gray-600' }; }
+
+    const DAY_MAP = { MO:'Mo', TU:'Di', WE:'Mi', TH:'Do', FR:'Fr', SA:'Sa', SU:'So' };
+
+    function formatSchedule(schedule) {
+      if (!schedule) return '';
+      if (schedule.type === 'recurring' && schedule.slots?.length) {
+        return schedule.slots.map(s => (DAY_MAP[s.day]||s.day) + ' ' + s.startTime + '-' + s.endTime).join(', ');
+      }
+      if (schedule.type === 'single') return schedule.date + ' ' + schedule.startTime;
+      if (schedule.type === 'camp') return schedule.startDate + ' – ' + schedule.endDate;
+      return '';
+    }
+
+    function cheapestPrice(pricing) {
+      if (!pricing?.length) return null;
+      return pricing.reduce((min, p) => p.amount < min.amount ? p : min, pricing[0]);
+    }
+
+    function formatPrice(amount) { return new Intl.NumberFormat('de-DE', { style:'currency', currency:'EUR' }).format(amount); }
+
+    function stars(rating) {
+      const full = Math.round(rating || 0);
+      return '<span class="text-yellow-400">' + '&#9733;'.repeat(full) + '</span>' + '<span class="text-gray-300">' + '&#9733;'.repeat(5-full) + '</span>';
+    }
+
+    // --- State ---
+    let allCourses = [];
+    let allProviders = {};
+    let currentCourse = null;
+
+    // --- DOM refs ---
+    const courseGrid = document.getElementById('courseGrid');
+    const courseCount = document.getElementById('courseCount');
+    const loadingState = document.getElementById('loadingState');
+    const emptyState = document.getElementById('emptyState');
+    const detailModal = document.getElementById('detailModal');
+
+    // --- API ---
+    async function api(path) {
+      const res = await fetch(path);
+      if (!res.ok) throw new Error('API error ' + res.status);
+      return res.json();
+    }
+
+    // --- Load Providers Map ---
+    async function loadProviders() {
+      try {
+        const res = await api('/api/providers');
+        (res.data || []).forEach(p => { allProviders[p.id] = p; });
+      } catch(e) { console.warn('Providers load failed', e); }
+    }
+
+    // --- Load & Render Courses ---
+    async function loadCourses(params) {
+      loadingState.classList.remove('hidden');
+      emptyState.classList.add('hidden');
+      courseGrid.innerHTML = '';
+
+      const qs = new URLSearchParams();
+      qs.set('status', 'published');
+      if (params?.category) qs.set('category', params.category);
+      if (params?.ageMin) qs.set('ageMin', params.ageMin);
+      if (params?.q) qs.set('q', params.q);
+
+      try {
+        const res = await api('/api/activities/search?' + qs.toString());
+        allCourses = res.data || [];
+      } catch(e) {
+        console.error('Kurse laden fehlgeschlagen', e);
+        allCourses = [];
+      }
+
+      loadingState.classList.add('hidden');
+      renderCourses(allCourses);
+    }
+
+    function renderCourses(courses) {
+      courseGrid.innerHTML = '';
+      courseCount.textContent = courses.length + ' Kurs' + (courses.length !== 1 ? 'e' : '') + ' gefunden';
+
+      if (!courses.length) { emptyState.classList.remove('hidden'); return; }
+      emptyState.classList.add('hidden');
+
+      courses.forEach(c => {
+        const meta = catMeta(c.category);
+        const price = cheapestPrice(c.pricing);
+        const provider = allProviders[c.providerId];
+        const spotsData = c.availableSpots ?? (c.capacity || 0);
+        const spotsLabel = spotsData > 0 ? spotsData + ' Plätze frei' : 'Ausgebucht';
+        const spotsColor = spotsData > 3 ? 'bg-green-100 text-green-700' : spotsData > 0 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700';
+
+        courseGrid.innerHTML += `
+          <article class="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 card-hover cursor-pointer" data-id="${escapeHtml(c.id)}">
+            <div class="h-40 bg-gradient-to-br ${meta.headerBg} flex items-center justify-center relative">
+              <span class="text-5xl opacity-80">${meta.icon}</span>
+              <span class="absolute top-3 left-3 text-xs font-semibold px-2 py-1 rounded-full ${meta.color}">${escapeHtml(meta.label)}</span>
+              <span class="absolute top-3 right-3 text-xs font-medium px-2 py-1 rounded-full ${spotsColor}">${escapeHtml(spotsLabel)}</span>
+            </div>
+            <div class="p-5">
+              <h3 class="font-bold text-gray-900 mb-1 line-clamp-1">${escapeHtml(c.title)}</h3>
+              <p class="text-xs text-gray-400 mb-2">${escapeHtml(provider?.name || '')}</p>
+              <div class="flex items-center gap-3 text-xs text-gray-500 mb-3">
+                <span>&#128118; ${escapeHtml(c.ageRange?.min + '–' + c.ageRange?.max + ' J.')}</span>
+                <span>&#128197; ${escapeHtml(formatSchedule(c.schedule))}</span>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="font-bold text-brand-600">${price ? 'ab ' + escapeHtml(formatPrice(price.amount)) : ''}</span>
+                <span class="text-xs">${stars(c.averageRating || 0)}</span>
+              </div>
+            </div>
+          </article>`;
+      });
+
+      // Card click handlers
+      courseGrid.querySelectorAll('[data-id]').forEach(card => {
+        card.addEventListener('click', () => openDetail(card.dataset.id));
+      });
+    }
+
+    // --- Detail Modal ---
+    async function openDetail(id) {
+      let course;
+      try {
+        const res = await api('/api/activities/' + id);
+        course = res.data;
+      } catch { return; }
+
+      currentCourse = course;
+      const meta = catMeta(course.category);
+      const provider = allProviders[course.providerId];
+
+      document.getElementById('modalHeader').className = 'h-48 relative flex items-end p-6 bg-gradient-to-br ' + meta.headerBg;
+      document.getElementById('modalCategory').textContent = meta.label;
+      document.getElementById('modalTitle').textContent = course.title;
+
+      document.querySelector('#modalAge span').textContent = (course.ageRange?.min || '?') + '–' + (course.ageRange?.max || '?') + ' Jahre';
+      document.querySelector('#modalSchedule span').textContent = formatSchedule(course.schedule);
+      const spots = course.availableSpots ?? course.capacity ?? 0;
+      document.querySelector('#modalSpots span').textContent = spots > 0 ? spots + ' Plätze frei' : 'Ausgebucht';
+      document.getElementById('modalDescription').textContent = course.description || 'Keine Beschreibung vorhanden.';
+
+      // Pricing
+      const pricingEl = document.getElementById('modalPricing');
+      pricingEl.innerHTML = '';
+      (course.pricing || []).forEach(p => {
+        const typeLabel = p.type === 'single' ? 'Einzelstunde' : p.type === 'package' ? (p.packageSize||'')+'er-Karte' : 'Abo';
+        pricingEl.innerHTML += `<div class="flex items-center justify-between bg-gray-50 rounded-lg px-4 py-2.5">
+          <span class="text-sm text-gray-700">${escapeHtml(p.label || typeLabel)}</span>
+          <span class="font-semibold text-brand-600">${escapeHtml(formatPrice(p.amount))}</span>
+        </div>`;
+      });
+
+      // Provider
+      const provEl = document.getElementById('modalProvider');
+      if (provider) {
+        provEl.querySelector('div > div').textContent = (provider.name||'?')[0];
+        provEl.querySelector('p.font-medium').textContent = provider.name;
+        provEl.querySelector('p.text-xs').textContent = provider.address?.city || '';
+        provEl.classList.remove('hidden');
+      } else {
+        provEl.classList.add('hidden');
+      }
+
+      // Reviews
+      const reviewsSection = document.getElementById('modalReviews');
+      const reviewsList = document.getElementById('reviewsList');
+      reviewsList.innerHTML = '';
+      try {
+        const rRes = await api('/api/activities/' + id + '/reviews');
+        const reviews = rRes.data || [];
+        if (reviews.length) {
+          reviews.slice(0, 5).forEach(r => {
+            reviewsList.innerHTML += `<div class="bg-gray-50 rounded-lg p-3">
+              <div class="flex items-center gap-2 mb-1">${stars(r.rating)} <span class="text-xs text-gray-400">${escapeHtml(r.parentName || 'Anonym')}</span></div>
+              <p class="text-sm text-gray-600">${escapeHtml(r.comment || '')}</p>
+            </div>`;
+          });
+          reviewsSection.classList.remove('hidden');
+        } else {
+          reviewsSection.classList.add('hidden');
+        }
+      } catch { reviewsSection.classList.add('hidden'); }
+
+      // Trial button visibility
+      document.getElementById('btnTrial').classList.toggle('hidden', !course.trialEnabled);
+
+      // Reset booking form
+      document.getElementById('bookingForm').classList.add('hidden');
+
+      detailModal.classList.remove('hidden');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closeModal() {
+      detailModal.classList.add('hidden');
+      document.body.style.overflow = '';
+      currentCourse = null;
+    }
+
+    document.getElementById('modalClose').addEventListener('click', closeModal);
+    document.getElementById('modalOverlay').addEventListener('click', closeModal);
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+    // --- Booking CTA ---
+    document.getElementById('btnBook').addEventListener('click', () => {
+      document.getElementById('bookingForm').classList.toggle('hidden');
+    });
+
+    document.getElementById('btnTrial').addEventListener('click', async () => {
+      if (!currentCourse) return;
+      alert('Probestunde-Anfrage für "' + currentCourse.title + '" wird gesendet. (Demo)');
+    });
+
+    document.getElementById('bookingForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!currentCourse) return;
+      const fd = new FormData(e.target);
+      const msg = 'Buchung für ' + fd.get('childName') + ' bei "' + currentCourse.title + '" wurde angefragt. (Demo – keine echte Buchung)';
+      alert(msg);
+      closeModal();
+    });
+
+    // --- Search ---
+    document.getElementById('heroSearchForm').addEventListener('submit', e => {
+      e.preventDefault();
+      loadCourses({
+        category: document.getElementById('filterCategory').value,
+        ageMin: document.getElementById('filterAge').value,
+        q: document.getElementById('filterCity').value,
+      });
+    });
+
+    document.getElementById('headerSearch').addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        loadCourses({ q: e.target.value });
+      }
+    });
+
+    // --- Init ---
+    async function init() {
+      await loadProviders();
+      await loadCourses();
+    }
+    init();
+  })();
+  </script>
+</body>
+</html>
