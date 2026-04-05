@@ -75,7 +75,7 @@ export function calcDocumentStatus(expiresAt: Date | undefined): 'valid' | 'expi
   if (!expiresAt) return 'pending_review'
   const daysUntilExpiry = (expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
   if (daysUntilExpiry < 0) return 'expired'
-  if (daysUntilExpiry < 30) return 'expiring_soon'
+  if (daysUntilExpiry < DOCUMENT_EXPIRY_WARNING_DAYS) return 'expiring_soon'
   return 'valid'
 }
 
@@ -88,3 +88,8 @@ export const DAY_TO_NUMBER: Record<string, number> = {
 // --- Weeks to generate for recurring schedules ---
 
 export const RECURRING_WEEKS_AHEAD = 12
+export const DOCUMENT_EXPIRY_WARNING_DAYS = 30
+export const DEFAULT_CHURN_MONTHS = 3
+export const WAITLIST_OFFER_EXPIRY_HOURS = 48
+export const DEFAULT_PAYMENT_TERMS_DAYS = 14
+export const DEFAULT_VAT_RATE = 0.19

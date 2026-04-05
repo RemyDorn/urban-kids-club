@@ -19,7 +19,7 @@ export interface CreateActivityInput {
   waitlistEnabled?: boolean
   trialEnabled?: boolean
   pricing: Omit<PricingOption, 'id'>[]
-  platformListing?: { enabled: boolean; platformCapacity: number; priorityMode?: string; featured: boolean; trialAvailable: boolean }
+  platformListing?: { enabled: boolean; platformCapacity: number; priorityMode?: 'provider_first' | 'equal' | 'platform_first'; featured: boolean; trialAvailable: boolean }
   color?: string
   images?: string[]
   media?: string[]
@@ -75,7 +75,13 @@ export const ActivityService = {
       capacity: input.capacity,
       waitlistEnabled: input.waitlistEnabled ?? false,
       trialEnabled: input.trialEnabled ?? true,
-      platformListing: input.platformListing ? { ...input.platformListing, priorityMode: (input.platformListing as any).priorityMode || 'provider_first' } as any : undefined,
+      platformListing: input.platformListing ? {
+        enabled: input.platformListing.enabled,
+        platformCapacity: input.platformListing.platformCapacity,
+        priorityMode: (input.platformListing.priorityMode as 'provider_first' | 'equal' | 'platform_first') || 'provider_first',
+        featured: input.platformListing.featured,
+        trialAvailable: input.platformListing.trialAvailable,
+      } : undefined,
       color: input.color,
       images: input.images ?? [],
       pricing,

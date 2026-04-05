@@ -41,7 +41,7 @@ export const BookingService = {
     if (!parentCheck.valid) return { error: parentCheck.errors[0] }
 
     const childCheck = Validators.childInfoComplete(input.child)
-    if (!childCheck.valid) return { error: childCheck.errors.join('; ') }
+    if (!childCheck.valid) return { error: childCheck.errors[0] }
 
     // Alter prüfen
     const ageCheck = Validators.childAgeInRange(input.child, activity.ageRange)
