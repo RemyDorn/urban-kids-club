@@ -1821,13 +1821,13 @@
             <div class="bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-md transition-shadow">
               <div class="p-5 flex items-center justify-between">
                 <div class="flex items-center gap-4">
-                  <div class="w-14 h-14 rounded-full ${m.active ? 'bg-brand-100 text-brand-700' : 'bg-gray-100 text-gray-400'} flex items-center justify-center text-xl font-bold">${m.name[0]}</div>
+                  <div class="w-14 h-14 rounded-full ${m.active ? 'bg-brand-100 text-brand-700' : 'bg-gray-100 text-gray-400'} flex items-center justify-center text-xl font-bold">${escapeHtml(m.name[0])}</div>
                   <div>
-                    <div class="font-semibold text-gray-900">${m.name}</div>
-                    <div class="text-sm text-gray-500">${m.email}${m.phone ? ' · ' + m.phone : ''}</div>
+                    <div class="font-semibold text-gray-900">${escapeHtml(m.name)}</div>
+                    <div class="text-sm text-gray-500">${escapeHtml(m.email)}${m.phone ? ' · ' + escapeHtml(m.phone) : ''}</div>
                     <div class="flex items-center gap-2 mt-1">
-                      <span class="px-2 py-0.5 rounded-full text-xs font-medium ${roleColors[m.role] || 'bg-gray-100'}">${roleLabels[m.role] || m.role}</span>
-                      ${m.specializations?.length ? `<span class="text-xs text-gray-400">${m.specializations.join(', ')}</span>` : ''}
+                      <span class="px-2 py-0.5 rounded-full text-xs font-medium ${roleColors[m.role] || 'bg-gray-100'}">${roleLabels[m.role] || escapeHtml(m.role)}</span>
+                      ${m.specializations?.length ? `<span class="text-xs text-gray-400">${m.specializations.map(sp => escapeHtml(sp)).join(', ')}</span>` : ''}
                     </div>
                   </div>
                 </div>
@@ -1848,7 +1848,7 @@
                   <div>
                     <div class="text-xs font-medium text-gray-500 mb-2">Zugeordnete Kurse (${assignedCourses.length})</div>
                     ${assignedCourses.length > 0
-                      ? assignedCourses.map(c => `<div class="text-xs text-gray-700 flex items-center gap-1 mb-1"><div class="w-2 h-2 rounded-full" style="background:${c.color || '#3b82f6'}"></div>${c.title}</div>`).join('')
+                      ? assignedCourses.map(c => `<div class="text-xs text-gray-700 flex items-center gap-1 mb-1"><div class="w-2 h-2 rounded-full" style="background:${c.color || '#3b82f6'}"></div>${escapeHtml(c.title)}</div>`).join('')
                       : '<div class="text-xs text-gray-400">Keine Kurse zugeordnet</div>'
                     }
                   </div>
@@ -1856,7 +1856,7 @@
                   <div>
                     <div class="text-xs font-medium text-gray-500 mb-2">Dokumente (${docs.length})</div>
                     ${docs.length > 0
-                      ? docs.map(d => `<div class="text-xs flex items-center gap-1 mb-1 ${d.verified ? 'text-green-700' : 'text-amber-600'}"><span>${d.verified ? '✓' : '⏳'}</span> ${docTypeLabels[d.type] || d.name}${d.expiresAt ? ' (bis ' + d.expiresAt + ')' : ''}</div>`).join('')
+                      ? docs.map(d => `<div class="text-xs flex items-center gap-1 mb-1 ${d.verified ? 'text-green-700' : 'text-amber-600'}"><span>${d.verified ? '✓' : '⏳'}</span> ${docTypeLabels[d.type] || escapeHtml(d.name)}${d.expiresAt ? ' (bis ' + escapeHtml(d.expiresAt) + ')' : ''}</div>`).join('')
                       : '<div class="text-xs text-red-500">Keine Dokumente hinterlegt!</div>'
                     }
                     <button onclick="showDocForm('${m.id}')" class="text-xs text-brand-600 hover:text-brand-700 font-medium mt-1">+ Dokument hinzufügen</button>
@@ -2035,14 +2035,14 @@
               ${seasons.data.map(s => `
                 <div class="flex items-center justify-between p-3 rounded-lg ${s.isActive ? 'bg-brand-50 border border-brand-200' : 'bg-gray-50'}">
                   <div>
-                    <div class="text-sm font-medium text-gray-900">${s.name}</div>
+                    <div class="text-sm font-medium text-gray-900">${escapeHtml(s.name)}</div>
                     <div class="text-xs text-gray-500">${s.startDate} – ${s.endDate}</div>
                   </div>
                   ${s.isActive ? '<span class="px-2 py-1 rounded-full text-xs font-medium bg-brand-100 text-brand-700">Aktiv</span>' : ''}
                 </div>
               `).join('')}
             </div>
-            ${seasons.currentSeason ? `<div class="mt-4 p-3 bg-green-50 rounded-lg text-sm text-green-700">Aktuelle Saison: <strong>${seasons.currentSeason.name}</strong></div>` : ''}
+            ${seasons.currentSeason ? `<div class="mt-4 p-3 bg-green-50 rounded-lg text-sm text-green-700">Aktuelle Saison: <strong>${escapeHtml(seasons.currentSeason.name)}</strong></div>` : ''}
           </div>
 
           <!-- Ferien -->
@@ -2051,7 +2051,7 @@
             <div class="space-y-2 max-h-80 overflow-y-auto">
               ${holidays.data.map(h => `
                 <div class="flex items-center justify-between p-2 rounded hover:bg-gray-50">
-                  <span class="text-sm text-gray-700">${h.name}</span>
+                  <span class="text-sm text-gray-700">${escapeHtml(h.name)}</span>
                   <span class="text-xs text-gray-400">${h.startDate} – ${h.endDate}</span>
                 </div>
               `).join('')}
@@ -2064,9 +2064,9 @@
           <h3 class="font-semibold text-gray-900 mb-4">Verfügbare Bundesländer</h3>
           <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
             ${bundeslaender.data.map(bl => `
-              <div class="text-center p-3 rounded-lg bg-gray-50 hover:bg-brand-50 transition-colors cursor-pointer" title="${bl.name}">
-                <div class="font-bold text-gray-900 text-lg">${bl.code}</div>
-                <div class="text-xs text-gray-500 truncate">${bl.name}</div>
+              <div class="text-center p-3 rounded-lg bg-gray-50 hover:bg-brand-50 transition-colors cursor-pointer" title="${escapeHtml(bl.name)}">
+                <div class="font-bold text-gray-900 text-lg">${escapeHtml(bl.code)}</div>
+                <div class="text-xs text-gray-500 truncate">${escapeHtml(bl.name)}</div>
                 <div class="text-xs text-gray-400">${bl.holidayCount} Ferien</div>
               </div>
             `).join('')}
@@ -2165,7 +2165,7 @@
                   const act = actMap[actId]
                   const maxCount = Math.max(...Object.values(bookingsByAct))
                   const pct = maxCount > 0 ? Math.round(count/maxCount*100) : 0
-                  return '<div class="flex items-center gap-3"><div class="w-3 h-3 rounded-full" style="background:'+(act?.color||'#3b82f6')+'"></div><span class="text-sm text-gray-700 flex-1 truncate">'+(act?.title||actId)+'</span><div class="w-32 bg-gray-100 rounded-full h-2"><div class="h-2 rounded-full bg-brand-500" style="width:'+pct+'%"></div></div><span class="text-sm font-medium text-gray-900 w-8 text-right">'+count+'</span></div>'
+                  return '<div class="flex items-center gap-3"><div class="w-3 h-3 rounded-full" style="background:'+(act?.color||'#3b82f6')+'"></div><span class="text-sm text-gray-700 flex-1 truncate">'+escapeHtml(act?.title||actId)+'</span><div class="w-32 bg-gray-100 rounded-full h-2"><div class="h-2 rounded-full bg-brand-500" style="width:'+pct+'%"></div></div><span class="text-sm font-medium text-gray-900 w-8 text-right">'+count+'</span></div>'
                 }).join('')}
               </div>
             </div>
@@ -2178,7 +2178,7 @@
                   const act = actMap[actId]
                   const maxRev = Math.max(...Object.values(revenueByAct))
                   const pct = maxRev > 0 ? Math.round(rev/maxRev*100) : 0
-                  return '<div class="flex items-center gap-3"><div class="w-3 h-3 rounded-full" style="background:'+(act?.color||'#10b981')+'"></div><span class="text-sm text-gray-700 flex-1 truncate">'+(act?.title||actId)+'</span><div class="w-32 bg-gray-100 rounded-full h-2"><div class="h-2 rounded-full bg-emerald-500" style="width:'+pct+'%"></div></div><span class="text-sm font-medium text-gray-900 w-16 text-right">'+formatCurrency(rev)+'</span></div>'
+                  return '<div class="flex items-center gap-3"><div class="w-3 h-3 rounded-full" style="background:'+(act?.color||'#10b981')+'"></div><span class="text-sm text-gray-700 flex-1 truncate">'+escapeHtml(act?.title||actId)+'</span><div class="w-32 bg-gray-100 rounded-full h-2"><div class="h-2 rounded-full bg-emerald-500" style="width:'+pct+'%"></div></div><span class="text-sm font-medium text-gray-900 w-16 text-right">'+formatCurrency(rev)+'</span></div>'
                 }).join('')}
                 ${Object.keys(revenueByAct).length === 0 ? '<div class="text-sm text-gray-400">Noch keine Umsätze</div>' : ''}
               </div>
