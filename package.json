@@ -10,14 +10,20 @@
   "scripts": {
     "typecheck": "tsc -b packages/provider-dashboard/tsconfig.json",
     "dev": "cd packages/provider-dashboard && npx tsx src/api/server.ts",
+    "dev:platform": "cd packages/platform && npx tsx src/server.ts",
+    "dev:all": "npm run dev & npm run dev:platform",
     "test": "node --import tsx --test packages/provider-dashboard/src/__tests__/*.test.ts"
   },
   "devDependencies": {
-    "typescript": "^5.4.0",
+    "@types/node": "^20.11.0",
     "tsx": "^4.7.0",
-    "@types/node": "^20.11.0"
+    "typescript": "^5.4.0"
   },
   "engines": {
     "node": ">=18"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.101.1",
+    "zod": "^4.3.6"
   }
 }

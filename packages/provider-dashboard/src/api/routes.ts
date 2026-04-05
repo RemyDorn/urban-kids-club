@@ -3,6 +3,8 @@
 // ============================================================
 
 import { Router } from './router'
+import { validate, CreateProviderSchema, UpdateProviderSchema, CreateActivitySchema, CreateBookingSchema, CreateParentSchema, UpdateParentSchema, CreateTeamMemberSchema, CreateInvoiceSchema, CreatePaymentSchema, CreateSepaMandateSchema, CreateCouponSchema, CreateTrialSchema, AddToWaitlistSchema, CreateConsentSchema, SendMessageSchema, CreateReviewSchema, CreateLocationSchema, CreateSeasonSchema, CreateHolidaySchema, CreateContractSchema, CreateBuTVoucherSchema, CreateDocumentSchema, CheckInSchema, GenerateEInvoiceSchema, CreateExportSchema, CreateWidgetSchema } from '../lib/schemas'
+import { authenticate, authenticateProvider, authenticateAdmin } from '../lib/auth'
 import {
   ProviderService,
   ActivityService,
@@ -87,13 +89,17 @@ export function registerRoutes(router: Router) {
     res.json({ data: provider })
   })
 
-  router.post('/api/providers', (req, res) => {
-    const provider = ProviderService.create(req.body as any)
+  router.post('/api/providers', async (req, res) => {
+    const parsed = validate(CreateProviderSchema, req.body)
+    if ('error' in parsed) return res.error(400, parsed.error)
+    const provider = ProviderService.create(parsed.data as any)
     res.status(201).json({ data: provider })
   })
 
-  router.put('/api/providers/:id', (req, res) => {
-    const provider = ProviderService.update(req.params.id, req.body as any)
+  router.put('/api/providers/:id', async (req, res) => {
+    const parsed = validate(UpdateProviderSchema, req.body)
+    if ('error' in parsed) return res.error(400, parsed.error)
+    const provider = ProviderService.update(req.params.id, parsed.data as any)
     if (!provider) return res.error(404, 'Provider nicht gefunden')
     res.json({ data: provider })
   })
@@ -120,8 +126,10 @@ export function registerRoutes(router: Router) {
     res.json({ data: locations })
   })
 
-  router.post('/api/providers/:providerId/locations', (req, res) => {
-    const location = LocationService.create({ ...req.body as any, providerId: req.params.providerId })
+  router.post('/api/providers/:providerId/locations', async (req, res) => {
+    const parsed = validate(CreateLocationSchema, req.body)
+    if ('error' in parsed) return res.error(400, parsed.error)
+    const location = LocationService.create({ ...parsed.data as any, providerId: req.params.providerId })
     res.status(201).json({ data: location })
   })
 
@@ -143,8 +151,10 @@ export function registerRoutes(router: Router) {
     res.json({ data: members })
   })
 
-  router.post('/api/providers/:providerId/team', (req, res) => {
-    const result = TeamService.create({ ...req.body as any, providerId: req.params.providerId })
+  router.post('/api/providers/:providerId/team', async (req, res) => {
+    const parsed = validate(CreateTeamMemberSchema, req.body)
+    if ('error' in parsed) return res.error(400, parsed.error)
+    const result = TeamService.create({ ...parsed.data as any, providerId: req.params.providerId })
     if ('error' in result) return res.error(400, result.error)
     res.status(201).json({ data: result })
   })
@@ -188,8 +198,10 @@ export function registerRoutes(router: Router) {
     res.json({ data: { ...activity, availableSpots: spots } })
   })
 
-  router.post('/api/activities', (req, res) => {
-    const activity = ActivityService.create(req.body as any)
+  router.post('/api/activities', async (req, res) => {
+    const parsed = validate(CreateActivitySchema, req.body)
+    if ('error' in parsed) return res.error(400, parsed.error)
+    const activity = ActivityService.create(parsed.data as any)
     res.status(201).json({ data: activity })
   })
 
@@ -240,8 +252,10 @@ export function registerRoutes(router: Router) {
     res.json({ data: bookings })
   })
 
-  router.post('/api/bookings', (req, res) => {
-    const result = BookingService.create(req.body as any)
+  router.post('/api/bookings', async (req, res) => {
+    const parsed = validate(CreateBookingSchema, req.body)
+    if ('error' in parsed) return res.error(400, parsed.error)
+    const result = BookingService.create(parsed.data as any)
     if ('error' in result) return res.error(400, result.error)
     res.status(201).json({ data: result })
   })
@@ -279,15 +293,19 @@ export function registerRoutes(router: Router) {
     res.json({ data: records })
   })
 
-  router.post('/api/attendance/checkin', (req, res) => {
-    const { bookingId, activityId, date, checkedInBy } = req.body as any
+  router.post('/api/attendance/checkin', async (req, res) => {
+    const parsed = validate(CheckInSchema, req.body)
+    if ('error' in parsed) return res.error(400, parsed.error)
+    const { bookingId, activityId, date, checkedInBy } = parsed.data as any
     const result = AttendanceService.checkIn(bookingId, activityId, date, checkedInBy)
     if ('error' in result) return res.error(400, result.error)
     res.status(201).json({ data: result })
   })
 
-  router.post('/api/attendance/absent', (req, res) => {
-    const { bookingId, activityId, date, note } = req.body as any
+  router.post('/api/attendance/absent', async (req, res) => {
+    const parsed = validate(CheckInSchema, req.body)
+    if ('error' in parsed) return res.error(400, parsed.error)
+    const { bookingId, activityId, date, note } = parsed.data as any
     const result = AttendanceService.markAbsent(bookingId, activityId, date, note)
     if ('error' in result) return res.error(400, result.error)
     res.status(201).json({ data: result })
@@ -313,14 +331,18 @@ export function registerRoutes(router: Router) {
     res.json({ data: parent })
   })
 
-  router.post('/api/parents', (req, res) => {
-    const result = ParentService.create(req.body as any)
+  router.post('/api/parents', async (req, res) => {
+    const parsed = validate(CreateParentSchema, req.body)
+    if ('error' in parsed) return res.error(400, parsed.error)
+    const result = ParentService.create(parsed.data as any)
     if ('error' in result) return res.error(400, result.error)
     res.status(201).json({ data: result })
   })
 
-  router.put('/api/parents/:id', (req, res) => {
-    const parent = ParentService.update(req.params.id, req.body as any)
+  router.put('/api/parents/:id', async (req, res) => {
+    const parsed = validate(UpdateParentSchema, req.body)
+    if ('error' in parsed) return res.error(400, parsed.error)
+    const parent = ParentService.update(req.params.id, parsed.data as any)
     if (!parent) return res.error(404, 'Elternteil nicht gefunden')
     res.json({ data: parent })
   })
@@ -348,8 +370,10 @@ export function registerRoutes(router: Router) {
     res.json({ data: reviews, rating, distribution })
   })
 
-  router.post('/api/reviews', (req, res) => {
-    const result = ReviewService.create(req.body as any)
+  router.post('/api/reviews', async (req, res) => {
+    const parsed = validate(CreateReviewSchema, req.body)
+    if ('error' in parsed) return res.error(400, parsed.error)
+    const result = ReviewService.create(parsed.data as any)
     if ('error' in result) return res.error(400, result.error)
     res.status(201).json({ data: result })
   })
@@ -372,8 +396,10 @@ export function registerRoutes(router: Router) {
     res.json({ data: messages })
   })
 
-  router.post('/api/messages', (req, res) => {
-    const message = MessageService.send(req.body as any)
+  router.post('/api/messages', async (req, res) => {
+    const parsed = validate(SendMessageSchema, req.body)
+    if ('error' in parsed) return res.error(400, parsed.error)
+    const message = MessageService.send(parsed.data as any)
     res.status(201).json({ data: message })
   })
 
@@ -398,8 +424,10 @@ export function registerRoutes(router: Router) {
     res.json({ data: entries, count: entries.length })
   })
 
-  router.post('/api/waitlist', (req, res) => {
-    const result = WaitlistService.add(req.body as any)
+  router.post('/api/waitlist', async (req, res) => {
+    const parsed = validate(AddToWaitlistSchema, req.body)
+    if ('error' in parsed) return res.error(400, parsed.error)
+    const result = WaitlistService.add(parsed.data as any)
     if ('error' in result) return res.error(400, result.error)
     res.status(201).json({ data: result })
   })
@@ -428,8 +456,10 @@ export function registerRoutes(router: Router) {
     res.json({ data: coupons })
   })
 
-  router.post('/api/coupons', (req, res) => {
-    const result = CouponService.create(req.body as any)
+  router.post('/api/coupons', async (req, res) => {
+    const parsed = validate(CreateCouponSchema, req.body)
+    if ('error' in parsed) return res.error(400, parsed.error)
+    const result = CouponService.create(parsed.data as any)
     if ('error' in result) return res.error(400, result.error)
     res.status(201).json({ data: result })
   })
@@ -475,8 +505,10 @@ export function registerRoutes(router: Router) {
     res.json({ data: trials })
   })
 
-  router.post('/api/trials', (req, res) => {
-    const result = TrialService.create(req.body as any)
+  router.post('/api/trials', async (req, res) => {
+    const parsed = validate(CreateTrialSchema, req.body)
+    if ('error' in parsed) return res.error(400, parsed.error)
+    const result = TrialService.create(parsed.data as any)
     if ('error' in result) return res.error(400, result.error)
     res.status(201).json({ data: result })
   })
@@ -511,8 +543,10 @@ export function registerRoutes(router: Router) {
     res.json({ data: invoices })
   })
 
-  router.post('/api/invoices', (req, res) => {
-    const result = InvoiceService.create(req.body as any)
+  router.post('/api/invoices', async (req, res) => {
+    const parsed = validate(CreateInvoiceSchema, req.body)
+    if ('error' in parsed) return res.error(400, parsed.error)
+    const result = InvoiceService.create(parsed.data as any)
     if ('error' in result) return res.error(400, result.error)
     res.status(201).json({ data: result })
   })
@@ -551,8 +585,10 @@ export function registerRoutes(router: Router) {
   // E-INVOICES
   // ============================================================
 
-  router.post('/api/einvoices/generate', (req, res) => {
-    const result = EInvoiceService.generate(req.body as any)
+  router.post('/api/einvoices/generate', async (req, res) => {
+    const parsed = validate(GenerateEInvoiceSchema, req.body)
+    if ('error' in parsed) return res.error(400, parsed.error)
+    const result = EInvoiceService.generate(parsed.data as any)
     if ('error' in result) return res.error(400, result.error)
     res.status(201).json({ data: result })
   })
@@ -575,8 +611,10 @@ export function registerRoutes(router: Router) {
     res.json({ data: payments })
   })
 
-  router.post('/api/payments', (req, res) => {
-    const result = PaymentService.create(req.body as any)
+  router.post('/api/payments', async (req, res) => {
+    const parsed = validate(CreatePaymentSchema, req.body)
+    if ('error' in parsed) return res.error(400, parsed.error)
+    const result = PaymentService.create(parsed.data as any)
     if ('error' in result) return res.error(400, result.error)
     res.status(201).json({ data: result })
   })
@@ -602,8 +640,10 @@ export function registerRoutes(router: Router) {
     res.json({ data: mandates })
   })
 
-  router.post('/api/sepa/mandates', (req, res) => {
-    const mandate = SepaMandateService.create(req.body as any)
+  router.post('/api/sepa/mandates', async (req, res) => {
+    const parsed = validate(CreateSepaMandateSchema, req.body)
+    if ('error' in parsed) return res.error(400, parsed.error)
+    const mandate = SepaMandateService.create(parsed.data as any)
     res.status(201).json({ data: mandate })
   })
 
@@ -619,8 +659,10 @@ export function registerRoutes(router: Router) {
     res.json({ data: docs })
   })
 
-  router.post('/api/documents', (req, res) => {
-    const doc = DocumentService.create(req.body as any)
+  router.post('/api/documents', async (req, res) => {
+    const parsed = validate(CreateDocumentSchema, req.body)
+    if ('error' in parsed) return res.error(400, parsed.error)
+    const doc = DocumentService.create(parsed.data as any)
     res.status(201).json({ data: doc })
   })
 
@@ -629,8 +671,10 @@ export function registerRoutes(router: Router) {
     res.json({ data: status })
   })
 
-  router.post('/api/consent', (req, res) => {
-    const consent = ConsentService.giveConsent(req.body as any)
+  router.post('/api/consent', async (req, res) => {
+    const parsed = validate(CreateConsentSchema, req.body)
+    if ('error' in parsed) return res.error(400, parsed.error)
+    const consent = ConsentService.giveConsent(parsed.data as any)
     res.status(201).json({ data: consent })
   })
 
@@ -649,8 +693,10 @@ export function registerRoutes(router: Router) {
     res.json({ data: seasons, currentSeason: current })
   })
 
-  router.post('/api/seasons', (req, res) => {
-    const season = SeasonService.create(req.body as any)
+  router.post('/api/seasons', async (req, res) => {
+    const parsed = validate(CreateSeasonSchema, req.body)
+    if ('error' in parsed) return res.error(400, parsed.error)
+    const season = SeasonService.create(parsed.data as any)
     res.status(201).json({ data: season })
   })
 
@@ -659,8 +705,10 @@ export function registerRoutes(router: Router) {
     res.json({ data: holidays })
   })
 
-  router.post('/api/holidays', (req, res) => {
-    const holiday = HolidayService.create(req.body as any)
+  router.post('/api/holidays', async (req, res) => {
+    const parsed = validate(CreateHolidaySchema, req.body)
+    if ('error' in parsed) return res.error(400, parsed.error)
+    const holiday = HolidayService.create(parsed.data as any)
     res.status(201).json({ data: holiday })
   })
 
@@ -687,8 +735,10 @@ export function registerRoutes(router: Router) {
     res.json({ data: contracts })
   })
 
-  router.post('/api/contracts', (req, res) => {
-    const contract = ContractService.create(req.body as any)
+  router.post('/api/contracts', async (req, res) => {
+    const parsed = validate(CreateContractSchema, req.body)
+    if ('error' in parsed) return res.error(400, parsed.error)
+    const contract = ContractService.create(parsed.data as any)
     res.status(201).json({ data: contract })
   })
 
@@ -715,8 +765,10 @@ export function registerRoutes(router: Router) {
     res.json({ data: vouchers, stats })
   })
 
-  router.post('/api/but-vouchers', (req, res) => {
-    const voucher = BuTVoucherService.create(req.body as any)
+  router.post('/api/but-vouchers', async (req, res) => {
+    const parsed = validate(CreateBuTVoucherSchema, req.body)
+    if ('error' in parsed) return res.error(400, parsed.error)
+    const voucher = BuTVoucherService.create(parsed.data as any)
     res.status(201).json({ data: voucher })
   })
 
@@ -729,8 +781,10 @@ export function registerRoutes(router: Router) {
     res.json({ data: widgets })
   })
 
-  router.post('/api/widgets', (req, res) => {
-    const widget = WidgetService.create(req.body as any)
+  router.post('/api/widgets', async (req, res) => {
+    const parsed = validate(CreateWidgetSchema, req.body)
+    if ('error' in parsed) return res.error(400, parsed.error)
+    const widget = WidgetService.create(parsed.data as any)
     res.status(201).json({ data: widget })
   })
 
@@ -793,8 +847,10 @@ export function registerRoutes(router: Router) {
   // EXPORTS
   // ============================================================
 
-  router.post('/api/providers/:providerId/export', (req, res) => {
-    const { type, format, dateRange } = req.body as any
+  router.post('/api/providers/:providerId/export', async (req, res) => {
+    const parsed = validate(CreateExportSchema, req.body)
+    if ('error' in parsed) return res.error(400, parsed.error)
+    const { type, format, dateRange } = parsed.data as any
     const request = ExportService.createExport({
       providerId: req.params.providerId,
       type,
@@ -874,6 +930,28 @@ export function registerRoutes(router: Router) {
   router.post('/api/admin/jobs/weekly', (_req, res) => {
     const result = BackgroundJobs.runWeekly()
     res.json({ data: result })
+  })
+
+  // ============================================================
+  // AUTH
+  // ============================================================
+
+  router.post('/api/auth/login', async (req, res) => {
+    const { email, password } = req.body as { email: string; password: string }
+    if (!email || !password) return res.error(400, 'E-Mail und Passwort erforderlich')
+    const { loginProvider } = await import('../lib/auth')
+    const result = await loginProvider(email, password)
+    if ('error' in result) return res.error(401, result.error)
+    res.json({ data: result })
+  })
+
+  router.post('/api/auth/register', async (req, res) => {
+    const { email, password, providerId } = req.body as { email: string; password: string; providerId: string }
+    if (!email || !password || !providerId) return res.error(400, 'E-Mail, Passwort und Provider-ID erforderlich')
+    const { registerProvider } = await import('../lib/auth')
+    const result = await registerProvider(email, password, providerId)
+    if ('error' in result) return res.error(400, result.error)
+    res.status(201).json({ data: result })
   })
 
   // ============================================================
