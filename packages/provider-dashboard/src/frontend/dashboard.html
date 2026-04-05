@@ -95,6 +95,10 @@
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
           Team
         </button>
+        <button onclick="navigate('documents')" data-page="documents" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 transition-all">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+          Dokumente
+        </button>
         <button onclick="navigate('embed')" data-page="embed" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 transition-all">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
           Einbettung
@@ -186,7 +190,7 @@
       const activeBtn = document.querySelector(`[data-page="${page}"]`)
       if (activeBtn) { activeBtn.classList.add('active'); activeBtn.classList.remove('text-gray-600') }
 
-      const titles = { dashboard: 'Dashboard', activities: 'Kurse & Angebote', bookings: 'Buchungen', customers: 'Kunden (CRM)', trials: 'Probestunden', invoices: 'Rechnungen', team: 'Team', holidays: 'Ferien & Saisons', embed: 'Einbettung & Widgets', marketing: 'Marketing & Automation', settings: 'Einstellungen' }
+      const titles = { dashboard: 'Dashboard', activities: 'Kurse & Angebote', bookings: 'Buchungen', customers: 'Kunden (CRM)', trials: 'Probestunden', invoices: 'Rechnungen', team: 'Team', documents: 'Dokumente', holidays: 'Ferien & Saisons', embed: 'Einbettung & Widgets', marketing: 'Marketing & Automation', settings: 'Einstellungen' }
       document.getElementById('pageTitle').textContent = titles[page] || page
 
       const content = document.getElementById('content')
@@ -195,7 +199,7 @@
       void content.offsetWidth
       content.classList.add('fade-in')
 
-      const renderers = { dashboard: renderDashboard, activities: renderActivities, bookings: renderBookings, customers: renderCustomers, trials: renderTrials, invoices: renderInvoices, team: renderTeam, holidays: renderHolidays, embed: renderEmbed, marketing: renderMarketing, settings: renderSettings }
+      const renderers = { dashboard: renderDashboard, activities: renderActivities, bookings: renderBookings, customers: renderCustomers, trials: renderTrials, invoices: renderInvoices, team: renderTeam, documents: renderDocuments, holidays: renderHolidays, embed: renderEmbed, marketing: renderMarketing, settings: renderSettings }
       if (renderers[page]) renderers[page]()
     }
 
@@ -2038,6 +2042,178 @@
     }
 
     // --- Helpers ---
+    // --- Dokumente ---
+    const docCategories = [
+      { value: 'contract', label: 'Verträge & AGB', icon: '📋' },
+      { value: 'invoice_template', label: 'Rechnungsvorlagen', icon: '🧾' },
+      { value: 'insurance', label: 'Versicherungen', icon: '🛡️' },
+      { value: 'certificate', label: 'Zertifikate & Nachweise', icon: '📜' },
+      { value: 'consent', label: 'Einverständniserklärungen', icon: '✍️' },
+      { value: 'data_protection', label: 'Datenschutz (DSGVO)', icon: '🔒' },
+      { value: 'tax', label: 'Steuerunterlagen', icon: '📊' },
+      { value: 'other', label: 'Sonstiges', icon: '📁' },
+    ]
+
+    function getStoredDocs() {
+      try { return JSON.parse(localStorage.getItem('docs_' + currentProvider?.id) || '[]') } catch { return [] }
+    }
+    function saveStoredDocs(docs) { localStorage.setItem('docs_' + currentProvider?.id, JSON.stringify(docs)) }
+
+    async function renderDocuments() {
+      const docs = getStoredDocs()
+      const catMap = {}
+      docCategories.forEach(c => { catMap[c.value] = c })
+
+      const byCategory = {}
+      docCategories.forEach(c => { byCategory[c.value] = [] })
+      docs.forEach(d => { if (byCategory[d.category]) byCategory[d.category].push(d); else byCategory['other'].push(d) })
+
+      document.getElementById('content').innerHTML = `
+        <div class="flex items-center justify-between mb-6">
+          <span class="text-sm text-gray-500">${docs.length} Dokumente</span>
+          <button onclick="showDocUploadForm()" class="bg-brand-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-brand-600 flex items-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+            Dokument hochladen
+          </button>
+        </div>
+
+        ${docs.length === 0 ? `
+        <div class="bg-white rounded-xl border border-gray-200 p-12 text-center">
+          <div class="text-4xl mb-3">📁</div>
+          <div class="font-semibold text-gray-900 mb-1">Noch keine Dokumente</div>
+          <div class="text-sm text-gray-500 mb-4">Lade Verträge, AGB, Versicherungen und andere Dokumente hoch.</div>
+          <button onclick="showDocUploadForm()" class="bg-brand-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-brand-600">Erstes Dokument hochladen</button>
+        </div>
+        ` : `
+        <div class="space-y-6">
+          ${docCategories.map(cat => {
+            const catDocs = byCategory[cat.value]
+            if (catDocs.length === 0) return ''
+            return `
+            <div>
+              <div class="flex items-center gap-2 mb-3">
+                <span class="text-lg">${cat.icon}</span>
+                <h3 class="font-semibold text-gray-900">${cat.label}</h3>
+                <span class="text-xs text-gray-400">(${catDocs.length})</span>
+              </div>
+              <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                ${catDocs.map(d => `
+                  <div class="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition-shadow group">
+                    <div class="flex items-start justify-between">
+                      <div class="flex items-center gap-3 flex-1 min-w-0">
+                        <div class="w-10 h-10 rounded-lg ${d.fileType === 'pdf' ? 'bg-red-50 text-red-500' : d.fileType === 'image' ? 'bg-blue-50 text-blue-500' : 'bg-gray-50 text-gray-500'} flex items-center justify-center text-sm font-bold">
+                          ${d.fileType === 'pdf' ? 'PDF' : d.fileType === 'image' ? 'IMG' : 'DOC'}
+                        </div>
+                        <div class="min-w-0">
+                          <div class="font-medium text-gray-900 text-sm truncate">${d.name}</div>
+                          <div class="text-xs text-gray-500">${d.date} · ${d.size}</div>
+                        </div>
+                      </div>
+                      <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100">
+                        ${d.dataUrl ? `<a href="${d.dataUrl}" download="${d.name}" class="p-1.5 text-gray-400 hover:text-brand-600 rounded"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg></a>` : ''}
+                        <button onclick="deleteDocument('${d.id}')" class="p-1.5 text-gray-400 hover:text-red-500 rounded"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
+                      </div>
+                    </div>
+                    ${d.notes ? `<div class="text-xs text-gray-400 mt-2">${d.notes}</div>` : ''}
+                  </div>
+                `).join('')}
+              </div>
+            </div>`
+          }).join('')}
+        </div>
+        `}
+        <div id="docUploadModal" class="hidden"></div>
+      `
+    }
+
+    function showDocUploadForm() {
+      const modal = document.getElementById('docUploadModal')
+      modal.className = 'cal-modal-backdrop'
+      modal.onclick = (e) => { if (e.target === modal) modal.className = 'hidden' }
+      modal.innerHTML = `
+        <div class="cal-modal fade-in" style="width:500px;">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-bold text-gray-900">Dokument hochladen</h3>
+            <button onclick="document.getElementById('docUploadModal').className='hidden'" class="text-gray-400 hover:text-gray-600">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+          </div>
+          <form onsubmit="uploadDocument(event)" class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Datei *</label>
+              <div class="border-2 border-dashed border-gray-200 rounded-xl p-6 text-center hover:border-brand-400 cursor-pointer" onclick="document.getElementById('docFileInput').click()">
+                <div id="docFileName" class="text-sm text-gray-500">Klicken oder Datei hierher ziehen</div>
+                <div class="text-xs text-gray-400 mt-1">PDF, Bilder, Word, Excel – max. 10 MB</div>
+              </div>
+              <input type="file" id="docFileInput" class="hidden" accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp" onchange="document.getElementById('docFileName').textContent = this.files[0]?.name || 'Keine Datei gewählt'">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Dokumentname *</label>
+              <input name="docName" required class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="z.B. AGB Stand April 2026">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Kategorie *</label>
+              <select name="docCategory" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                ${docCategories.map(c => `<option value="${c.value}">${c.icon} ${c.label}</option>`).join('')}
+              </select>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Gültig bis (optional)</label>
+              <input name="docExpiry" type="date" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Notizen</label>
+              <input name="docNotes" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="z.B. Version 3.1, gilt ab Mai 2026">
+            </div>
+            <button type="submit" class="w-full bg-brand-500 text-white py-2.5 rounded-lg font-medium hover:bg-brand-600">Hochladen</button>
+          </form>
+        </div>
+      `
+    }
+
+    function uploadDocument(e) {
+      e.preventDefault()
+      const f = new FormData(e.target)
+      const fileInput = document.getElementById('docFileInput')
+      const file = fileInput?.files?.[0]
+
+      if (!file) { alert('Bitte eine Datei auswählen'); return }
+      if (file.size > 10 * 1024 * 1024) { alert('Datei zu groß (max. 10 MB)'); return }
+
+      const reader = new FileReader()
+      reader.onload = (ev) => {
+        const docs = getStoredDocs()
+        const ext = file.name.split('.').pop()?.toLowerCase() || ''
+        const fileType = ['pdf'].includes(ext) ? 'pdf' : ['jpg','jpeg','png','webp'].includes(ext) ? 'image' : 'doc'
+        const sizeKB = Math.round(file.size / 1024)
+        const sizeStr = sizeKB > 1024 ? (sizeKB / 1024).toFixed(1) + ' MB' : sizeKB + ' KB'
+
+        docs.push({
+          id: 'doc_' + Date.now(),
+          name: f.get('docName') || file.name,
+          category: f.get('docCategory') || 'other',
+          fileName: file.name,
+          fileType,
+          size: sizeStr,
+          date: new Date().toLocaleDateString('de-DE'),
+          expiry: f.get('docExpiry') || null,
+          notes: f.get('docNotes') || '',
+          dataUrl: ev.target?.result,
+        })
+        saveStoredDocs(docs)
+        document.getElementById('docUploadModal').className = 'hidden'
+        navigate('documents')
+      }
+      reader.readAsDataURL(file)
+    }
+
+    function deleteDocument(id) {
+      if (!confirm('Dokument wirklich löschen?')) return
+      const docs = getStoredDocs().filter(d => d.id !== id)
+      saveStoredDocs(docs)
+      navigate('documents')
+    }
+
     // --- Embed / Widgets ---
     async function renderEmbed() {
       const slug = currentProvider.slug || 'mein-studio'
