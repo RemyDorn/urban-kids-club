@@ -414,7 +414,7 @@
         ${conflicts.length > 0 ? `
         <div class="mb-4 p-4 bg-red-50 border border-red-200 rounded-xl">
           <div class="font-medium text-red-800 mb-2">Konflikte erkannt:</div>
-          ${conflicts.map(c => `<div class="text-sm text-red-700">- ${c.description}</div>`).join('')}
+          ${conflicts.map(c => `<div class="text-sm text-red-700">- ${escapeHtml(c.description)}</div>`).join('')}
         </div>` : ''}
 
         <!-- Calendar Grid -->
@@ -443,7 +443,7 @@
                   const clr = getCourseColor(act, 0)
                   const occ = occMap[ev.activityId]
                   const occPct = occ ? Math.round(occ.occupancy * 100) : 0
-                  return '<div class="text-xs rounded px-1 py-0.5 mb-0.5 truncate cursor-pointer" style="background:' + hexToRgba(clr, 0.15) + ';border-left:3px solid ' + clr + ';color:#374151;" onclick="showEventDetail(' + JSON.stringify(ev).replace(/"/g,'&quot;') + ',' + (act ? JSON.stringify({title:act.title,description:act.description||'',category:act.category,ageRange:act.ageRange,pricing:act.pricing}).replace(/"/g,'&quot;') : 'null') + ',' + (occ ? JSON.stringify(occ).replace(/"/g,'&quot;') : 'null') + ')">' + ev.startTime + ' ' + ev.title + '</div>'
+                  return '<div class="text-xs rounded px-1 py-0.5 mb-0.5 truncate cursor-pointer" style="background:' + hexToRgba(clr, 0.15) + ';border-left:3px solid ' + clr + ';color:#374151;" onclick="showEventDetail(' + JSON.stringify(ev).replace(/"/g,'&quot;') + ',' + (act ? JSON.stringify({title:act.title,description:act.description||'',category:act.category,ageRange:act.ageRange,pricing:act.pricing}).replace(/"/g,'&quot;') : 'null') + ',' + (occ ? JSON.stringify(occ).replace(/"/g,'&quot;') : 'null') + ')">' + escapeHtml(ev.startTime) + ' ' + escapeHtml(ev.title) + '</div>'
                 }).join('')
                 if (dayEvents.length > 3) cells += '<div class="text-xs text-gray-400">+' + (dayEvents.length-3) + ' weitere</div>'
                 cells += '</div>'
@@ -2365,16 +2365,16 @@
                           ${d.fileType === 'pdf' ? 'PDF' : d.fileType === 'image' ? 'IMG' : 'DOC'}
                         </div>
                         <div class="min-w-0">
-                          <div class="font-medium text-gray-900 text-sm truncate">${d.name}</div>
-                          <div class="text-xs text-gray-500">${d.date} · ${d.size}</div>
+                          <div class="font-medium text-gray-900 text-sm truncate">${escapeHtml(d.name)}</div>
+                          <div class="text-xs text-gray-500">${escapeHtml(d.date)} · ${escapeHtml(d.size)}</div>
                         </div>
                       </div>
                       <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100">
-                        ${d.dataUrl ? `<a href="${d.dataUrl}" download="${d.name}" class="p-1.5 text-gray-400 hover:text-brand-600 rounded"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg></a>` : ''}
-                        <button onclick="deleteDocument('${d.id}')" class="p-1.5 text-gray-400 hover:text-red-500 rounded"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
+                        ${d.dataUrl ? `<a href="${d.dataUrl}" download="${escapeHtml(d.name)}" class="p-1.5 text-gray-400 hover:text-brand-600 rounded"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg></a>` : ''}
+                        <button onclick="deleteDocument('${escapeHtml(d.id)}')" class="p-1.5 text-gray-400 hover:text-red-500 rounded"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
                       </div>
                     </div>
-                    ${d.notes ? `<div class="text-xs text-gray-400 mt-2">${d.notes}</div>` : ''}
+                    ${d.notes ? `<div class="text-xs text-gray-400 mt-2">${escapeHtml(d.notes)}</div>` : ''}
                   </div>
                 `).join('')}
               </div>
@@ -2530,7 +2530,7 @@
                 <div class="space-y-2">
                   ${w.courses.map(c => `
                     <div class="flex items-center justify-between bg-gray-50 rounded-lg p-3">
-                      <span class="text-sm text-gray-900">${c.title}</span>
+                      <span class="text-sm text-gray-900">${escapeHtml(c.title)}</span>
                       <button onclick="copyToClipboard(this, \`<iframe src=&quot;${baseUrl}/embed/${slug}/course/${c.id}&quot; width=&quot;100%&quot; height=&quot;300&quot; frameborder=&quot;0&quot; style=&quot;border:none;border-radius:12px;&quot; loading=&quot;lazy&quot;></iframe>\`)" class="px-3 py-1 text-xs bg-brand-50 text-brand-600 rounded-lg hover:bg-brand-100 font-medium">Code kopieren</button>
                     </div>
                   `).join('')}
@@ -2735,7 +2735,7 @@
                   <!-- Flow Info -->
                   <div class="flex-1">
                     <div class="flex items-center gap-2">
-                      <span class="font-semibold text-gray-900 text-sm">${f.name}</span>
+                      <span class="font-semibold text-gray-900 text-sm">${escapeHtml(f.name)}</span>
                       <span class="px-2 py-0.5 rounded-full text-xs font-medium ${ch.color}">${ch.icon} ${ch.label}</span>
                     </div>
                     <div class="text-xs text-gray-500 mt-0.5">
@@ -2751,7 +2751,7 @@
                   <div class="text-center"><div class="font-bold text-gray-900 text-sm">${f.stats.clicked}</div><div>Klicks</div></div>
                 </div>
               </div>
-              ${f.template ? '<div class="mt-3 bg-gray-50 rounded-lg p-3 text-xs text-gray-600 font-mono">' + (f.template.body.length > 140 ? f.template.body.substring(0, 140) + '...' : f.template.body) + '</div>' : ''}
+              ${f.template ? '<div class="mt-3 bg-gray-50 rounded-lg p-3 text-xs text-gray-600 font-mono">' + escapeHtml(f.template.body.length > 140 ? f.template.body.substring(0, 140) + '...' : f.template.body) + '</div>' : ''}
             </div>
           `}).join('')}
         </div>
@@ -2767,12 +2767,12 @@
             <div class="bg-white rounded-xl border border-gray-200 p-4">
               <div class="flex items-center justify-between mb-2">
                 <div class="flex items-center gap-2">
-                  <span class="font-semibold text-sm text-gray-900">${t.name}</span>
+                  <span class="font-semibold text-sm text-gray-900">${escapeHtml(t.name)}</span>
                   <span class="px-2 py-0.5 rounded-full text-xs font-medium ${ch.color}">${ch.icon} ${ch.label}</span>
                 </div>
                 <button onclick="editTemplate(${idx})" class="text-xs text-brand-600 hover:text-brand-700 font-medium">Bearbeiten</button>
               </div>
-              <div class="bg-gray-50 rounded-lg p-3 text-xs text-gray-600 font-mono whitespace-pre-wrap" id="tmplBody_${idx}">${t.body}</div>
+              <div class="bg-gray-50 rounded-lg p-3 text-xs text-gray-600 font-mono whitespace-pre-wrap" id="tmplBody_${idx}">${escapeHtml(t.body)}</div>
               <div class="mt-2 flex flex-wrap gap-1">
                 ${(t.body.match(/\\{\\{(\\w+)\\}\\}/g) || []).map(v => '<span class="px-1.5 py-0.5 bg-brand-50 text-brand-600 rounded text-xs">' + v + '</span>').join('')}
               </div>
@@ -2808,7 +2808,7 @@
       modal.innerHTML = `
         <div class="cal-modal fade-in" style="width:540px;">
           <div class="flex items-center justify-between mb-4">
-            <h3 class="text-lg font-bold text-gray-900">Vorlage bearbeiten: ${t.name}</h3>
+            <h3 class="text-lg font-bold text-gray-900">Vorlage bearbeiten: ${escapeHtml(t.name)}</h3>
             <button onclick="document.getElementById('calModal').className='hidden'" class="text-gray-400 hover:text-gray-600">
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
@@ -2820,7 +2820,7 @@
             </div>
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">Nachrichtentext</label>
-              <textarea id="tmplEditBody" rows="5" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono">${t.body}</textarea>
+              <textarea id="tmplEditBody" rows="5" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono">${escapeHtml(t.body)}</textarea>
             </div>
             <div>
               <label class="block text-xs text-gray-500 mb-2">Platzhalter (klicken zum Einfügen):</label>
@@ -2936,7 +2936,7 @@
                 <div class="text-xs text-gray-500">Container-ID für GTM einbinden</div>
               </div>
             </div>
-            <input id="gtmId" value="${pixels.gtmId || ''}" placeholder="GTM-XXXXXXX" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-2" onchange="updatePixel('gtmId', this.value)">
+            <input id="gtmId" value="${escapeHtml(pixels.gtmId || '')}" placeholder="GTM-XXXXXXX" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-2" onchange="updatePixel('gtmId', this.value)">
           </div>
 
           <!-- Meta / Facebook Pixel -->
@@ -2948,7 +2948,7 @@
                 <div class="text-xs text-gray-500">Für Retargeting und Conversion-Tracking</div>
               </div>
             </div>
-            <input id="fbPixel" value="${pixels.fbPixel || ''}" placeholder="Pixel-ID (z.B. 1234567890)" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-2" onchange="updatePixel('fbPixel', this.value)">
+            <input id="fbPixel" value="${escapeHtml(pixels.fbPixel || '')}" placeholder="Pixel-ID (z.B. 1234567890)" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-2" onchange="updatePixel('fbPixel', this.value)">
           </div>
 
           <!-- Google Analytics -->
@@ -2960,7 +2960,7 @@
                 <div class="text-xs text-gray-500">Measurement-ID für GA4</div>
               </div>
             </div>
-            <input id="ga4Id" value="${pixels.ga4Id || ''}" placeholder="G-XXXXXXXXXX" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-2" onchange="updatePixel('ga4Id', this.value)">
+            <input id="ga4Id" value="${escapeHtml(pixels.ga4Id || '')}" placeholder="G-XXXXXXXXXX" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-2" onchange="updatePixel('ga4Id', this.value)">
           </div>
 
           <!-- TikTok Pixel -->
@@ -2972,7 +2972,7 @@
                 <div class="text-xs text-gray-500">Für TikTok Ads Conversion-Tracking</div>
               </div>
             </div>
-            <input id="tiktokPixel" value="${pixels.tiktokPixel || ''}" placeholder="Pixel-ID" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-2" onchange="updatePixel('tiktokPixel', this.value)">
+            <input id="tiktokPixel" value="${escapeHtml(pixels.tiktokPixel || '')}" placeholder="Pixel-ID" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-2" onchange="updatePixel('tiktokPixel', this.value)">
           </div>
 
           <!-- Custom Script -->
@@ -2984,7 +2984,7 @@
                 <div class="text-xs text-gray-500">Beliebiges Script für Buchungsseite einbinden</div>
               </div>
             </div>
-            <textarea id="customScript" rows="3" placeholder="Tracking-Code hier einfügen..." class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono" onchange="updatePixel('customScript', this.value)">${pixels.customScript || ''}</textarea>
+            <textarea id="customScript" rows="3" placeholder="Tracking-Code hier einfügen..." class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono" onchange="updatePixel('customScript', this.value)">${escapeHtml(pixels.customScript || '')}</textarea>
           </div>
 
           <button onclick="saveAllPixels()" class="bg-brand-500 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-brand-600 transition-colors">
@@ -3057,15 +3057,15 @@
             <h3 class="font-semibold text-gray-900 mb-4">Unternehmensprofil</h3>
             <div class="space-y-4">
               <div class="flex items-center gap-4 mb-4">
-                <div class="w-16 h-16 bg-brand-100 text-brand-700 rounded-xl flex items-center justify-center text-2xl font-bold">${p.name[0]}</div>
+                <div class="w-16 h-16 bg-brand-100 text-brand-700 rounded-xl flex items-center justify-center text-2xl font-bold">${escapeHtml(p.name[0])}</div>
                 <div>
-                  <div class="font-bold text-gray-900">${p.name}</div>
-                  <div class="text-sm text-gray-500">${p.slug}.urbankidsclub.de</div>
+                  <div class="font-bold text-gray-900">${escapeHtml(p.name)}</div>
+                  <div class="text-sm text-gray-500">${escapeHtml(p.slug)}.urbankidsclub.de</div>
                 </div>
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Unternehmensname</label>
-                <input id="sCompanyName" value="${s.companyName || p.name}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                <input id="sCompanyName" value="${escapeHtml(s.companyName || p.name)}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Rechtsform</label>
@@ -3076,16 +3076,16 @@
               <div class="grid grid-cols-2 gap-4">
                 <div>
                   <label class="block text-sm font-medium text-gray-700 mb-1">E-Mail</label>
-                  <input id="sEmail" value="${s.email || p.contact.email}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                  <input id="sEmail" value="${escapeHtml(s.email || p.contact.email)}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
                 </div>
                 <div>
                   <label class="block text-sm font-medium text-gray-700 mb-1">Telefon</label>
-                  <input id="sPhone" value="${s.phone || p.contact.phone || ''}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                  <input id="sPhone" value="${escapeHtml(s.phone || p.contact.phone || '')}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
                 </div>
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Website</label>
-                <input id="sWebsite" value="${s.website || p.contact.website || ''}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="https://">
+                <input id="sWebsite" value="${escapeHtml(s.website || p.contact.website || '')}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="https://">
               </div>
             </div>
           </div>
@@ -3095,16 +3095,16 @@
             <div class="space-y-4">
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Straße + Hausnummer</label>
-                <input id="sStreet" value="${s.street || p.address.street}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                <input id="sStreet" value="${escapeHtml(s.street || p.address.street)}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
               </div>
               <div class="grid grid-cols-3 gap-4">
                 <div>
                   <label class="block text-sm font-medium text-gray-700 mb-1">PLZ</label>
-                  <input id="sZip" value="${s.zip || p.address.zip}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                  <input id="sZip" value="${escapeHtml(s.zip || p.address.zip)}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
                 </div>
                 <div class="col-span-2">
                   <label class="block text-sm font-medium text-gray-700 mb-1">Stadt</label>
-                  <input id="sCity" value="${s.city || p.address.city}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                  <input id="sCity" value="${escapeHtml(s.city || p.address.city)}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
                 </div>
               </div>
               <div>
@@ -3122,11 +3122,11 @@
             <div class="space-y-4">
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Beschreibung (öffentlich)</label>
-                <textarea id="sDescription" rows="3" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">${s.description || p.description}</textarea>
+                <textarea id="sDescription" rows="3" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">${escapeHtml(s.description || p.description)}</textarea>
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Kategorien</label>
-                <input id="sCategories" value="${(s.categories || p.categories || []).join(', ')}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Tanz, Ballett, Hip-Hop">
+                <input id="sCategories" value="${escapeHtml((s.categories || p.categories || []).join(', '))}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Tanz, Ballett, Hip-Hop">
                 <div class="text-xs text-gray-400 mt-1">Kommagetrennt</div>
               </div>
             </div>
@@ -3203,11 +3203,11 @@
             <div class="space-y-4">
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Steuernummer</label>
-                <input id="sTaxId" value="${s.taxId || ''}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="z.B. 123/456/78901">
+                <input id="sTaxId" value="${escapeHtml(s.taxId || '')}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="z.B. 123/456/78901">
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">USt-IdNr. (falls vorhanden)</label>
-                <input id="sVatId" value="${s.vatId || ''}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="z.B. DE123456789">
+                <input id="sVatId" value="${escapeHtml(s.vatId || '')}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="z.B. DE123456789">
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Standard-MwSt-Satz</label>
@@ -3229,19 +3229,19 @@
             <div class="space-y-4">
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Kontoinhaber</label>
-                <input id="sBankHolder" value="${s.bankHolder || s.companyName || p.name}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                <input id="sBankHolder" value="${escapeHtml(s.bankHolder || s.companyName || p.name)}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">IBAN</label>
-                <input id="sIban" value="${s.iban || ''}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="DE89 3704 0044 0532 0130 00">
+                <input id="sIban" value="${escapeHtml(s.iban || '')}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="DE89 3704 0044 0532 0130 00">
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">BIC</label>
-                <input id="sBic" value="${s.bic || ''}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="COBADEFFXXX">
+                <input id="sBic" value="${escapeHtml(s.bic || '')}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="COBADEFFXXX">
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Kreditinstitut</label>
-                <input id="sBankName" value="${s.bankName || ''}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="z.B. Sparkasse Köln">
+                <input id="sBankName" value="${escapeHtml(s.bankName || '')}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="z.B. Sparkasse Köln">
               </div>
             </div>
           </div>
@@ -3251,7 +3251,7 @@
             <div class="space-y-4">
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Gläubiger-ID (SEPA Creditor Identifier)</label>
-                <input id="sSepaCreditorId" value="${s.sepaCreditorId || ''}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="DE98ZZZ09999999999">
+                <input id="sSepaCreditorId" value="${escapeHtml(s.sepaCreditorId || '')}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="DE98ZZZ09999999999">
                 <div class="text-xs text-gray-400 mt-1">Beantragen bei der Deutschen Bundesbank</div>
               </div>
               <div>
@@ -3266,7 +3266,7 @@
             <div class="space-y-4">
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Rechnungspräfix</label>
-                <input id="sInvoicePrefix" value="${s.invoicePrefix || 'INV'}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                <input id="sInvoicePrefix" value="${escapeHtml(s.invoicePrefix || 'INV')}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">E-Rechnung Standard</label>
@@ -3293,11 +3293,11 @@
             <div class="space-y-4">
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Vertretungsberechtigte Person</label>
-                <input id="sLegalPerson" value="${s.legalPerson || ''}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Vor- und Nachname">
+                <input id="sLegalPerson" value="${escapeHtml(s.legalPerson || '')}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Vor- und Nachname">
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Registergericht & -nummer (falls vorhanden)</label>
-                <input id="sRegister" value="${s.register || ''}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="z.B. Amtsgericht Köln, HRB 12345">
+                <input id="sRegister" value="${escapeHtml(s.register || '')}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="z.B. Amtsgericht Köln, HRB 12345">
               </div>
             </div>
           </div>
@@ -3307,15 +3307,15 @@
             <div class="space-y-4">
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Datenschutzbeauftragter (falls benannt)</label>
-                <input id="sDpo" value="${s.dpo || ''}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Name + E-Mail">
+                <input id="sDpo" value="${escapeHtml(s.dpo || '')}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Name + E-Mail">
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Link zur Datenschutzerklärung</label>
-                <input id="sPrivacyUrl" value="${s.privacyUrl || ''}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="https://...">
+                <input id="sPrivacyUrl" value="${escapeHtml(s.privacyUrl || '')}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="https://...">
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Link zu AGB</label>
-                <input id="sTermsUrl" value="${s.termsUrl || ''}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="https://...">
+                <input id="sTermsUrl" value="${escapeHtml(s.termsUrl || '')}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="https://...">
               </div>
             </div>
           </div>
@@ -3357,7 +3357,7 @@
                     <select name="tierIcon_${idx}" class="border border-gray-200 rounded-lg px-2 py-1 text-xl w-16 text-center" ${idx === 0 ? 'disabled' : ''}>
                       ${iconOptions.map(ic => `<option value="${ic}" ${tier.icon === ic ? 'selected' : ''}>${ic}</option>`).join('')}
                     </select>
-                    <input name="tierName_${idx}" value="${tier.name}" class="border border-gray-200 rounded-lg px-3 py-2 text-sm font-semibold w-32 ${idx === 0 ? 'bg-gray-100' : ''}" ${idx === 0 ? 'disabled' : ''} placeholder="Name">
+                    <input name="tierName_${idx}" value="${escapeHtml(tier.name)}" class="border border-gray-200 rounded-lg px-3 py-2 text-sm font-semibold w-32 ${idx === 0 ? 'bg-gray-100' : ''}" ${idx === 0 ? 'disabled' : ''} placeholder="Name">
                     ${idx === 0 ? '<span class="text-xs text-gray-400">(Standard – nicht editierbar)</span>' : ''}
                   </div>
                   ${idx > 0 ? `<button type="button" onclick="removeTier(${idx})" class="text-red-400 hover:text-red-600 p-1"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>` : ''}
@@ -3386,7 +3386,7 @@
                 </div>
                 <div class="mt-3">
                   <label class="block text-xs text-gray-500 mb-1">Vorteile (je Zeile ein Vorteil)</label>
-                  <textarea name="tierPerks_${idx}" rows="2" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="z.B. 5% Rabatt auf alle Kurse&#10;Priorität bei Warteliste">${tier.perks.join('\n')}</textarea>
+                  <textarea name="tierPerks_${idx}" rows="2" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="z.B. 5% Rabatt auf alle Kurse&#10;Priorität bei Warteliste">${escapeHtml(tier.perks.join('\n'))}</textarea>
                 </div>
                 ` : `
                 <div class="text-sm text-gray-500">Alle neuen Kunden starten auf dieser Stufe. Keine Vorteile, kein Rabatt.</div>
@@ -3412,13 +3412,13 @@
           <div class="flex gap-3 flex-wrap" id="tierPreview">
             ${tiers.map(t => `
               <div class="flex items-center gap-2 px-4 py-2 rounded-full ${t.color} text-sm font-medium">
-                ${t.icon} ${t.name}
+                ${escapeHtml(t.icon)} ${escapeHtml(t.name)}
                 ${t.discount > 0 ? `<span class="opacity-60">(${t.discount}%)</span>` : ''}
               </div>
             `).join('')}
           </div>
           <div class="mt-4 text-sm text-gray-500">
-            ${tiers.filter(t => t.minBookings > 0).map(t => `<div class="mb-1">${t.icon} <strong>${t.name}</strong>: ab ${t.minBookings} Buchungen + ${t.minSpent}€ Umsatz → ${t.discount}% Rabatt</div>`).join('')}
+            ${tiers.filter(t => t.minBookings > 0).map(t => `<div class="mb-1">${escapeHtml(t.icon)} <strong>${escapeHtml(t.name)}</strong>: ab ${t.minBookings} Buchungen + ${t.minSpent}€ Umsatz → ${t.discount}% Rabatt</div>`).join('')}
           </div>
         </div>
       `
