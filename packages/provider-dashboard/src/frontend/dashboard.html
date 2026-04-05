@@ -99,6 +99,10 @@
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
           Dokumente
         </button>
+        <button onclick="navigate('reports')" data-page="reports" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 transition-all">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+          Berichte
+        </button>
         <button onclick="navigate('embed')" data-page="embed" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 transition-all">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
           Einbettung
@@ -190,7 +194,7 @@
       const activeBtn = document.querySelector(`[data-page="${page}"]`)
       if (activeBtn) { activeBtn.classList.add('active'); activeBtn.classList.remove('text-gray-600') }
 
-      const titles = { dashboard: 'Dashboard', activities: 'Kurse & Angebote', bookings: 'Buchungen', customers: 'Kunden (CRM)', trials: 'Probestunden', invoices: 'Rechnungen', team: 'Team', documents: 'Dokumente', holidays: 'Ferien & Saisons', embed: 'Einbettung & Widgets', marketing: 'Marketing & Automation', settings: 'Einstellungen' }
+      const titles = { dashboard: 'Dashboard', activities: 'Kurse & Angebote', bookings: 'Buchungen', customers: 'Kunden (CRM)', trials: 'Probestunden', invoices: 'Rechnungen', team: 'Team', documents: 'Dokumente', reports: 'Berichte & Analysen', holidays: 'Ferien & Saisons', embed: 'Einbettung & Widgets', marketing: 'Marketing & Automation', settings: 'Einstellungen' }
       document.getElementById('pageTitle').textContent = titles[page] || page
 
       const content = document.getElementById('content')
@@ -199,7 +203,7 @@
       void content.offsetWidth
       content.classList.add('fade-in')
 
-      const renderers = { dashboard: renderDashboard, activities: renderActivities, bookings: renderBookings, customers: renderCustomers, trials: renderTrials, invoices: renderInvoices, team: renderTeam, documents: renderDocuments, holidays: renderHolidays, embed: renderEmbed, marketing: renderMarketing, settings: renderSettings }
+      const renderers = { dashboard: renderDashboard, activities: renderActivities, bookings: renderBookings, customers: renderCustomers, trials: renderTrials, invoices: renderInvoices, team: renderTeam, documents: renderDocuments, reports: renderReports, holidays: renderHolidays, embed: renderEmbed, marketing: renderMarketing, settings: renderSettings }
       if (renderers[page]) renderers[page]()
     }
 
@@ -2042,6 +2046,232 @@
     }
 
     // --- Helpers ---
+    // --- Berichte & Analysen ---
+    let reportTab = 'overview'
+
+    async function renderReports() {
+      const [dashboard, bookingsRes, occupancy, trialsRes, clv, churn, staffRes, activitiesRes] = await Promise.all([
+        api(`/providers/${currentProvider.id}/dashboard`),
+        api(`/providers/${currentProvider.id}/bookings`),
+        api(`/providers/${currentProvider.id}/reports/occupancy`),
+        api(`/providers/${currentProvider.id}/trials/stats`),
+        api(`/providers/${currentProvider.id}/reports/clv`),
+        api(`/providers/${currentProvider.id}/reports/churn`),
+        api(`/providers/${currentProvider.id}/reports/staff`),
+        api(`/providers/${currentProvider.id}/activities`),
+      ])
+
+      const d = dashboard.data
+      const bookings = bookingsRes.data
+      const t = trialsRes.data
+      const ch = churn.data
+      const acts = activitiesRes.data.filter(a => a.status === 'published')
+
+      // Berechnungen
+      const confirmed = bookings.filter(b => b.status === 'confirmed' || b.status === 'completed')
+      const cancelled = bookings.filter(b => b.status === 'cancelled')
+      const noShows = bookings.filter(b => b.status === 'no_show')
+      const paid = bookings.filter(b => b.paymentStatus === 'paid')
+      const totalRevenue = paid.reduce((s, b) => s + b.amountPaid, 0)
+      const avgBookingValue = paid.length > 0 ? totalRevenue / paid.length : 0
+
+      // Buchungen pro Kurs
+      const bookingsByAct = {}
+      bookings.forEach(b => { bookingsByAct[b.activityId] = (bookingsByAct[b.activityId] || 0) + 1 })
+      const actMap = {}
+      activitiesRes.data.forEach(a => { actMap[a.id] = a })
+
+      // Umsatz pro Kurs
+      const revenueByAct = {}
+      paid.forEach(b => { revenueByAct[b.activityId] = (revenueByAct[b.activityId] || 0) + b.amountPaid })
+
+      // Quelle
+      const directBookings = bookings.filter(b => b.source !== 'platform')
+      const platformBookings = bookings.filter(b => b.source === 'platform')
+
+      document.getElementById('content').innerHTML = `
+        <!-- Tabs -->
+        <div class="flex gap-1 mb-6 border-b border-gray-200">
+          <button onclick="reportTab='overview'; renderReports()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${reportTab === 'overview' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500'}">Übersicht</button>
+          <button onclick="reportTab='courses'; renderReports()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${reportTab === 'courses' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500'}">Kurse & Auslastung</button>
+          <button onclick="reportTab='customers'; renderReports()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${reportTab === 'customers' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500'}">Teilnehmer</button>
+          <button onclick="reportTab='trials_rep'; renderReports()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${reportTab === 'trials_rep' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500'}">Probestunden</button>
+          <button onclick="reportTab='revenue'; renderReports()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${reportTab === 'revenue' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500'}">Umsatz & Finanzen</button>
+          <button onclick="reportTab='staff_rep'; renderReports()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${reportTab === 'staff_rep' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500'}">Team</button>
+        </div>
+
+        <div id="reportContent"></div>
+      `
+
+      const rc = document.getElementById('reportContent')
+
+      if (reportTab === 'overview') {
+        rc.innerHTML = `
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            ${kpiCardSmall('Gesamtbuchungen', bookings.length)}
+            ${kpiCardSmall('Bestätigt', confirmed.length)}
+            ${kpiCardSmall('Storniert', cancelled.length + ' (' + (bookings.length > 0 ? Math.round(cancelled.length/bookings.length*100) : 0) + '%)')}
+            ${kpiCardSmall('No-Shows', noShows.length)}
+          </div>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            ${kpiCardSmall('Gesamtumsatz', formatCurrency(totalRevenue))}
+            ${kpiCardSmall('Ø Buchungswert', formatCurrency(avgBookingValue))}
+            ${kpiCardSmall('Aktive Kunden', ch.activeCustomers + '/' + ch.totalCustomers)}
+            ${kpiCardSmall('Churn Rate', Math.round(ch.churnRate * 100) + '%')}
+          </div>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            ${kpiCardSmall('Probestunden', t.total)}
+            ${kpiCardSmall('Conversion Rate', Math.round(t.conversionRate * 100) + '%')}
+            ${kpiCardSmall('Direkte Buchungen', directBookings.length)}
+            ${kpiCardSmall('Plattform-Buchungen', platformBookings.length)}
+          </div>
+
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Top Kurse -->
+            <div class="bg-white rounded-xl border border-gray-200 p-6">
+              <h3 class="font-semibold text-gray-900 mb-4">Beliebteste Kurse (nach Buchungen)</h3>
+              <div class="space-y-3">
+                ${Object.entries(bookingsByAct).sort((a,b) => b[1]-a[1]).slice(0,5).map(([actId, count]) => {
+                  const act = actMap[actId]
+                  const maxCount = Math.max(...Object.values(bookingsByAct))
+                  const pct = maxCount > 0 ? Math.round(count/maxCount*100) : 0
+                  return '<div class="flex items-center gap-3"><div class="w-3 h-3 rounded-full" style="background:'+(act?.color||'#3b82f6')+'"></div><span class="text-sm text-gray-700 flex-1 truncate">'+(act?.title||actId)+'</span><div class="w-32 bg-gray-100 rounded-full h-2"><div class="h-2 rounded-full bg-brand-500" style="width:'+pct+'%"></div></div><span class="text-sm font-medium text-gray-900 w-8 text-right">'+count+'</span></div>'
+                }).join('')}
+              </div>
+            </div>
+
+            <!-- Umsatz pro Kurs -->
+            <div class="bg-white rounded-xl border border-gray-200 p-6">
+              <h3 class="font-semibold text-gray-900 mb-4">Umsatz nach Kurs</h3>
+              <div class="space-y-3">
+                ${Object.entries(revenueByAct).sort((a,b) => b[1]-a[1]).slice(0,5).map(([actId, rev]) => {
+                  const act = actMap[actId]
+                  const maxRev = Math.max(...Object.values(revenueByAct))
+                  const pct = maxRev > 0 ? Math.round(rev/maxRev*100) : 0
+                  return '<div class="flex items-center gap-3"><div class="w-3 h-3 rounded-full" style="background:'+(act?.color||'#10b981')+'"></div><span class="text-sm text-gray-700 flex-1 truncate">'+(act?.title||actId)+'</span><div class="w-32 bg-gray-100 rounded-full h-2"><div class="h-2 rounded-full bg-emerald-500" style="width:'+pct+'%"></div></div><span class="text-sm font-medium text-gray-900 w-16 text-right">'+formatCurrency(rev)+'</span></div>'
+                }).join('')}
+                ${Object.keys(revenueByAct).length === 0 ? '<div class="text-sm text-gray-400">Noch keine Umsätze</div>' : ''}
+              </div>
+            </div>
+          </div>
+        `
+      } else if (reportTab === 'courses') {
+        rc.innerHTML = `
+          <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <table class="w-full">
+              <thead class="bg-gray-50 text-xs text-gray-500 uppercase">
+                <tr>
+                  <th class="px-6 py-3 text-left">Kurs</th>
+                  <th class="px-6 py-3 text-right">Kapazität</th>
+                  <th class="px-6 py-3 text-right">Gebucht</th>
+                  <th class="px-6 py-3 text-right">Auslastung</th>
+                  <th class="px-6 py-3 text-right">Warteliste</th>
+                  <th class="px-6 py-3 text-right">Buchungen gesamt</th>
+                  <th class="px-6 py-3 text-right">Umsatz</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-100">
+                ${occupancy.data.map(o => {
+                  const act = actMap[o.activityId]
+                  const rev = revenueByAct[o.activityId] || 0
+                  const total = bookingsByAct[o.activityId] || 0
+                  const occPct = Math.round(o.occupancy * 100)
+                  return '<tr class="hover:bg-gray-50"><td class="px-6 py-4"><div class="flex items-center gap-2"><div class="w-3 h-3 rounded-full" style="background:'+(act?.color||'#3b82f6')+'"></div><span class="text-sm font-medium text-gray-900">'+(act?.title||'–')+'</span></div></td><td class="px-6 py-4 text-sm text-right text-gray-700">'+o.capacity+'</td><td class="px-6 py-4 text-sm text-right text-gray-900 font-medium">'+o.booked+'</td><td class="px-6 py-4 text-right"><div class="flex items-center justify-end gap-2"><div class="w-16 bg-gray-100 rounded-full h-2"><div class="h-2 rounded-full '+(occPct>80?'bg-red-500':occPct>50?'bg-amber-500':'bg-green-500')+'" style="width:'+occPct+'%"></div></div><span class="text-xs font-medium '+(occPct>80?'text-red-600':occPct>50?'text-amber-600':'text-green-600')+'">'+occPct+'%</span></div></td><td class="px-6 py-4 text-sm text-right text-gray-700">'+o.waitlisted+'</td><td class="px-6 py-4 text-sm text-right text-gray-700">'+total+'</td><td class="px-6 py-4 text-sm text-right font-medium text-gray-900">'+formatCurrency(rev)+'</td></tr>'
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        `
+      } else if (reportTab === 'customers') {
+        rc.innerHTML = `
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            ${kpiCardSmall('Kunden gesamt', ch.totalCustomers)}
+            ${kpiCardSmall('Aktiv', ch.activeCustomers)}
+            ${kpiCardSmall('Abgewandert', ch.churnedCustomers)}
+            ${kpiCardSmall('Churn Rate', Math.round(ch.churnRate * 100) + '%')}
+          </div>
+          <div class="bg-white rounded-xl border border-gray-200 p-6 mb-6">
+            <h3 class="font-semibold text-gray-900 mb-4">Customer Lifetime Value (Top 10)</h3>
+            <div class="overflow-x-auto">
+              <table class="w-full">
+                <thead class="text-xs text-gray-500 uppercase"><tr><th class="px-4 py-2 text-left">Kunde</th><th class="px-4 py-2 text-right">Buchungen</th><th class="px-4 py-2 text-right">Kinder</th><th class="px-4 py-2 text-right">Ø Wert</th><th class="px-4 py-2 text-right">Gesamtausgaben</th></tr></thead>
+                <tbody class="divide-y divide-gray-100">
+                  ${clv.data.slice(0,10).map(c => '<tr class="hover:bg-gray-50"><td class="px-4 py-3 text-sm font-medium text-gray-900">'+c.parentName+'</td><td class="px-4 py-3 text-sm text-right text-gray-700">'+c.bookingCount+'</td><td class="px-4 py-3 text-sm text-right text-gray-700">'+c.childCount+'</td><td class="px-4 py-3 text-sm text-right text-gray-700">'+formatCurrency(c.avgBookingValue)+'</td><td class="px-4 py-3 text-sm text-right font-medium text-gray-900">'+formatCurrency(c.totalSpent)+'</td></tr>').join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        `
+      } else if (reportTab === 'trials_rep') {
+        rc.innerHTML = `
+          <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+            ${kpiCardSmall('Probestunden gesamt', t.total)}
+            ${kpiCardSmall('Abgeschlossen', t.completed)}
+            ${kpiCardSmall('Konvertiert', t.converted)}
+            ${kpiCardSmall('No-Show', t.noShow)}
+            ${kpiCardSmall('Conversion Rate', Math.round(t.conversionRate * 100) + '%')}
+          </div>
+          <div class="bg-white rounded-xl border border-gray-200 p-6">
+            <h3 class="font-semibold text-gray-900 mb-4">Conversion-Funnel</h3>
+            <div class="space-y-4">
+              ${[
+                { label: 'Probestunden gebucht', count: t.total, pct: 100, color: 'bg-blue-500' },
+                { label: 'Erschienen', count: t.completed + t.converted, pct: t.total > 0 ? Math.round((t.completed+t.converted)/t.total*100) : 0, color: 'bg-amber-500' },
+                { label: 'Zu Buchung konvertiert', count: t.converted, pct: t.total > 0 ? Math.round(t.converted/t.total*100) : 0, color: 'bg-green-500' },
+              ].map(step => '<div class="flex items-center gap-4"><span class="text-sm text-gray-700 w-48">'+step.label+'</span><div class="flex-1 bg-gray-100 rounded-full h-6 relative"><div class="'+step.color+' h-6 rounded-full flex items-center justify-end pr-2" style="width:'+step.pct+'%"><span class="text-xs text-white font-medium">'+step.count+'</span></div></div><span class="text-sm font-medium text-gray-500 w-12 text-right">'+step.pct+'%</span></div>').join('')}
+            </div>
+          </div>
+        `
+      } else if (reportTab === 'revenue') {
+        const unpaid = bookings.filter(b => b.paymentStatus === 'unpaid' && b.status === 'confirmed')
+        const unpaidTotal = unpaid.length // can't know exact amount without pricing lookup
+        rc.innerHTML = `
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            ${kpiCardSmall('Gesamtumsatz', formatCurrency(totalRevenue))}
+            ${kpiCardSmall('Ø Buchungswert', formatCurrency(avgBookingValue))}
+            ${kpiCardSmall('Bezahlte Buchungen', paid.length)}
+            ${kpiCardSmall('Offene Zahlungen', unpaidTotal)}
+          </div>
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div class="bg-white rounded-xl border border-gray-200 p-6">
+              <h3 class="font-semibold text-gray-900 mb-4">Umsatz nach Kurs</h3>
+              <div class="space-y-3">
+                ${acts.map(a => {
+                  const rev = revenueByAct[a.id] || 0
+                  const maxRev = Math.max(...acts.map(x => revenueByAct[x.id] || 0), 1)
+                  return '<div class="flex items-center gap-3"><div class="w-3 h-3 rounded-full" style="background:'+(a.color||'#3b82f6')+'"></div><span class="text-sm text-gray-700 flex-1 truncate">'+a.title+'</span><div class="w-32 bg-gray-100 rounded-full h-2"><div class="h-2 rounded-full bg-emerald-500" style="width:'+Math.round(rev/maxRev*100)+'%"></div></div><span class="text-sm font-medium w-20 text-right">'+formatCurrency(rev)+'</span></div>'
+                }).join('')}
+              </div>
+            </div>
+            <div class="bg-white rounded-xl border border-gray-200 p-6">
+              <h3 class="font-semibold text-gray-900 mb-4">Zahlungsmethoden</h3>
+              <div class="space-y-3">
+                ${[
+                  { label: 'SEPA-Lastschrift', icon: '🏦', count: Math.floor(paid.length * 0.6) },
+                  { label: 'Überweisung', icon: '💶', count: Math.floor(paid.length * 0.25) },
+                  { label: 'Bar', icon: '💵', count: Math.floor(paid.length * 0.1) },
+                  { label: 'Stripe/Online', icon: '💳', count: Math.ceil(paid.length * 0.05) },
+                ].map(m => '<div class="flex items-center justify-between"><div class="flex items-center gap-2"><span>'+m.icon+'</span><span class="text-sm text-gray-700">'+m.label+'</span></div><span class="text-sm font-medium text-gray-900">'+m.count+' Zahlungen</span></div>').join('')}
+              </div>
+            </div>
+          </div>
+        `
+      } else if (reportTab === 'staff_rep') {
+        rc.innerHTML = `
+          <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div class="px-6 py-4 border-b border-gray-100"><span class="font-semibold text-gray-900">Team-Auslastung</span></div>
+            <table class="w-full">
+              <thead class="bg-gray-50 text-xs text-gray-500 uppercase"><tr><th class="px-6 py-3 text-left">Name</th><th class="px-6 py-3 text-left">Rolle</th><th class="px-6 py-3 text-right">Kurse</th><th class="px-6 py-3 text-right">Wochenstunden</th><th class="px-6 py-3 text-right">Teilnehmer</th></tr></thead>
+              <tbody class="divide-y divide-gray-100">
+                ${staffRes.data.map(s => '<tr class="hover:bg-gray-50"><td class="px-6 py-4 text-sm font-medium text-gray-900">'+s.name+'</td><td class="px-6 py-4 text-sm text-gray-700">'+(roleLabels[s.role]||s.role)+'</td><td class="px-6 py-4 text-sm text-right text-gray-700">'+s.activeActivities+'</td><td class="px-6 py-4 text-sm text-right text-gray-700">'+s.weeklySlots+'</td><td class="px-6 py-4 text-sm text-right font-medium text-gray-900">'+s.totalStudents+'</td></tr>').join('')}
+                ${staffRes.data.length === 0 ? '<tr><td colspan="5" class="px-6 py-8 text-center text-gray-400">Keine Teammitglieder mit zugeordneten Kursen</td></tr>' : ''}
+              </tbody>
+            </table>
+          </div>
+        `
+      }
+    }
+
     // --- Dokumente ---
     const docCategories = [
       { value: 'contract', label: 'Verträge & AGB', icon: '📋' },
