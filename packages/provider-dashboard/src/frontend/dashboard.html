@@ -284,7 +284,15 @@
 
       const events = []
       const days = []
-      for (let i = 0; i < 7; i++) days.push(addDays(calWeekStart, i))
+      if (calView === 'day') {
+        days.push(new Date(calWeekStart))
+      } else if (calView === 'month') {
+        const year = calWeekStart.getFullYear(), month = calWeekStart.getMonth()
+        const daysInMonth = new Date(year, month + 1, 0).getDate()
+        for (let i = 1; i <= daysInMonth; i++) days.push(new Date(year, month, i))
+      } else {
+        for (let i = 0; i < 7; i++) days.push(addDays(calWeekStart, i))
+      }
 
       activities.data.filter(a => a.status === 'published').forEach(a => {
         if (a.schedule.type === 'recurring') {
@@ -347,7 +355,9 @@
               <button onclick="setCalView('month')" class="px-3 py-1 text-xs font-medium rounded-md ${calView === 'month' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}">Monat</button>
             </div>
             <h2 class="text-lg font-semibold text-gray-900 ml-2">
-              ${calWeekStart.toLocaleDateString('de-DE', { day: 'numeric', month: 'long' })} – ${addDays(calWeekStart, 6).toLocaleDateString('de-DE', { day: 'numeric', month: 'long', year: 'numeric' })}
+              ${calView === 'day' ? calWeekStart.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+                : calView === 'month' ? calWeekStart.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' })
+                : calWeekStart.toLocaleDateString('de-DE', { day: 'numeric', month: 'long' }) + ' – ' + addDays(calWeekStart, 6).toLocaleDateString('de-DE', { day: 'numeric', month: 'long', year: 'numeric' })}
             </h2>
           </div>
           <div class="flex items-center gap-6 text-sm">
@@ -370,39 +380,71 @@
         </div>` : ''}
 
         <!-- Calendar Grid -->
+        ${calView === 'month' ? `
+        <!-- MONTH VIEW -->
         <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <!-- Day Headers -->
-          <div class="cal-grid border-b border-gray-200">
-            <div class="p-2"></div>
-            ${days.map(d => {
-              const isToday = fmtDate(d) === today
-              return `<div class="p-3 text-center border-l border-gray-100 ${isToday ? 'bg-brand-50' : ''}">
-                <div class="text-xs text-gray-500 uppercase">${d.toLocaleDateString('de-DE', { weekday: 'short' })}</div>
-                <div class="text-lg font-bold ${isToday ? 'text-brand-600' : 'text-gray-900'}">${d.getDate()}</div>
-                ${isToday ? '<div class="w-2 h-2 rounded-full bg-brand-500 mx-auto mt-1"></div>' : ''}
-              </div>`
-            }).join('')}
+          <div class="grid grid-cols-7 border-b border-gray-200">
+            ${['Mo','Di','Mi','Do','Fr','Sa','So'].map(d => `<div class="p-2 text-center text-xs font-medium text-gray-500 uppercase">${d}</div>`).join('')}
           </div>
-
-          <!-- Time Grid -->
-          <div class="cal-grid overflow-y-auto" style="max-height: 420px;">
-            <!-- Hours + Day Columns -->
-            ${hours.map(h => `
-              <div class="cal-hour flex items-start justify-end pr-2 pt-1">
-                <span class="text-xs text-gray-400">${h}:00</span>
-              </div>
-              ${days.map(d => {
-                const isToday = fmtDate(d) === today
-                return `<div class="cal-hour cal-day-col ${isToday ? 'cal-today' : ''}" data-date="${fmtDate(d)}" data-hour="${h}"></div>`
-              }).join('')}
-            `).join('')}
+          <div class="grid grid-cols-7" id="monthGrid">
+            ${(() => {
+              const year = calWeekStart.getFullYear(), month = calWeekStart.getMonth()
+              const firstDay = new Date(year, month, 1).getDay()
+              const offset = firstDay === 0 ? 6 : firstDay - 1
+              const daysInMonth = new Date(year, month + 1, 0).getDate()
+              let cells = ''
+              for (let i = 0; i < offset; i++) cells += '<div class="p-2 border border-gray-50 min-h-[80px] bg-gray-50/50"></div>'
+              for (let d = 1; d <= daysInMonth; d++) {
+                const dateStr = year + '-' + String(month+1).padStart(2,'0') + '-' + String(d).padStart(2,'0')
+                const isToday = dateStr === today
+                const dayEvents = eventsByDay[dateStr] || []
+                cells += '<div class="p-1.5 border border-gray-50 min-h-[80px] ' + (isToday ? 'bg-brand-50' : '') + '">'
+                cells += '<div class="text-xs font-medium ' + (isToday ? 'text-brand-600' : 'text-gray-700') + ' mb-1">' + d + '</div>'
+                cells += dayEvents.slice(0,3).map(ev => {
+                  const act = actMap[ev.activityId]
+                  const clr = getCourseColor(act, 0)
+                  const occ = occMap[ev.activityId]
+                  const occPct = occ ? Math.round(occ.occupancy * 100) : 0
+                  return '<div class="text-xs rounded px-1 py-0.5 mb-0.5 truncate cursor-pointer" style="background:' + hexToRgba(clr, 0.15) + ';border-left:3px solid ' + clr + ';color:#374151;" onclick="showEventDetail(' + JSON.stringify(ev).replace(/"/g,'&quot;') + ',' + (act ? JSON.stringify({title:act.title,description:act.description||'',category:act.category,ageRange:act.ageRange,pricing:act.pricing}).replace(/"/g,'&quot;') : 'null') + ',' + (occ ? JSON.stringify(occ).replace(/"/g,'&quot;') : 'null') + ')">' + ev.startTime + ' ' + ev.title + '</div>'
+                }).join('')
+                if (dayEvents.length > 3) cells += '<div class="text-xs text-gray-400">+' + (dayEvents.length-3) + ' weitere</div>'
+                cells += '</div>'
+              }
+              return cells
+            })()}
           </div>
         </div>
-
+        ` : `
+        <!-- DAY / WEEK VIEW -->
+        <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div style="display:grid; grid-template-columns: 60px repeat(${calView === 'day' ? 1 : 7}, 1fr);" class="border-b border-gray-200">
+            <div class="p-2"></div>
+            ${(calView === 'day' ? [calWeekStart] : days).map(d => {
+              const isToday = fmtDate(d) === today
+              return '<div class="p-3 text-center border-l border-gray-100 ' + (isToday ? 'bg-brand-50' : '') + '">' +
+                '<div class="text-xs text-gray-500 uppercase">' + d.toLocaleDateString('de-DE', { weekday: 'short' }) + '</div>' +
+                '<div class="text-lg font-bold ' + (isToday ? 'text-brand-600' : 'text-gray-900') + '">' + d.getDate() + '</div>' +
+                (isToday ? '<div class="w-2 h-2 rounded-full bg-brand-500 mx-auto mt-1"></div>' : '') +
+              '</div>'
+            }).join('')}
+          </div>
+          <div style="display:grid; grid-template-columns: 60px repeat(${calView === 'day' ? 1 : 7}, 1fr); max-height: 420px;" class="overflow-y-auto">
+            ${hours.map(h =>
+              '<div class="cal-hour flex items-start justify-end pr-2 pt-1"><span class="text-xs text-gray-400">' + h + ':00</span></div>' +
+              (calView === 'day' ? [calWeekStart] : days).map(d => {
+                const isToday = fmtDate(d) === today
+                return '<div class="cal-hour cal-day-col ' + (isToday ? 'cal-today' : '') + '" data-date="' + fmtDate(d) + '" data-hour="' + h + '"></div>'
+              }).join('')
+            ).join('')}
+          </div>
+        </div>
+        `}
       `
 
-      // Place events on the grid
-      days.forEach((d, dayIdx) => {
+      // Place events on the grid (day/week views only, month has inline events)
+      if (calView === 'month') return
+      const gridDays = calView === 'day' ? [calWeekStart] : days
+      gridDays.forEach((d, dayIdx) => {
         const dayEvents = eventsByDay[fmtDate(d)] || []
         const col = dayIdx + 1 // 0 is the hour label column
 
@@ -554,9 +596,24 @@
 
     function setCalView(view) { calView = view; renderCalendarInto(activeCalContainer) }
     let activeCalContainer = 'dashboardCalendar'
-    function calPrev() { calWeekStart = addDays(calWeekStart, -7); renderCalendarInto(activeCalContainer) }
-    function calNext() { calWeekStart = addDays(calWeekStart, 7); renderCalendarInto(activeCalContainer) }
-    function calToday() { calWeekStart = getMonday(new Date()); renderCalendarInto(activeCalContainer) }
+    function calPrev() {
+      if (calView === 'day') calWeekStart = addDays(calWeekStart, -1)
+      else if (calView === 'week') calWeekStart = addDays(calWeekStart, -7)
+      else calWeekStart = new Date(calWeekStart.getFullYear(), calWeekStart.getMonth() - 1, 1)
+      renderCalendarInto(activeCalContainer)
+    }
+    function calNext() {
+      if (calView === 'day') calWeekStart = addDays(calWeekStart, 1)
+      else if (calView === 'week') calWeekStart = addDays(calWeekStart, 7)
+      else calWeekStart = new Date(calWeekStart.getFullYear(), calWeekStart.getMonth() + 1, 1)
+      renderCalendarInto(activeCalContainer)
+    }
+    function calToday() {
+      if (calView === 'day') calWeekStart = new Date()
+      else if (calView === 'week') calWeekStart = getMonday(new Date())
+      else calWeekStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+      renderCalendarInto(activeCalContainer)
+    }
 
     // --- Dashboard ---
     async function renderDashboard() {
