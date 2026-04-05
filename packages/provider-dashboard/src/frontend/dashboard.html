@@ -2206,7 +2206,7 @@
                   const rev = revenueByAct[o.activityId] || 0
                   const total = bookingsByAct[o.activityId] || 0
                   const occPct = Math.round(o.occupancy * 100)
-                  return '<tr class="hover:bg-gray-50"><td class="px-6 py-4"><div class="flex items-center gap-2"><div class="w-3 h-3 rounded-full" style="background:'+(act?.color||'#3b82f6')+'"></div><span class="text-sm font-medium text-gray-900">'+(act?.title||'–')+'</span></div></td><td class="px-6 py-4 text-sm text-right text-gray-700">'+o.capacity+'</td><td class="px-6 py-4 text-sm text-right text-gray-900 font-medium">'+o.booked+'</td><td class="px-6 py-4 text-right"><div class="flex items-center justify-end gap-2"><div class="w-16 bg-gray-100 rounded-full h-2"><div class="h-2 rounded-full '+(occPct>80?'bg-red-500':occPct>50?'bg-amber-500':'bg-green-500')+'" style="width:'+occPct+'%"></div></div><span class="text-xs font-medium '+(occPct>80?'text-red-600':occPct>50?'text-amber-600':'text-green-600')+'">'+occPct+'%</span></div></td><td class="px-6 py-4 text-sm text-right text-gray-700">'+o.waitlisted+'</td><td class="px-6 py-4 text-sm text-right text-gray-700">'+total+'</td><td class="px-6 py-4 text-sm text-right font-medium text-gray-900">'+formatCurrency(rev)+'</td></tr>'
+                  return '<tr class="hover:bg-gray-50"><td class="px-6 py-4"><div class="flex items-center gap-2"><div class="w-3 h-3 rounded-full" style="background:'+(act?.color||'#3b82f6')+'"></div><span class="text-sm font-medium text-gray-900">'+escapeHtml(act?.title||'–')+'</span></div></td><td class="px-6 py-4 text-sm text-right text-gray-700">'+o.capacity+'</td><td class="px-6 py-4 text-sm text-right text-gray-900 font-medium">'+o.booked+'</td><td class="px-6 py-4 text-right"><div class="flex items-center justify-end gap-2"><div class="w-16 bg-gray-100 rounded-full h-2"><div class="h-2 rounded-full '+(occPct>80?'bg-red-500':occPct>50?'bg-amber-500':'bg-green-500')+'" style="width:'+occPct+'%"></div></div><span class="text-xs font-medium '+(occPct>80?'text-red-600':occPct>50?'text-amber-600':'text-green-600')+'">'+occPct+'%</span></div></td><td class="px-6 py-4 text-sm text-right text-gray-700">'+o.waitlisted+'</td><td class="px-6 py-4 text-sm text-right text-gray-700">'+total+'</td><td class="px-6 py-4 text-sm text-right font-medium text-gray-900">'+formatCurrency(rev)+'</td></tr>'
                 }).join('')}
               </tbody>
             </table>
@@ -2226,7 +2226,7 @@
               <table class="w-full">
                 <thead class="text-xs text-gray-500 uppercase"><tr><th class="px-4 py-2 text-left">Kunde</th><th class="px-4 py-2 text-right">Buchungen</th><th class="px-4 py-2 text-right">Kinder</th><th class="px-4 py-2 text-right">Ø Wert</th><th class="px-4 py-2 text-right">Gesamtausgaben</th></tr></thead>
                 <tbody class="divide-y divide-gray-100">
-                  ${clv.data.slice(0,10).map(c => '<tr class="hover:bg-gray-50"><td class="px-4 py-3 text-sm font-medium text-gray-900">'+c.parentName+'</td><td class="px-4 py-3 text-sm text-right text-gray-700">'+c.bookingCount+'</td><td class="px-4 py-3 text-sm text-right text-gray-700">'+c.childCount+'</td><td class="px-4 py-3 text-sm text-right text-gray-700">'+formatCurrency(c.avgBookingValue)+'</td><td class="px-4 py-3 text-sm text-right font-medium text-gray-900">'+formatCurrency(c.totalSpent)+'</td></tr>').join('')}
+                  ${clv.data.slice(0,10).map(c => '<tr class="hover:bg-gray-50"><td class="px-4 py-3 text-sm font-medium text-gray-900">'+escapeHtml(c.parentName)+'</td><td class="px-4 py-3 text-sm text-right text-gray-700">'+c.bookingCount+'</td><td class="px-4 py-3 text-sm text-right text-gray-700">'+c.childCount+'</td><td class="px-4 py-3 text-sm text-right text-gray-700">'+formatCurrency(c.avgBookingValue)+'</td><td class="px-4 py-3 text-sm text-right font-medium text-gray-900">'+formatCurrency(c.totalSpent)+'</td></tr>').join('')}
                 </tbody>
               </table>
             </div>
@@ -2269,7 +2269,7 @@
                 ${acts.map(a => {
                   const rev = revenueByAct[a.id] || 0
                   const maxRev = Math.max(...acts.map(x => revenueByAct[x.id] || 0), 1)
-                  return '<div class="flex items-center gap-3"><div class="w-3 h-3 rounded-full" style="background:'+(a.color||'#3b82f6')+'"></div><span class="text-sm text-gray-700 flex-1 truncate">'+a.title+'</span><div class="w-32 bg-gray-100 rounded-full h-2"><div class="h-2 rounded-full bg-emerald-500" style="width:'+Math.round(rev/maxRev*100)+'%"></div></div><span class="text-sm font-medium w-20 text-right">'+formatCurrency(rev)+'</span></div>'
+                  return '<div class="flex items-center gap-3"><div class="w-3 h-3 rounded-full" style="background:'+(a.color||'#3b82f6')+'"></div><span class="text-sm text-gray-700 flex-1 truncate">'+escapeHtml(a.title)+'</span><div class="w-32 bg-gray-100 rounded-full h-2"><div class="h-2 rounded-full bg-emerald-500" style="width:'+Math.round(rev/maxRev*100)+'%"></div></div><span class="text-sm font-medium w-20 text-right">'+formatCurrency(rev)+'</span></div>'
                 }).join('')}
               </div>
             </div>
@@ -2293,7 +2293,7 @@
             <table class="w-full">
               <thead class="bg-gray-50 text-xs text-gray-500 uppercase"><tr><th class="px-6 py-3 text-left">Name</th><th class="px-6 py-3 text-left">Rolle</th><th class="px-6 py-3 text-right">Kurse</th><th class="px-6 py-3 text-right">Wochenstunden</th><th class="px-6 py-3 text-right">Teilnehmer</th></tr></thead>
               <tbody class="divide-y divide-gray-100">
-                ${staffRes.data.map(s => '<tr class="hover:bg-gray-50"><td class="px-6 py-4 text-sm font-medium text-gray-900">'+s.name+'</td><td class="px-6 py-4 text-sm text-gray-700">'+(roleLabels[s.role]||s.role)+'</td><td class="px-6 py-4 text-sm text-right text-gray-700">'+s.activeActivities+'</td><td class="px-6 py-4 text-sm text-right text-gray-700">'+s.weeklySlots+'</td><td class="px-6 py-4 text-sm text-right font-medium text-gray-900">'+s.totalStudents+'</td></tr>').join('')}
+                ${staffRes.data.map(s => '<tr class="hover:bg-gray-50"><td class="px-6 py-4 text-sm font-medium text-gray-900">'+escapeHtml(s.name)+'</td><td class="px-6 py-4 text-sm text-gray-700">'+(roleLabels[s.role]||escapeHtml(s.role))+'</td><td class="px-6 py-4 text-sm text-right text-gray-700">'+s.activeActivities+'</td><td class="px-6 py-4 text-sm text-right text-gray-700">'+s.weeklySlots+'</td><td class="px-6 py-4 text-sm text-right font-medium text-gray-900">'+s.totalStudents+'</td></tr>').join('')}
                 ${staffRes.data.length === 0 ? '<tr><td colspan="5" class="px-6 py-8 text-center text-gray-400">Keine Teammitglieder mit zugeordneten Kursen</td></tr>' : ''}
               </tbody>
             </table>
