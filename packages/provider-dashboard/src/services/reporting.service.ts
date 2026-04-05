@@ -100,13 +100,15 @@ export const ReportingService = {
     const allTimeParentIds = new Set(allBookings.map((b) => b.parentId))
 
     // "Returning" = hat sowohl in diesem als auch in früheren Perioden gebucht
-    const returningParents = dateRange
-      ? Array.from(parentIds).filter((pid) =>
-          allBookings.some((b) => b.parentId === pid && b.createdAt < dateRange.from)
-        )
-      : Array.from(parentIds).filter((pid) =>
-          allBookings.filter((b) => b.parentId === pid).length > 1
-        )
+    let returningParents: string[]
+    if (dateRange) {
+      const priorParentIds = new Set(allBookings.filter(b => b.createdAt < dateRange.from).map(b => b.parentId))
+      returningParents = Array.from(parentIds).filter(pid => priorParentIds.has(pid))
+    } else {
+      const parentBookingCounts = new Map<string, number>()
+      for (const b of allBookings) parentBookingCounts.set(b.parentId, (parentBookingCounts.get(b.parentId) || 0) + 1)
+      returningParents = Array.from(parentIds).filter(pid => (parentBookingCounts.get(pid) || 0) > 1)
+    }
 
     return {
       providerId,
@@ -371,12 +373,13 @@ export const ReportingService = {
     const invoiceIds = store.getFromIndex(store.indexes.invoicesByProvider, providerId)
     const invoices = Array.from(invoiceIds).map((id) => store.state.invoices.get(id)!).filter(Boolean)
 
-    const totalRevenue = bookings
-      .filter((b) => b.paymentStatus === 'paid')
-      .reduce((sum, b) => sum + b.amountPaid, 0)
-      - bookings
-        .filter((b) => b.paymentStatus === 'refunded')
-        .reduce((sum, b) => sum + b.amountPaid, 0)
+    let totalRevenue = 0
+    let unpaidCount = 0
+    for (const b of bookings) {
+      if (b.paymentStatus === 'paid') totalRevenue += b.amountPaid
+      else if (b.paymentStatus === 'refunded') totalRevenue -= b.amountPaid
+      if (b.paymentStatus === 'unpaid' && b.status === 'confirmed') unpaidCount++
+    }
 
     const outstandingInvoices = invoices
       .filter((i) => i.status === 'sent' || i.status === 'overdue')
@@ -414,7 +417,7 @@ export const ReportingService = {
       totalRevenue: Math.round(totalRevenue * 100) / 100,
       outstandingInvoices: Math.round(outstandingInvoices * 100) / 100,
       averageOccupancy: Math.round(avgOccupancy * 100) / 100,
-      unpaidBookings: bookings.filter((b) => b.paymentStatus === 'unpaid' && b.status === 'confirmed').length,
+      unpaidBookings: unpaidCount,
       upcomingTrials,
       expiringDocuments,
       unreadMessages,
