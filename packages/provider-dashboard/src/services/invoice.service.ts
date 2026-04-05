@@ -87,12 +87,13 @@ export const InvoiceService = {
         description: item.description,
         quantity: item.quantity,
         unitPrice: item.unitPrice,
+        vatRate: item.vatRate ?? 0.19,
         total,
       }
     })
 
-    // Netto-Summe
-    const subtotal = lineItems.reduce((sum, item) => sum + item.total, 0)
+    // Netto-Summe (gerundet um Floating-Point-Drift zu vermeiden)
+    const subtotal = Math.round(lineItems.reduce((sum, item) => sum + item.total, 0) * 100) / 100
 
     // MwSt nach Sätzen aufschlüsseln
     let totalTax = 0
@@ -187,7 +188,7 @@ export const InvoiceService = {
 
   markPaid(id: ID): Invoice | undefined {
     const invoice = store.state.invoices.get(id)
-    if (!invoice) return undefined
+    if (!invoice || invoice.status === 'cancelled' || invoice.status === 'draft') return undefined
     invoice.status = 'paid'
     invoice.paidAt = new Date()
     return invoice
@@ -256,9 +257,9 @@ export const InvoiceService = {
       .filter((inv) => inv.issuedAt.getFullYear() === year && inv.status !== 'cancelled')
 
     return {
-      totalNet: invoices.reduce((sum, inv) => sum + inv.subtotal, 0),
-      totalVat: invoices.reduce((sum, inv) => sum + inv.tax, 0),
-      totalGross: invoices.reduce((sum, inv) => sum + inv.total, 0),
+      totalNet: Math.round(invoices.reduce((sum, inv) => sum + inv.subtotal, 0) * 100) / 100,
+      totalVat: Math.round(invoices.reduce((sum, inv) => sum + inv.tax, 0) * 100) / 100,
+      totalGross: Math.round(invoices.reduce((sum, inv) => sum + inv.total, 0) * 100) / 100,
       paidInvoices: invoices.filter((inv) => inv.status === 'paid').length,
       openInvoices: invoices.filter((inv) => inv.status !== 'paid' && inv.status !== 'cancelled').length,
     }

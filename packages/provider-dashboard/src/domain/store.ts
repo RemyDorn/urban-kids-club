@@ -140,8 +140,10 @@ export interface StoreIndexes {
 }
 
 class Store {
-  state: StoreState
-  indexes: StoreIndexes
+  // Öffentlich für Service-Zugriff, aber als readonly markiert für Klarheit
+  // In Produktion durch DB-Adapter ersetzen
+  readonly state: StoreState
+  readonly indexes: StoreIndexes
 
   constructor() {
     this.state = {

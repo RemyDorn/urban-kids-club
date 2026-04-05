@@ -111,8 +111,8 @@ export const ActivityService = {
   listByProvider(providerId: ID): Activity[] {
     const ids = store.getFromIndex(store.indexes.activitiesByProvider, providerId)
     return Array.from(ids)
-      .map((id) => store.state.activities.get(id)!)
-      .filter(Boolean)
+      .map((id) => store.state.activities.get(id))
+      .filter((a): a is Activity => a !== undefined)
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
   },
 
@@ -190,9 +190,16 @@ export const ActivityService = {
     return updated
   },
 
-  publish(id: ID): Activity | undefined {
+  publish(id: ID): Activity | { error: string } | undefined {
     const activity = store.state.activities.get(id)
     if (!activity || activity.status === 'archived') return undefined
+    // Vollständigkeit prüfen
+    if (!activity.pricing || activity.pricing.length === 0) {
+      return { error: 'Mindestens eine Preisoption erforderlich zum Veröffentlichen' }
+    }
+    if (!activity.schedule) {
+      return { error: 'Zeitplan erforderlich zum Veröffentlichen' }
+    }
     activity.status = 'published'
     activity.updatedAt = new Date()
     return activity

@@ -9,7 +9,16 @@ import type { AttendanceRecord, ID } from '../types'
 export const AttendanceService = {
 
   // Check-In für eine Buchung an einem bestimmten Datum
-  checkIn(bookingId: ID, activityId: ID, date: string, checkedInBy?: ID): AttendanceRecord {
+  checkIn(bookingId: ID, activityId: ID, date: string, checkedInBy?: ID): AttendanceRecord | { error: string } {
+    // Duplikat-Check: Bereits eingecheckt für dieses Datum?
+    const existingIds = store.getFromIndex(store.indexes.attendanceByBooking, bookingId)
+    for (const eid of existingIds) {
+      const existing = store.state.attendance.get(eid)
+      if (existing && existing.date === date) {
+        return { error: 'Bereits eingecheckt für dieses Datum' }
+      }
+    }
+
     const id = generateId('att')
     const now = new Date()
 
@@ -32,7 +41,16 @@ export const AttendanceService = {
   },
 
   // Abwesenheit markieren (z.B. am Ende des Tages)
-  markAbsent(bookingId: ID, activityId: ID, date: string, note?: string): AttendanceRecord {
+  markAbsent(bookingId: ID, activityId: ID, date: string, note?: string): AttendanceRecord | { error: string } {
+    // Duplikat-Check
+    const existingIds = store.getFromIndex(store.indexes.attendanceByBooking, bookingId)
+    for (const eid of existingIds) {
+      const existing = store.state.attendance.get(eid)
+      if (existing && existing.date === date) {
+        return { error: 'Bereits ein Eintrag für dieses Datum vorhanden' }
+      }
+    }
+
     const id = generateId('att')
 
     const record: AttendanceRecord = {

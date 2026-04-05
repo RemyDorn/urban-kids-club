@@ -30,7 +30,7 @@ export const ReviewService = {
       .filter((b) => b && b.activityId === input.activityId)
 
     const hasCompleted = parentBookings.some(
-      (b) => b.status === 'completed' || b.status === 'confirmed'
+      (b) => b.status === 'completed'
     )
     if (!hasCompleted) {
       return { error: 'Bewertung nur nach Kursbesuch möglich' }

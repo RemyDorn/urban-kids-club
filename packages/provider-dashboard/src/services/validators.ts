@@ -59,6 +59,9 @@ export const Validators = {
   // --- Kind & Altersgruppe ---
 
   childAgeInRange(child: ChildInfo, ageRange: AgeRange): ValidationResult {
+    if (ageRange.min > ageRange.max) {
+      return fail('Altersrange ungültig: min > max')
+    }
     if (child.age < ageRange.min || child.age > ageRange.max) {
       return fail(
         `Kind ist ${child.age} Jahre alt, Kurs ist für ${ageRange.min}–${ageRange.max} Jahre`
@@ -99,8 +102,8 @@ export const Validators = {
 
   noTimeConflict(parentId: ID, childName: string, schedule: Schedule, excludeActivityId?: ID): ValidationResult {
     const parentBookings = Array.from(store.getFromIndex(store.indexes.bookingsByParent, parentId))
-      .map((id) => store.state.bookings.get(id)!)
-      .filter((b) => b && b.child.name === childName && b.status !== 'cancelled')
+      .map((id) => store.state.bookings.get(id))
+      .filter((b): b is NonNullable<typeof b> => b !== undefined && b.child.name === childName && b.status !== 'cancelled')
 
     for (const booking of parentBookings) {
       if (excludeActivityId && booking.activityId === excludeActivityId) continue
@@ -116,20 +119,20 @@ export const Validators = {
   },
 
   // --- Kapazität ---
-
-  activityHasCapacity(activityId: ID): ValidationResult {
+  // Gibt { valid: false, waitlist: true } zurück wenn Warteliste aktiviert ist
+  activityHasCapacity(activityId: ID): ValidationResult & { waitlist?: boolean } {
     const activity = store.state.activities.get(activityId)
     if (!activity) return fail('Aktivität nicht gefunden')
 
     const bookingIds = store.getFromIndex(store.indexes.bookingsByActivity, activityId)
     const activeCount = Array.from(bookingIds)
-      .map((id) => store.state.bookings.get(id)!)
+      .map((id) => store.state.bookings.get(id))
       .filter((b) => b && (b.status === 'confirmed' || b.status === 'pending'))
       .length
 
     if (activeCount >= activity.capacity) {
       if (activity.waitlistEnabled) {
-        return { valid: true, errors: [WAITLIST_SIGNAL] }
+        return { valid: false, errors: [WAITLIST_SIGNAL], waitlist: true }
       }
       return fail('Kurs ist ausgebucht')
     }
@@ -153,6 +156,9 @@ export const Validators = {
 
   dateRangeValid(startDate: string, endDate?: string): ValidationResult {
     if (!endDate) return ok()
+    if (!isValidDateFormat(startDate) || !isValidDateFormat(endDate)) {
+      return fail('Datumsformat muss YYYY-MM-DD sein')
+    }
     if (endDate < startDate) {
       return fail('Enddatum muss nach Startdatum liegen')
     }
@@ -160,7 +166,10 @@ export const Validators = {
   },
 
   dateNotInPast(date: string): ValidationResult {
-    const today = new Date().toISOString().split('T')[0]
+    if (!isValidDateFormat(date)) {
+      return fail('Datumsformat muss YYYY-MM-DD sein')
+    }
+    const today = getLocalDateString()
     if (date < today) {
       return fail('Datum darf nicht in der Vergangenheit liegen')
     }
@@ -194,11 +203,32 @@ export const Validators = {
   // --- E-Mail ---
 
   emailValid(email: string): ValidationResult {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!email || email.length > 254) return fail('Ungültige E-Mail-Adresse')
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
     return emailRegex.test(email) ? ok() : fail('Ungültige E-Mail-Adresse')
   },
 
-  // --- IBAN ---
+  // --- E-Mail-Eindeutigkeit ---
+
+  emailUniqueForParent(email: string, excludeId?: ID): ValidationResult {
+    const existing = Array.from(store.state.parents.values()).find(
+      (p) => p.email.toLowerCase() === email.toLowerCase() && p.id !== excludeId
+    )
+    return existing ? fail('E-Mail-Adresse ist bereits vergeben') : ok()
+  },
+
+  emailUniqueForTeamMember(email: string, providerId: ID, excludeId?: ID): ValidationResult {
+    const teamIds = store.getFromIndex(store.indexes.teamByProvider, providerId)
+    for (const tid of teamIds) {
+      const member = store.state.teamMembers.get(tid)
+      if (member && member.email.toLowerCase() === email.toLowerCase() && member.id !== excludeId) {
+        return fail('E-Mail-Adresse ist bereits vergeben')
+      }
+    }
+    return ok()
+  },
+
+  // --- IBAN (mit MOD-97 Prüfsumme) ---
 
   ibanValid(iban: string): ValidationResult {
     const cleaned = iban.replace(/\s/g, '').toUpperCase()
@@ -208,6 +238,10 @@ export const Validators = {
     // Einfache Längenprüfung DE
     if (cleaned.startsWith('DE') && cleaned.length !== 22) {
       return fail('Deutsche IBAN muss 22 Zeichen haben')
+    }
+    // MOD-97 Prüfsummenvalidierung (ISO 13616)
+    if (!validateIbanChecksum(cleaned)) {
+      return fail('IBAN-Prüfsumme ist ungültig')
     }
     return ok()
   },
@@ -221,6 +255,7 @@ export const Validators = {
   // --- Betrag ---
 
   amountPositive(amount: number, label: string = 'Betrag'): ValidationResult {
+    if (typeof amount !== 'number' || isNaN(amount)) return fail(`${label} muss eine Zahl sein`)
     return amount > 0 ? ok() : fail(`${label} muss positiv sein`)
   },
 
@@ -243,12 +278,10 @@ function schedulesOverlap(a: Schedule, b: Schedule): boolean {
   }
 
   if (a.type === 'recurring' && b.type === 'recurring') {
-    // Gleiche Wochentage prüfen
     for (const slotA of a.slots) {
       for (const slotB of b.slots) {
         if (slotA.day === slotB.day) {
           if (timesOverlap(slotA.startTime, slotA.endTime, slotB.startTime, slotB.endTime)) {
-            // Datum-Überschneidung prüfen
             const aEnd = a.endDate ?? '9999-12-31'
             const bEnd = b.endDate ?? '9999-12-31'
             if (a.startDate <= bEnd && b.startDate <= aEnd) {
@@ -265,8 +298,114 @@ function schedulesOverlap(a: Schedule, b: Schedule): boolean {
     return timesOverlap(a.dailyStartTime, a.dailyEndTime, b.dailyStartTime, b.dailyEndTime)
   }
 
-  // Mixed types: konservativ prüfen
+  // Mixed types: Cross-Typ-Prüfung
+  if (a.type === 'single' && b.type === 'recurring') {
+    return singleOverlapsRecurring(a, b)
+  }
+  if (a.type === 'recurring' && b.type === 'single') {
+    return singleOverlapsRecurring(b, a)
+  }
+  if (a.type === 'single' && b.type === 'camp') {
+    return singleOverlapsCamp(a, b)
+  }
+  if (a.type === 'camp' && b.type === 'single') {
+    return singleOverlapsCamp(b, a)
+  }
+  if (a.type === 'recurring' && b.type === 'camp') {
+    return recurringOverlapsCamp(a, b)
+  }
+  if (a.type === 'camp' && b.type === 'recurring') {
+    return recurringOverlapsCamp(b, a)
+  }
+
   return false
 }
 
-export { timesOverlap, schedulesOverlap }
+// --- Cross-Typ Overlap-Helfer ---
+
+const DAY_NAMES = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'] as const
+
+function singleOverlapsRecurring(single: Extract<Schedule, { type: 'single' }>, recurring: Extract<Schedule, { type: 'recurring' }>): boolean {
+  const singleDate = new Date(single.date)
+  const dayName = DAY_NAMES[singleDate.getDay()]
+  const recurringEnd = recurring.endDate ?? '9999-12-31'
+
+  if (single.date < recurring.startDate || single.date > recurringEnd) return false
+
+  for (const slot of recurring.slots) {
+    if (slot.day === dayName && timesOverlap(single.startTime, single.endTime, slot.startTime, slot.endTime)) {
+      return true
+    }
+  }
+  return false
+}
+
+function singleOverlapsCamp(single: Extract<Schedule, { type: 'single' }>, camp: Extract<Schedule, { type: 'camp' }>): boolean {
+  if (single.date < camp.startDate || single.date > camp.endDate) return false
+  return timesOverlap(single.startTime, single.endTime, camp.dailyStartTime, camp.dailyEndTime)
+}
+
+function recurringOverlapsCamp(recurring: Extract<Schedule, { type: 'recurring' }>, camp: Extract<Schedule, { type: 'camp' }>): boolean {
+  const recurringEnd = recurring.endDate ?? '9999-12-31'
+  if (recurring.startDate > camp.endDate || camp.startDate > recurringEnd) return false
+
+  // Prüfe ob einer der recurring Wochentage in den Camp-Zeitraum fällt
+  const campStart = new Date(camp.startDate)
+  const campEnd = new Date(camp.endDate)
+  const current = new Date(campStart)
+
+  while (current <= campEnd) {
+    const dayName = DAY_NAMES[current.getDay()]
+    const dateStr = current.toISOString().split('T')[0]
+
+    if (dateStr >= recurring.startDate && dateStr <= recurringEnd) {
+      for (const slot of recurring.slots) {
+        if (slot.day === dayName && timesOverlap(slot.startTime, slot.endTime, camp.dailyStartTime, camp.dailyEndTime)) {
+          return true
+        }
+      }
+    }
+    current.setDate(current.getDate() + 1)
+  }
+  return false
+}
+
+// --- IBAN MOD-97 Prüfsumme ---
+
+function validateIbanChecksum(iban: string): boolean {
+  // Erste 4 Zeichen ans Ende verschieben
+  const rearranged = iban.slice(4) + iban.slice(0, 4)
+  // Buchstaben durch Zahlen ersetzen (A=10, B=11, ..., Z=35)
+  let numericString = ''
+  for (const char of rearranged) {
+    const code = char.charCodeAt(0)
+    if (code >= 65 && code <= 90) {
+      numericString += (code - 55).toString()
+    } else {
+      numericString += char
+    }
+  }
+  // MOD 97 berechnen (große Zahl, daher stückweise)
+  let remainder = 0
+  for (const digit of numericString) {
+    remainder = (remainder * 10 + parseInt(digit)) % 97
+  }
+  return remainder === 1
+}
+
+// --- Datums-Helfer ---
+
+function isValidDateFormat(date: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(date)
+}
+
+function getLocalDateString(): string {
+  // Verwende lokale Zeitzone (CET/CEST für Deutschland) statt UTC
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+export { timesOverlap, schedulesOverlap, validateIbanChecksum, getLocalDateString }

@@ -55,8 +55,9 @@ export class Router {
   delete(path: string, handler: RouteHandler) { this.addRoute('DELETE', path, handler) }
 
   async handle(req: IncomingMessage, res: ServerResponse) {
-    // CORS Headers
-    res.setHeader('Access-Control-Allow-Origin', '*')
+    // CORS Headers – In Produktion auf eigene Domain einschränken
+    const allowedOrigin = process.env.CORS_ORIGIN ?? '*'
+    res.setHeader('Access-Control-Allow-Origin', allowedOrigin)
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
 
@@ -77,7 +78,13 @@ export class Router {
     // Body parsen (für POST/PUT/PATCH)
     let body: unknown = undefined
     if (['POST', 'PUT', 'PATCH'].includes(method)) {
-      body = await parseBody(req)
+      try {
+        body = await parseBody(req)
+      } catch (err) {
+        res.writeHead(413, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: 'Request body too large (max 1MB)' }))
+        return
+      }
     }
 
     // Route finden
@@ -118,14 +125,25 @@ export class Router {
 
     // 404
     res.writeHead(404, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify({ error: `Route not found: ${method} ${path}` }))
+    res.end(JSON.stringify({ error: 'Route not found' }))
   }
 }
 
+const MAX_BODY_SIZE = 1024 * 1024 // 1 MB
+
 function parseBody(req: IncomingMessage): Promise<unknown> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const chunks: Buffer[] = []
-    req.on('data', (chunk: Buffer) => chunks.push(chunk))
+    let totalSize = 0
+    req.on('data', (chunk: Buffer) => {
+      totalSize += chunk.length
+      if (totalSize > MAX_BODY_SIZE) {
+        req.destroy()
+        reject(new Error('Request body too large'))
+        return
+      }
+      chunks.push(chunk)
+    })
     req.on('end', () => {
       const raw = Buffer.concat(chunks).toString('utf-8')
       if (!raw) { resolve(undefined); return }

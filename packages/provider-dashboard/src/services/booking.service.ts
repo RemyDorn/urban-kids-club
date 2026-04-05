@@ -68,7 +68,7 @@ export const BookingService = {
     const source = input.source ?? 'direct'
     const pl = activity.platformListing
 
-    if (capacityCheck.errors[0] === WAITLIST_SIGNAL) {
+    if ('waitlist' in capacityCheck && capacityCheck.waitlist) {
       // Kurs voll – aber direkte Buchungen haben Vorrang bei provider_first
       if (source === 'direct' && pl?.enabled && pl.priorityMode === 'provider_first') {
         // Direkte Buchung verdrängt Plattform-Kontingent → trotzdem bestätigen
@@ -211,7 +211,7 @@ export const BookingService = {
     notifications.push(createNotification({
       recipientType: 'parent',
       recipientId: input.parentId,
-      type: waitlisted ? 'waitlist_promoted' : 'booking_confirmed',
+      type: waitlisted ? 'booking_waitlisted' : 'booking_confirmed',
       title: waitlisted ? 'Auf Warteliste gesetzt' : 'Buchungsbestätigung',
       body: waitlisted
         ? `"${input.child.name}" steht auf der Warteliste für "${activity.title}". Sie werden benachrichtigt, sobald ein Platz frei wird.`
@@ -256,7 +256,7 @@ export const BookingService = {
 
   confirm(id: ID): Booking | undefined {
     const booking = store.state.bookings.get(id)
-    if (!booking || booking.status !== 'pending') return undefined
+    if (!booking || (booking.status !== 'pending' && booking.status !== 'waitlisted')) return undefined
     booking.status = 'confirmed'
     booking.updatedAt = new Date()
     return booking
@@ -333,10 +333,20 @@ export const BookingService = {
 
     booking.amountPaid += amount
 
-    // Prüfe ob vollständig bezahlt
+    // Prüfe ob vollständig bezahlt (berücksichtigt Coupon-Rabatte)
     const activity = store.state.activities.get(booking.activityId)
     const pricingOption = activity?.pricing.find((p) => p.id === booking.pricingOptionId)
-    const expectedAmount = pricingOption?.amount ?? 0
+    let expectedAmount = pricingOption?.amount ?? 0
+
+    // Coupon-Rabatt abziehen
+    const redemptionIds = store.getFromIndex(store.indexes.redemptionsByParent, booking.parentId)
+    for (const rid of redemptionIds) {
+      const r = store.state.couponRedemptions.get(rid)
+      if (r && r.bookingId === booking.id) {
+        expectedAmount = Math.max(0, expectedAmount - r.discountAmount)
+        break
+      }
+    }
 
     if (booking.amountPaid >= expectedAmount) {
       booking.paymentStatus = 'paid'
@@ -407,7 +417,8 @@ export const BookingService = {
       const b = store.state.bookings.get(bid)
       if (!b) continue
       stats.total++
-      if (b.status === 'confirmed') { stats.confirmed++; if (b.paymentStatus === 'unpaid') stats.unpaid++ }
+      if (b.status === 'pending') { stats.confirmed++; if (b.paymentStatus === 'unpaid') stats.unpaid++ }
+      else if (b.status === 'confirmed') { stats.confirmed++; if (b.paymentStatus === 'unpaid') stats.unpaid++ }
       else if (b.status === 'waitlisted') stats.waitlisted++
       else if (b.status === 'cancelled') stats.cancelled++
       else if (b.status === 'completed') stats.completed++

@@ -21,6 +21,14 @@ function resetAll() {
   resetIdCounter()
 }
 
+// Type-Narrowing Helpers für Union-Returns
+function assertNotError<T>(result: T | { error: string }): T {
+  if (result && typeof result === 'object' && 'error' in result) {
+    throw new Error(`Unexpected error: ${result.error}`)
+  }
+  return result as T
+}
+
 // --- Fixtures ---
 
 function createTestProvider() {
@@ -34,14 +42,14 @@ function createTestProvider() {
 }
 
 function createTestParent() {
-  return ParentService.create({
+  return assertNotError(ParentService.create({
     name: 'Anna Test',
     email: 'anna@test.de',
     children: [
       { name: 'Emma', age: 5, emergencyContact: 'Anna Test', emergencyPhone: '+49 123 456' },
       { name: 'Noah', age: 8, emergencyContact: 'Anna Test', emergencyPhone: '+49 123 456' },
     ],
-  })
+  }))
 }
 
 function createTestActivity(providerId: string) {
@@ -248,8 +256,8 @@ describe('BookingService', () => {
     })
     ActivityService.publish(act.id)
 
-    const p1 = ParentService.create({ name: 'P1', email: 'p1@t.de', children: [{ name: 'K1', age: 5, emergencyContact: 'P1', emergencyPhone: '123' }] })
-    const p2 = ParentService.create({ name: 'P2', email: 'p2@t.de', children: [{ name: 'K2', age: 5, emergencyContact: 'P2', emergencyPhone: '456' }] })
+    const p1 = assertNotError(ParentService.create({ name: 'P1', email: 'p1@t.de', children: [{ name: 'K1', age: 5, emergencyContact: 'P1', emergencyPhone: '123' }] }))
+    const p2 = assertNotError(ParentService.create({ name: 'P2', email: 'p2@t.de', children: [{ name: 'K2', age: 5, emergencyContact: 'P2', emergencyPhone: '456' }] }))
 
     const r1 = BookingService.create({ activityId: act.id, providerId: p.id, parentId: p1.id, child: p1.children[0], pricingOptionId: act.pricing[0].id })
     const r2 = BookingService.create({ activityId: act.id, providerId: p.id, parentId: p2.id, child: p2.children[0], pricingOptionId: act.pricing[0].id })
@@ -271,8 +279,8 @@ describe('BookingService', () => {
     })
     ActivityService.publish(act.id)
 
-    const p1 = ParentService.create({ name: 'P1', email: 'p1@t.de', children: [{ name: 'K1', age: 5, emergencyContact: 'P1', emergencyPhone: '123' }] })
-    const p2 = ParentService.create({ name: 'P2', email: 'p2@t.de', children: [{ name: 'K2', age: 5, emergencyContact: 'P2', emergencyPhone: '456' }] })
+    const p1 = assertNotError(ParentService.create({ name: 'P1', email: 'p1@t.de', children: [{ name: 'K1', age: 5, emergencyContact: 'P1', emergencyPhone: '123' }] }))
+    const p2 = assertNotError(ParentService.create({ name: 'P2', email: 'p2@t.de', children: [{ name: 'K2', age: 5, emergencyContact: 'P2', emergencyPhone: '456' }] }))
 
     const r1 = BookingService.create({ activityId: act.id, providerId: p.id, parentId: p1.id, child: p1.children[0], pricingOptionId: act.pricing[0].id })
     BookingService.create({ activityId: act.id, providerId: p.id, parentId: p2.id, child: p2.children[0], pricingOptionId: act.pricing[0].id })
@@ -409,8 +417,8 @@ describe('TeamService', () => {
 
   it('should create and filter team members', () => {
     const p = createTestProvider()
-    TeamService.create({ providerId: p.id, name: 'Lisa', email: 'l@t.de', role: 'instructor' })
-    TeamService.create({ providerId: p.id, name: 'Sarah', email: 's@t.de', role: 'admin' })
+    assertNotError(TeamService.create({ providerId: p.id, name: 'Lisa', email: 'l@t.de', role: 'instructor' }))
+    assertNotError(TeamService.create({ providerId: p.id, name: 'Sarah', email: 's@t.de', role: 'admin' }))
 
     assert.equal(TeamService.listByProvider(p.id).length, 2)
     assert.equal(TeamService.listByProvider(p.id, { role: 'instructor' }).length, 1)
@@ -418,7 +426,7 @@ describe('TeamService', () => {
 
   it('should deactivate members', () => {
     const p = createTestProvider()
-    const m = TeamService.create({ providerId: p.id, name: 'Lisa', email: 'l@t.de', role: 'instructor' })
+    const m = assertNotError(TeamService.create({ providerId: p.id, name: 'Lisa', email: 'l@t.de', role: 'instructor' }))
     TeamService.deactivate(m.id)
 
     assert.equal(TeamService.getById(m.id)!.active, false)
@@ -474,7 +482,7 @@ describe('ReviewService', () => {
 
     // Create 2 parents, book, complete, review
     for (const [name, email, rating] of [['A', 'a@t.de', 5], ['B', 'b@t.de', 3]] as const) {
-      const par = ParentService.create({ name, email, children: [{ name: `K${name}`, age: 5, emergencyContact: name, emergencyPhone: '1' }] })
+      const par = assertNotError(ParentService.create({ name, email, children: [{ name: `K${name}`, age: 5, emergencyContact: name, emergencyPhone: '1' }] }))
       const b = BookingService.create({ activityId: act.id, providerId: p.id, parentId: par.id, child: par.children[0], pricingOptionId: act.pricing[0].id })
       assert.ok(!('error' in b))
       BookingService.complete(b.booking.id)
@@ -505,8 +513,8 @@ describe('AttendanceService', () => {
     const b = BookingService.create({ activityId: act.id, providerId: p.id, parentId: parent.id, child: parent.children[0], pricingOptionId: act.pricing[0].id })
     assert.ok(!('error' in b))
 
-    AttendanceService.checkIn(b.booking.id, act.id, '2026-04-06')
-    AttendanceService.markAbsent(b.booking.id, act.id, '2026-04-13', 'Krank')
+    assertNotError(AttendanceService.checkIn(b.booking.id, act.id, '2026-04-06'))
+    assertNotError(AttendanceService.markAbsent(b.booking.id, act.id, '2026-04-13', 'Krank'))
 
     const rate = AttendanceService.getAttendanceRate(act.id)
     assert.equal(rate.total, 2)
@@ -540,13 +548,131 @@ describe('MessageService', () => {
   it('should broadcast to activity participants', () => {
     const p = createTestProvider()
     const act = createTestActivity(p.id)
-    const p1 = ParentService.create({ name: 'P1', email: 'p1@t.de', children: [{ name: 'K1', age: 5, emergencyContact: 'P1', emergencyPhone: '1' }] })
-    const p2 = ParentService.create({ name: 'P2', email: 'p2@t.de', children: [{ name: 'K2', age: 5, emergencyContact: 'P2', emergencyPhone: '2' }] })
+    const p1 = assertNotError(ParentService.create({ name: 'P1', email: 'p1@t.de', children: [{ name: 'K1', age: 5, emergencyContact: 'P1', emergencyPhone: '1' }] }))
+    const p2 = assertNotError(ParentService.create({ name: 'P2', email: 'p2@t.de', children: [{ name: 'K2', age: 5, emergencyContact: 'P2', emergencyPhone: '2' }] }))
 
     BookingService.create({ activityId: act.id, providerId: p.id, parentId: p1.id, child: p1.children[0], pricingOptionId: act.pricing[0].id })
     BookingService.create({ activityId: act.id, providerId: p.id, parentId: p2.id, child: p2.children[0], pricingOptionId: act.pricing[0].id })
 
     const msgs = MessageService.broadcast(p.id, act.id, 'Info', 'Kurs fällt aus')
     assert.equal(msgs.length, 2)
+  })
+})
+
+// ============================================================
+// EXPANDED TESTS – Negative/Boundary Cases
+// ============================================================
+
+describe('ParentService – Email Uniqueness', () => {
+  beforeEach(resetAll)
+
+  it('should reject duplicate email', () => {
+    const parent1 = ParentService.create({ name: 'A', email: 'test@test.de', children: [] })
+    assert(!('error' in parent1))
+    const parent2 = ParentService.create({ name: 'B', email: 'test@test.de', children: [] })
+    assert('error' in parent2)
+    assert(parent2.error.includes('bereits vergeben'))
+  })
+
+  it('should allow different emails', () => {
+    const parent1 = ParentService.create({ name: 'A', email: 'a@test.de', children: [] })
+    const parent2 = ParentService.create({ name: 'B', email: 'b@test.de', children: [] })
+    assert(!('error' in parent1))
+    assert(!('error' in parent2))
+  })
+})
+
+describe('TeamService – Email Uniqueness', () => {
+  beforeEach(resetAll)
+
+  it('should reject duplicate email in same provider', () => {
+    const provider = createTestProvider()
+    ProviderService.activate(provider.id)
+    const m1 = TeamService.create({ providerId: provider.id, name: 'A', email: 'trainer@test.de', role: 'instructor' })
+    assert(!('error' in m1))
+    const m2 = TeamService.create({ providerId: provider.id, name: 'B', email: 'trainer@test.de', role: 'instructor' })
+    assert('error' in m2)
+  })
+})
+
+describe('AttendanceService – Duplicate Prevention', () => {
+  beforeEach(resetAll)
+
+  it('should prevent duplicate check-in for same date', () => {
+    const provider = createTestProvider()
+    ProviderService.activate(provider.id)
+    const activity = createTestActivity(provider.id)
+    const parent = assertNotError(ParentService.create({ name: 'Test', email: 'att@test.de', children: [{ name: 'Kind', age: 5, emergencyContact: 'EC', emergencyPhone: '123' }] }))
+    const result = BookingService.create({ activityId: activity.id, providerId: provider.id, parentId: parent.id, child: parent.children[0], pricingOptionId: activity.pricing[0].id })
+    assert(!('error' in result), `Booking failed: ${'error' in result ? result.error : ''}`)
+
+    const checkin1 = AttendanceService.checkIn(result.booking.id, activity.id, '2026-01-15')
+    assert(!('error' in checkin1))
+    const checkin2 = AttendanceService.checkIn(result.booking.id, activity.id, '2026-01-15')
+    assert('error' in checkin2)
+  })
+})
+
+describe('ProviderService – Status Transitions', () => {
+  beforeEach(resetAll)
+
+  it('should not activate archived provider', () => {
+    const provider = createTestProvider()
+    ProviderService.archive(provider.id)
+    const result = ProviderService.activate(provider.id)
+    assert.equal(result, undefined)
+  })
+
+  it('should not suspend archived provider', () => {
+    const provider = createTestProvider()
+    ProviderService.archive(provider.id)
+    const result = ProviderService.suspend(provider.id)
+    assert.equal(result, undefined)
+  })
+})
+
+describe('BookingService – Confirm Waitlisted', () => {
+  beforeEach(resetAll)
+
+  it('should confirm a waitlisted booking', () => {
+    const provider = createTestProvider()
+    ProviderService.activate(provider.id)
+    const activity = ActivityService.create({
+      providerId: provider.id, title: 'Tiny Class', description: '', category: 'Sport',
+      ageRange: { min: 3, max: 10 }, schedule: { type: 'recurring', slots: [{ day: 'MO', startTime: '10:00', endTime: '11:00' }], startDate: '2026-01-01' },
+      capacity: 1, waitlistEnabled: true,
+      pricing: [{ label: 'Single', type: 'single', amount: 50, currency: 'EUR' }],
+    })
+    ActivityService.publish(activity.id)
+
+    const parent1 = assertNotError(ParentService.create({ name: 'P1', email: 'p1@test.de', children: [{ name: 'K1', age: 5, emergencyContact: 'EC', emergencyPhone: '123' }] }))
+    const parent2 = assertNotError(ParentService.create({ name: 'P2', email: 'p2@test.de', children: [{ name: 'K2', age: 6, emergencyContact: 'EC', emergencyPhone: '456' }] }))
+
+    const b1 = BookingService.create({ activityId: activity.id, providerId: provider.id, parentId: parent1.id, child: parent1.children[0], pricingOptionId: activity.pricing[0].id })
+    assert(!('error' in b1) && b1.booking.status === 'confirmed')
+
+    const b2 = BookingService.create({ activityId: activity.id, providerId: provider.id, parentId: parent2.id, child: parent2.children[0], pricingOptionId: activity.pricing[0].id })
+    assert(!('error' in b2) && b2.booking.status === 'waitlisted')
+
+    // Waitlisted Buchung direkt bestätigen
+    const confirmed = BookingService.confirm(b2.booking.id)
+    assert(confirmed !== undefined)
+    assert.equal(confirmed!.status, 'confirmed')
+  })
+})
+
+describe('ReviewService – Only Completed Bookings', () => {
+  beforeEach(resetAll)
+
+  it('should reject review for merely confirmed booking', () => {
+    const provider = createTestProvider()
+    ProviderService.activate(provider.id)
+    const activity = createTestActivity(provider.id)
+    const parent = assertNotError(ParentService.create({ name: 'Rev', email: 'rev@test.de', children: [{ name: 'K', age: 5, emergencyContact: 'EC', emergencyPhone: '123' }] }))
+    const booking = BookingService.create({ activityId: activity.id, providerId: provider.id, parentId: parent.id, child: parent.children[0], pricingOptionId: activity.pricing[0].id })
+    assert(!('error' in booking))
+    // Booking is 'confirmed', NOT 'completed'
+    const review = ReviewService.create({ activityId: activity.id, providerId: provider.id, parentId: parent.id, rating: 5 })
+    assert('error' in review)
   })
 })

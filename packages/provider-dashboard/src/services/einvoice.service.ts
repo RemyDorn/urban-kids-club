@@ -93,26 +93,39 @@ export const EInvoiceService = {
     const parent = store.state.parents.get(invoice.parentId)
     if (!parent) return { error: 'Kunde nicht gefunden' }
 
-    const vatRate = 0.19 // Standard-MwSt
-
     const lineItems = invoice.lineItems.map((item) => {
+      const itemVatRate = item.vatRate ?? 0.19
       const netAmount = item.total
-      const vatAmount = Math.round(netAmount * vatRate * 100) / 100
+      const vatAmount = Math.round(netAmount * itemVatRate * 100) / 100
       const grossAmount = Math.round((netAmount + vatAmount) * 100) / 100
 
       return {
         description: item.description,
         quantity: item.quantity,
         unitPrice: item.unitPrice,
-        vatRate,
+        vatRate: itemVatRate,
         netAmount,
         vatAmount,
         grossAmount,
       }
     })
 
-    const netTotal = lineItems.reduce((sum, item) => sum + item.netAmount, 0)
-    const vatTotal = lineItems.reduce((sum, item) => sum + item.vatAmount, 0)
+    const netTotal = Math.round(lineItems.reduce((sum, item) => sum + item.netAmount, 0) * 100) / 100
+    const vatTotal = Math.round(lineItems.reduce((sum, item) => sum + item.vatAmount, 0) * 100) / 100
+
+    // MwSt-Breakdown nach Sätzen gruppieren
+    const vatMap = new Map<number, { net: number; vat: number }>()
+    for (const item of lineItems) {
+      const existing = vatMap.get(item.vatRate) ?? { net: 0, vat: 0 }
+      existing.net += item.netAmount
+      existing.vat += item.vatAmount
+      vatMap.set(item.vatRate, existing)
+    }
+    const vatBreakdown = Array.from(vatMap.entries()).map(([rate, { net, vat }]) => ({
+      rate,
+      net: Math.round(net * 100) / 100,
+      vat: Math.round(vat * 100) / 100,
+    }))
 
     return {
       providerName: provider.name,
@@ -124,7 +137,7 @@ export const EInvoiceService = {
       invoiceDate: invoice.issuedAt,
       lineItems,
       netTotal,
-      vatBreakdown: [{ rate: vatRate, net: netTotal, vat: vatTotal }],
+      vatBreakdown,
       grossTotal: Math.round((netTotal + vatTotal) * 100) / 100,
       paymentTerms: `Zahlbar innerhalb von 14 Tagen`,
     }
@@ -168,7 +181,18 @@ export const EInvoiceService = {
       `      <cac:PartyName><cbc:Name>${this._escapeXml(parent.name)}</cbc:Name></cac:PartyName>`,
       `    </cac:Party>`,
       `  </cac:AccountingCustomerParty>`,
+      `  <cac:TaxTotal>`,
+      `    <cbc:TaxAmount currencyID="${invoice.currency}">${(invoice.total - invoice.lineItems.reduce((s, li) => s + li.total, 0)).toFixed(2)}</cbc:TaxAmount>`,
+      `    <cac:TaxSubtotal>`,
+      `      <cbc:TaxableAmount currencyID="${invoice.currency}">${invoice.lineItems.reduce((s, li) => s + li.total, 0).toFixed(2)}</cbc:TaxableAmount>`,
+      `      <cbc:TaxAmount currencyID="${invoice.currency}">${(invoice.total - invoice.lineItems.reduce((s, li) => s + li.total, 0)).toFixed(2)}</cbc:TaxAmount>`,
+      `      <cac:TaxCategory><cbc:ID>S</cbc:ID><cbc:Percent>19</cbc:Percent><cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:TaxCategory>`,
+      `    </cac:TaxSubtotal>`,
+      `  </cac:TaxTotal>`,
       `  <cac:LegalMonetaryTotal>`,
+      `    <cbc:LineExtensionAmount currencyID="${invoice.currency}">${invoice.lineItems.reduce((s, li) => s + li.total, 0).toFixed(2)}</cbc:LineExtensionAmount>`,
+      `    <cbc:TaxExclusiveAmount currencyID="${invoice.currency}">${invoice.lineItems.reduce((s, li) => s + li.total, 0).toFixed(2)}</cbc:TaxExclusiveAmount>`,
+      `    <cbc:TaxInclusiveAmount currencyID="${invoice.currency}">${invoice.total.toFixed(2)}</cbc:TaxInclusiveAmount>`,
       `    <cbc:PayableAmount currencyID="${invoice.currency}">${invoice.total.toFixed(2)}</cbc:PayableAmount>`,
       `  </cac:LegalMonetaryTotal>`,
       ...invoice.lineItems.map((item, i) => [
@@ -214,7 +238,18 @@ export const EInvoiceService = {
       '    </ram:ApplicableHeaderTradeAgreement>',
       '    <ram:ApplicableHeaderTradeSettlement>',
       `      <ram:InvoiceCurrencyCode>${invoice.currency}</ram:InvoiceCurrencyCode>`,
+      '      <ram:ApplicableTradeTax>',
+      '        <ram:TypeCode>VAT</ram:TypeCode>',
+      '        <ram:CategoryCode>S</ram:CategoryCode>',
+      '        <ram:RateApplicablePercent>19</ram:RateApplicablePercent>',
+      '      </ram:ApplicableTradeTax>',
+      '      <ram:SpecifiedTradePaymentTerms>',
+      '        <ram:Description>Zahlbar innerhalb von 14 Tagen</ram:Description>',
+      '      </ram:SpecifiedTradePaymentTerms>',
       '      <ram:SpecifiedTradeSettlementHeaderMonetarySummation>',
+      `        <ram:LineTotalAmount>${invoice.lineItems.reduce((s, li) => s + li.total, 0).toFixed(2)}</ram:LineTotalAmount>`,
+      `        <ram:TaxTotalAmount currencyID="${invoice.currency}">${(invoice.total - invoice.lineItems.reduce((s, li) => s + li.total, 0)).toFixed(2)}</ram:TaxTotalAmount>`,
+      `        <ram:GrandTotalAmount>${invoice.total.toFixed(2)}</ram:GrandTotalAmount>`,
       `        <ram:DuePayableAmount>${invoice.total.toFixed(2)}</ram:DuePayableAmount>`,
       '      </ram:SpecifiedTradeSettlementHeaderMonetarySummation>',
       '    </ram:ApplicableHeaderTradeSettlement>',

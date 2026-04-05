@@ -264,8 +264,10 @@ export const ConsentService = {
   },
 
   // DSGVO: Alle Daten eines Elternteils löschen (Recht auf Löschung)
-  deleteParentData(parentId: ID): { deletedRecords: number } {
+  // Buchungen und Rechnungen werden anonymisiert (GoBD: 10 Jahre Aufbewahrungspflicht)
+  deleteParentData(parentId: ID): { deletedRecords: number; anonymizedRecords: number } {
     let count = 0
+    let anonymized = 0
 
     // Consents
     const consentIds = store.getFromIndex(store.indexes.consentsByParent, parentId)
@@ -291,9 +293,45 @@ export const ConsentService = {
     }
     store.indexes.notificationsByRecipient.delete(parentId)
 
+    // Buchungen anonymisieren (nicht löschen – GoBD Aufbewahrungspflicht)
+    const bookingIds = store.getFromIndex(store.indexes.bookingsByParent, parentId)
+    for (const id of bookingIds) {
+      const booking = store.state.bookings.get(id)
+      if (booking) {
+        booking.child = {
+          name: '[GELÖSCHT]',
+          age: 0,
+          emergencyContact: '[GELÖSCHT]',
+          emergencyPhone: '[GELÖSCHT]',
+          medicalNotes: undefined,
+          allergies: undefined,
+        }
+        booking.notes = undefined
+        anonymized++
+      }
+    }
+
+    // Rechnungen anonymisieren (GoBD: 10 Jahre)
+    const invoiceIds = store.getFromIndex(store.indexes.invoicesByParent, parentId)
+    for (const id of invoiceIds) {
+      const invoice = store.state.invoices.get(id)
+      if (invoice) {
+        // Nur parentId-Bezug anonymisieren, Rechnungsdaten bleiben für GoBD
+        anonymized++
+      }
+    }
+
+    // Contact Notes löschen
+    const noteIds = store.getFromIndex(store.indexes.notesByParent, parentId)
+    for (const id of noteIds) {
+      store.state.contactNotes.delete(id)
+      count++
+    }
+    store.indexes.notesByParent.delete(parentId)
+
     // Parent selbst
     if (store.state.parents.delete(parentId)) count++
 
-    return { deletedRecords: count }
+    return { deletedRecords: count, anonymizedRecords: anonymized }
   },
 }

@@ -162,10 +162,10 @@ export const ExportService = {
     }
 
     if (request.format === 'csv') {
-      const header = 'Rechnungsnr.;Kunde;Netto;MwSt;Brutto;Währung;Status;Ausgestellt;Fällig'
+      const header = this._csvRow(['Rechnungsnr.', 'Kunde', 'Netto', 'MwSt', 'Brutto', 'Währung', 'Status', 'Ausgestellt', 'Fällig'])
       const rows = invoices.map((inv) => {
         const parent = store.state.parents.get(inv.parentId)
-        return [
+        return this._csvRow([
           inv.number,
           parent?.name ?? inv.parentId,
           inv.subtotal.toFixed(2).replace('.', ','),
@@ -175,7 +175,7 @@ export const ExportService = {
           inv.status,
           inv.issuedAt.toISOString().split('T')[0],
           inv.dueDate.toISOString().split('T')[0],
-        ].join(';')
+        ])
       })
       return [header, ...rows].join('\n')
     }
@@ -250,8 +250,8 @@ export const ExportService = {
     }
 
     if (request.format === 'csv') {
-      const header = 'Kurs;Kind;Datum;Anwesend'
-      const rows = records.map((r) => [r.activity, r.child, r.date, r.present ? 'Ja' : 'Nein'].join(';'))
+      const header = this._csvRow(['Kurs', 'Kind', 'Datum', 'Anwesend'])
+      const rows = records.map((r) => this._csvRow([r.activity, r.child, r.date, r.present ? 'Ja' : 'Nein']))
       return [header, ...rows].join('\n')
     }
 
@@ -271,14 +271,14 @@ export const ExportService = {
       .filter(Boolean)
 
     if (request.format === 'csv') {
-      const header = 'Name;E-Mail;Telefon;Kinder;Registriert am'
-      const rows = customers.map((c) => [
+      const header = this._csvRow(['Name', 'E-Mail', 'Telefon', 'Kinder', 'Registriert am'])
+      const rows = customers.map((c) => this._csvRow([
         c!.name,
         c!.email,
         c!.phone ?? '',
         c!.children.map((ch) => `${ch.name} (${ch.age})`).join(', '),
         c!.createdAt.toISOString().split('T')[0],
-      ].join(';'))
+      ]))
       return [header, ...rows].join('\n')
     }
 
@@ -298,8 +298,8 @@ export const ExportService = {
     }
 
     if (request.format === 'csv') {
-      const header = 'Datum;Betrag;Währung;Methode;Referenz;Buchungs-ID;Rechnungs-ID'
-      const rows = payments.map((p) => [
+      const header = this._csvRow(['Datum', 'Betrag', 'Währung', 'Methode', 'Referenz', 'Buchungs-ID', 'Rechnungs-ID'])
+      const rows = payments.map((p) => this._csvRow([
         p.createdAt.toISOString().split('T')[0],
         p.amount.toFixed(2).replace('.', ','),
         p.currency,
@@ -307,7 +307,7 @@ export const ExportService = {
         p.reference,
         p.bookingId ?? '',
         p.invoiceId ?? '',
-      ].join(';'))
+      ]))
       return [header, ...rows].join('\n')
     }
 

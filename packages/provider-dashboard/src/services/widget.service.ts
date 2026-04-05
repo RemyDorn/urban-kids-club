@@ -108,9 +108,18 @@ export const WidgetService = {
       `  frameborder="0"`,
       `  style="border: none; border-radius: 8px;"`,
       `  loading="lazy"`,
-      `  title="Urban Kids Club – ${provider?.name ?? 'Kurse buchen'}"`,
+      `  title="Urban Kids Club – ${this._escapeHtml(provider?.name ?? 'Kurse buchen')}"`,
       `></iframe>`,
     ].join('\n')
+  },
+
+  _escapeHtml(str: string): string {
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;')
   },
 
   delete(id: ID): boolean {

@@ -14,6 +14,15 @@ import { SeasonService, HolidayService } from '../services/season.service'
 import { TrialService } from '../services/trial.service'
 import { CouponService } from '../services/coupon.service'
 import { store } from '../domain/store'
+import type { Parent } from '../types'
+
+// Type-Narrowing Helper
+function unwrap<T>(result: T | { error: string }): T {
+  if (result && typeof result === 'object' && 'error' in result) {
+    throw new Error(`Seed error: ${result.error}`)
+  }
+  return result as T
+}
 
 // Helfer: Zufallszahl
 function rand(min: number, max: number) { return Math.floor(Math.random() * (max - min + 1)) + min }
@@ -25,7 +34,7 @@ const lastNames = ['Müller','Schmidt','Schneider','Fischer','Weber','Meyer','Wa
 const kidNames = ['Emma','Noah','Mia','Liam','Ella','Finn','Lina','Ben','Marie','Paul','Hannah','Lukas','Emilia','Felix','Amelie','Moritz','Sophia','Leon','Clara','Elias','Johanna','Milan','Lara','Theo','Maya','Oskar','Ida','Anton','Frieda','Emil','Greta','Matteo','Ava','Henri','Nora','Leo','Charlotte','Niklas','Lea','Tom','Lotta','Max','Elif','Amir','Yuki','Anja','Niklas','Mira','Levi','Rosa']
 
 function createParents(count: number) {
-  const parents: ReturnType<typeof ParentService.create>[] = []
+  const parents: Parent[] = []
   for (let i = 0; i < count; i++) {
     const fn = pick(firstNames)
     const ln = pick(lastNames)
@@ -39,12 +48,12 @@ function createParents(count: number) {
         emergencyPhone: `+49 1${rand(50,79)} ${rand(1000000,9999999)}`,
       })
     }
-    parents.push(ParentService.create({
+    parents.push(unwrap(ParentService.create({
       name: `${fn} ${ln}`,
       email: `${fn.toLowerCase()}.${ln.toLowerCase()}${rand(1,99)}@${pick(['gmail.com','web.de','gmx.de','outlook.de','yahoo.de','t-online.de'])}`,
       phone: `+49 1${rand(50,79)} ${rand(1000000,9999999)}`,
       children,
-    }))
+    })))
   }
   return parents
 }
@@ -52,7 +61,7 @@ function createParents(count: number) {
 function createBookingsForProvider(
   providerId: string,
   activities: Array<{ id: string; pricing: Array<{ id: string; amount: number }>; ageRange: { min: number; max: number }; capacity: number }>,
-  parents: ReturnType<typeof ParentService.create>[],
+  parents: Parent[],
   targetRevenue: number
 ) {
   let totalRevenue = 0
@@ -244,7 +253,7 @@ export function seedDemoData() {
     LocationService.create({ providerId: p.id, ...prov.location })
 
     // Team
-    const teamMembers = prov.team.map(t => TeamService.create({ providerId: p.id, ...t }))
+    const teamMembers = prov.team.map(t => unwrap(TeamService.create({ providerId: p.id, ...t })))
 
     // Season
     SeasonService.create({ providerId: p.id, name: 'Schuljahr 2025/26 – 2. HJ', type: 'school_term', startDate: '2026-02-09', endDate: '2026-07-03' })

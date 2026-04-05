@@ -105,17 +105,15 @@ export const ProviderService = {
   activate(id: ID): Provider | undefined {
     const provider = store.state.providers.get(id)
     if (!provider) return undefined
-    return this.update(id, {} as UpdateProviderInput) && (() => {
-      const p = store.state.providers.get(id)!
-      p.status = 'active'
-      p.updatedAt = new Date()
-      return p
-    })()
+    if (provider.status === 'archived') return undefined  // Archived providers can't be activated
+    provider.status = 'active'
+    provider.updatedAt = new Date()
+    return provider
   },
 
   suspend(id: ID): Provider | undefined {
     const provider = store.state.providers.get(id)
-    if (!provider) return undefined
+    if (!provider || provider.status === 'archived') return undefined
     provider.status = 'suspended'
     provider.updatedAt = new Date()
     return provider
@@ -123,7 +121,7 @@ export const ProviderService = {
 
   archive(id: ID): Provider | undefined {
     const provider = store.state.providers.get(id)
-    if (!provider) return undefined
+    if (!provider || provider.status === 'archived') return undefined
     provider.status = 'archived'
     provider.updatedAt = new Date()
     return provider

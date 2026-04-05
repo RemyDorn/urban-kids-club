@@ -1,13 +1,12 @@
-// Einfache ID-Generierung (In-Memory, kein crypto nötig)
-let counter = 0
+// Sichere ID-Generierung mit crypto.randomUUID
+import { randomUUID } from 'node:crypto'
 
 export function generateId(prefix: string = ''): string {
-  counter++
-  const timestamp = Date.now().toString(36)
-  const count = counter.toString(36).padStart(4, '0')
-  return prefix ? `${prefix}_${timestamp}${count}` : `${timestamp}${count}`
+  const uuid = randomUUID().replace(/-/g, '').slice(0, 16)
+  return prefix ? `${prefix}_${uuid}` : uuid
 }
 
+// Kein resetIdCounter mehr nötig – UUIDs sind immer einzigartig
 export function resetIdCounter(): void {
-  counter = 0
+  // No-op – beibehalten für Test-Kompatibilität
 }

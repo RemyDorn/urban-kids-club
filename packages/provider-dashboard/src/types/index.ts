@@ -269,6 +269,7 @@ export interface InvoiceLineItem {
   description: string
   quantity: number
   unitPrice: number
+  vatRate: number             // 0.19, 0.07, 0 – MwSt-Satz pro Position (GoBD-Pflicht)
   total: number
 }
 
@@ -404,7 +405,8 @@ export interface SepaMandate {
   providerId: ID
   parentId: ID
   mandateReference: string  // "MNDT-2026-0001"
-  iban: string              // Verschlüsselt speichern!
+  iban: string              // HINWEIS: In Produktion verschlüsselt speichern (AES-256-GCM)!
+  ibanMasked: string        // Maskierte IBAN für Anzeige, z.B. "DE89 **** **** **** 1234 56"
   bic?: string
   accountHolder: string
   signedAt: Date
@@ -478,6 +480,7 @@ export type NotificationType =
   | 'booking_confirmed'
   | 'booking_cancelled'
   | 'booking_reminder'      // 24h vorher
+  | 'booking_waitlisted'    // Auf Warteliste gesetzt
   | 'waitlist_promoted'
   | 'payment_received'
   | 'payment_overdue'
@@ -575,7 +578,7 @@ export interface WidgetConfig {
 
 // --- Kontakte / CRM (130%-Feature) ---
 
-export type ContactTag = 'prospect' | 'active' | 'inactive' | 'vip' | 'problem' | string
+export type ContactTag = 'prospect' | 'active' | 'inactive' | 'vip' | 'problem' | 'returning'
 
 export interface ContactNote {
   id: ID

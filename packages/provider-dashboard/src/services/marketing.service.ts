@@ -113,10 +113,11 @@ export const TRIGGER_LABELS: Record<AutomationTrigger, { label: string; desc: st
 
 export const MarketingService = {
 
-  // Templates initialisieren
+  // Templates initialisieren und im Store persistieren
   initDefaultTemplates(providerId: ID): MessageTemplate[] {
-    const existing = this.listTemplates(providerId)
-    if (existing.length > 0) return existing
+    // Prüfe ob bereits eigene Templates existieren
+    const existingCustom = Array.from(store.state.messages.values()).length // Einfacher Check
+    if (existingCustom > 0) return this.listTemplates(providerId)
 
     return DEFAULT_TEMPLATES.map(t => {
       const id = generateId('tmpl')

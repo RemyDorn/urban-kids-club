@@ -20,12 +20,18 @@ const OFFER_EXPIRY_HOURS = 48 // Frist zur Annahme
 
 export const WaitlistService = {
 
-  add(input: AddToWaitlistInput): WaitlistEntry {
+  add(input: AddToWaitlistInput): WaitlistEntry | { error: string } {
+    // Duplikat-Check
+    const existing = this.listByActivity(input.activityId)
+    const duplicate = existing.find(
+      (e) => e.parentId === input.parentId && e.child.name === input.child.name
+    )
+    if (duplicate) {
+      return { error: 'Kind ist bereits auf der Warteliste für diesen Kurs' }
+    }
+
     const id = generateId('wl')
     const now = new Date()
-
-    // Position bestimmen (höchste Position + 1)
-    const existing = this.listByActivity(input.activityId)
     const maxPosition = existing.reduce((max, e) => Math.max(max, e.position), 0)
 
     const entry: WaitlistEntry = {

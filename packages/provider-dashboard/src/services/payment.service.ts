@@ -36,12 +36,17 @@ export const SepaMandateService = {
     const id = generateId('sepa')
     const now = new Date()
 
+    // IBAN maskieren für Anzeige
+    const cleanedIban = input.iban.replace(/\s/g, '').toUpperCase()
+    const ibanMasked = cleanedIban.slice(0, 4) + ' **** **** **** ' + cleanedIban.slice(-4)
+
     const mandate: SepaMandate = {
       id,
       providerId: input.providerId,
       parentId: input.parentId,
       mandateReference: nextMandateReference(input.providerId),
-      iban: input.iban,   // In Produktion: verschlüsseln!
+      iban: cleanedIban,  // HINWEIS: In Produktion verschlüsseln (AES-256-GCM)!
+      ibanMasked,
       bic: input.bic,
       accountHolder: input.accountHolder,
       signedAt: now,
@@ -109,7 +114,15 @@ export interface CreatePaymentInput {
 
 export const PaymentService = {
 
-  create(input: CreatePaymentInput): PaymentRecord {
+  create(input: CreatePaymentInput): PaymentRecord | { error: string } {
+    // Betrag validieren
+    if (!input.amount || input.amount <= 0) {
+      return { error: 'Betrag muss positiv sein' }
+    }
+    if (isNaN(input.amount)) {
+      return { error: 'Betrag muss eine gültige Zahl sein' }
+    }
+
     const id = generateId('pay')
     const now = new Date()
 
@@ -193,8 +206,16 @@ export const PaymentService = {
     if (payment.bookingId) {
       const booking = store.state.bookings.get(payment.bookingId)
       if (booking) {
-        booking.paymentStatus = 'paid'
-        booking.amountPaid = payment.amount
+        booking.amountPaid = Math.round(((booking.amountPaid ?? 0) + payment.amount) * 100) / 100
+        // Prüfe ob vollständig bezahlt
+        const activity = store.state.activities.get(booking.activityId)
+        const pricingOption = activity?.pricing.find((p) => p.id === booking.pricingOptionId)
+        const expectedAmount = pricingOption?.amount ?? 0
+        if (booking.amountPaid >= expectedAmount) {
+          booking.paymentStatus = 'paid'
+        } else if (booking.amountPaid > 0) {
+          booking.paymentStatus = 'partial'
+        }
         booking.updatedAt = new Date()
       }
     }
@@ -203,8 +224,17 @@ export const PaymentService = {
     if (payment.invoiceId) {
       const invoice = store.state.invoices.get(payment.invoiceId)
       if (invoice) {
-        invoice.status = 'paid'
-        invoice.paidAt = new Date()
+        // Prüfe ob Gesamtbetrag der Zahlungen die Rechnung abdeckt
+        const paymentIds = store.getFromIndex(store.indexes.paymentsByInvoice, payment.invoiceId)
+        let totalPaid = 0
+        for (const pid of paymentIds) {
+          const p = store.state.payments.get(pid)
+          if (p && p.status === 'completed') totalPaid += p.amount
+        }
+        if (totalPaid >= invoice.total) {
+          invoice.status = 'paid'
+          invoice.paidAt = new Date()
+        }
       }
     }
 
@@ -250,6 +280,18 @@ export const PaymentService = {
       const mandate = SepaMandateService.getActiveMandate(providerId, invoice.parentId)
       if (!mandate) continue
 
+      // Prüfen ob bereits eine Zahlung für diese Rechnung existiert
+      const existingPayments = store.getFromIndex(store.indexes.paymentsByInvoice, invId)
+      let alreadyHasPayment = false
+      for (const pid of existingPayments) {
+        const p = store.state.payments.get(pid)
+        if (p && (p.status === 'pending' || p.status === 'completed')) {
+          alreadyHasPayment = true
+          break
+        }
+      }
+      if (alreadyHasPayment) continue
+
       const payment = this.create({
         providerId,
         parentId: invoice.parentId,
@@ -261,7 +303,9 @@ export const PaymentService = {
         sepaMandateId: mandate.id,
       })
 
-      created.push(payment)
+      if (!('error' in payment)) {
+        created.push(payment)
+      }
     }
 
     return created
@@ -292,6 +336,11 @@ export const PaymentService = {
       }
     }
 
-    return { totalReceived, totalPending, totalRefunded, byMethod }
+    return {
+      totalReceived: Math.round(totalReceived * 100) / 100,
+      totalPending: Math.round(totalPending * 100) / 100,
+      totalRefunded: Math.round(totalRefunded * 100) / 100,
+      byMethod,
+    }
   },
 }

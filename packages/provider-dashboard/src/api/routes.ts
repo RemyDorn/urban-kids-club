@@ -36,7 +36,32 @@ import {
 } from '../services'
 import { TrialConversionWorkflow, WaitlistConversionWorkflow, BackgroundJobs } from '../services/workflows'
 
+// --- Auth-Middleware (Platzhalter – in Produktion durch JWT/Session ersetzen) ---
+// WICHTIG: Alle Endpoints sind aktuell NICHT authentifiziert!
+// Vor Produktionsdeployment MUSS eine Auth-Middleware implementiert werden.
+// z.B. JWT-Verifizierung, Session-Cookies, oder API-Keys.
+
+function requireAuth(_req: import('./router').ParsedRequest, _res: import('./router').ApiResponse): boolean {
+  // TODO: Implementiere Auth-Prüfung
+  // const token = req.raw.headers.authorization?.replace('Bearer ', '')
+  // if (!token) { res.error(401, 'Nicht authentifiziert'); return false }
+  // const user = verifyToken(token)
+  // if (!user) { res.error(401, 'Token ungültig'); return false }
+  // req.userId = user.id
+  return true
+}
+
+// --- Input-Validierung: parseInt mit NaN-Schutz ---
+function safeParseInt(value: string | undefined, defaultValue: number): number {
+  if (!value) return defaultValue
+  const parsed = parseInt(value, 10)
+  return isNaN(parsed) ? defaultValue : parsed
+}
+
 export function registerRoutes(router: Router) {
+
+  // HINWEIS: Alle Endpoints benötigen Auth-Middleware vor Produktionsdeployment.
+  // requireAuth() ist ein Platzhalter – gibt aktuell immer true zurück.
 
   // ============================================================
   // PROVIDERS
@@ -119,8 +144,9 @@ export function registerRoutes(router: Router) {
   })
 
   router.post('/api/providers/:providerId/team', (req, res) => {
-    const member = TeamService.create({ ...req.body as any, providerId: req.params.providerId })
-    res.status(201).json({ data: member })
+    const result = TeamService.create({ ...req.body as any, providerId: req.params.providerId })
+    if ('error' in result) return res.error(400, result.error)
+    res.status(201).json({ data: result })
   })
 
   router.put('/api/team/:id', (req, res) => {
@@ -146,8 +172,8 @@ export function registerRoutes(router: Router) {
   router.get('/api/activities/search', (req, res) => {
     const activities = ActivityService.search({
       category: req.query.category,
-      ageMin: req.query.ageMin ? parseInt(req.query.ageMin) : undefined,
-      ageMax: req.query.ageMax ? parseInt(req.query.ageMax) : undefined,
+      ageMin: req.query.ageMin ? safeParseInt(req.query.ageMin, 0) : undefined,
+      ageMax: req.query.ageMax ? safeParseInt(req.query.ageMax, 18) : undefined,
       providerId: req.query.providerId,
       status: req.query.status as any,
       query: req.query.q,
@@ -174,9 +200,10 @@ export function registerRoutes(router: Router) {
   })
 
   router.post('/api/activities/:id/publish', (req, res) => {
-    const activity = ActivityService.publish(req.params.id)
-    if (!activity) return res.error(400, 'Aktivität konnte nicht veröffentlicht werden')
-    res.json({ data: activity })
+    const result = ActivityService.publish(req.params.id)
+    if (!result) return res.error(400, 'Aktivität konnte nicht veröffentlicht werden')
+    if ('error' in result) return res.error(400, result.error)
+    res.json({ data: result })
   })
 
   router.post('/api/activities/:id/duplicate', (req, res) => {
@@ -254,14 +281,16 @@ export function registerRoutes(router: Router) {
 
   router.post('/api/attendance/checkin', (req, res) => {
     const { bookingId, activityId, date, checkedInBy } = req.body as any
-    const record = AttendanceService.checkIn(bookingId, activityId, date, checkedInBy)
-    res.status(201).json({ data: record })
+    const result = AttendanceService.checkIn(bookingId, activityId, date, checkedInBy)
+    if ('error' in result) return res.error(400, result.error)
+    res.status(201).json({ data: result })
   })
 
   router.post('/api/attendance/absent', (req, res) => {
     const { bookingId, activityId, date, note } = req.body as any
-    const record = AttendanceService.markAbsent(bookingId, activityId, date, note)
-    res.status(201).json({ data: record })
+    const result = AttendanceService.markAbsent(bookingId, activityId, date, note)
+    if ('error' in result) return res.error(400, result.error)
+    res.status(201).json({ data: result })
   })
 
   router.get('/api/activities/:activityId/attendance/rate', (req, res) => {
@@ -285,8 +314,9 @@ export function registerRoutes(router: Router) {
   })
 
   router.post('/api/parents', (req, res) => {
-    const parent = ParentService.create(req.body as any)
-    res.status(201).json({ data: parent })
+    const result = ParentService.create(req.body as any)
+    if ('error' in result) return res.error(400, result.error)
+    res.status(201).json({ data: result })
   })
 
   router.put('/api/parents/:id', (req, res) => {
@@ -369,8 +399,9 @@ export function registerRoutes(router: Router) {
   })
 
   router.post('/api/waitlist', (req, res) => {
-    const entry = WaitlistService.add(req.body as any)
-    res.status(201).json({ data: entry })
+    const result = WaitlistService.add(req.body as any)
+    if ('error' in result) return res.error(400, result.error)
+    res.status(201).json({ data: result })
   })
 
   router.post('/api/waitlist/:id/accept', (req, res) => {
@@ -511,7 +542,8 @@ export function registerRoutes(router: Router) {
   })
 
   router.get('/api/providers/:providerId/invoices/vat-summary/:year', (req, res) => {
-    const summary = InvoiceService.getVatSummary(req.params.providerId, parseInt(req.params.year))
+    const year = safeParseInt(req.params.year, new Date().getFullYear())
+    const summary = InvoiceService.getVatSummary(req.params.providerId, year)
     res.json({ data: summary })
   })
 
@@ -544,8 +576,9 @@ export function registerRoutes(router: Router) {
   })
 
   router.post('/api/payments', (req, res) => {
-    const payment = PaymentService.create(req.body as any)
-    res.status(201).json({ data: payment })
+    const result = PaymentService.create(req.body as any)
+    if ('error' in result) return res.error(400, result.error)
+    res.status(201).json({ data: result })
   })
 
   router.post('/api/payments/:id/complete', (req, res) => {
@@ -796,7 +829,7 @@ export function registerRoutes(router: Router) {
   })
 
   router.get('/api/providers/:providerId/reports/churn', (req, res) => {
-    const months = req.query.months ? parseInt(req.query.months) : 3
+    const months = safeParseInt(req.query.months, 3)
     const churn = ReportingService.getChurnRate(req.params.providerId, months)
     res.json({ data: churn })
   })
@@ -824,7 +857,7 @@ export function registerRoutes(router: Router) {
   })
 
   router.get('/api/providers/:providerId/audit/recent', (req, res) => {
-    const limit = req.query.limit ? parseInt(req.query.limit) : 20
+    const limit = safeParseInt(req.query.limit, 20)
     const entries = AuditService.getRecentActivity(req.params.providerId, limit)
     res.json({ data: entries })
   })

@@ -122,10 +122,19 @@ export const CouponService = {
     return { valid: true, discount }
   },
 
-  // Gutschein einlösen
+  // Gutschein einlösen (mit erneuter Validierung)
   redeem(couponId: ID, bookingId: ID, parentId: ID, discountAmount: number): CouponRedemption | { error: string } {
     const coupon = store.state.coupons.get(couponId)
     if (!coupon) return { error: 'Gutschein nicht gefunden' }
+    if (!coupon.active) return { error: 'Gutschein ist nicht mehr aktiv' }
+
+    const now = new Date()
+    if (now < coupon.validFrom || now > coupon.validUntil) {
+      return { error: 'Gutschein ist abgelaufen oder noch nicht gültig' }
+    }
+    if (coupon.maxUses > 0 && coupon.usedCount >= coupon.maxUses) {
+      return { error: 'Gutschein ist aufgebraucht' }
+    }
 
     const id = generateId('redem')
     const redemption: CouponRedemption = {

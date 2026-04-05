@@ -21,7 +21,13 @@ export interface UpdateParentInput {
 
 export const ParentService = {
 
-  create(input: CreateParentInput): Parent {
+  create(input: CreateParentInput): Parent | { error: string } {
+    // E-Mail-Eindeutigkeit prüfen
+    const existing = this.getByEmail(input.email)
+    if (existing) {
+      return { error: 'E-Mail-Adresse ist bereits vergeben' }
+    }
+
     const id = generateId('par')
     const now = new Date()
 
@@ -117,6 +123,16 @@ export const ParentService = {
   },
 
   delete(id: ID): boolean {
+    const parent = store.state.parents.get(id)
+    if (!parent) return false
+
+    // Bookings-Index aufräumen
+    store.indexes.bookingsByParent.delete(id)
+    // Messages-Index aufräumen
+    store.indexes.messagesByParent.delete(id)
+    // Redemptions-Index aufräumen
+    store.indexes.redemptionsByParent.delete(id)
+
     return store.state.parents.delete(id)
   },
 }

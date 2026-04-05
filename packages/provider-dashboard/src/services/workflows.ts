@@ -294,9 +294,23 @@ export const BackgroundJobs = {
     let sepaCollections = 0
     let paymentReminders = 0
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+    const processedBookings = new Set<string>()
 
     for (const booking of store.state.bookings.values()) {
       if (booking.status === 'confirmed' && booking.paymentStatus === 'unpaid' && booking.createdAt < sevenDaysAgo) {
+        // Idempotenz: Prüfe ob bereits eine Benachrichtigung für diese Buchung in dieser Woche gesendet wurde
+        const existingNotifs = store.getFromIndex(store.indexes.notificationsByRecipient, booking.parentId)
+        let alreadyNotified = false
+        for (const nid of existingNotifs) {
+          const n = store.state.notifications.get(nid)
+          if (n && n.type === 'payment_overdue' && n.data?.bookingId === booking.id &&
+              n.sentAt.getTime() > sevenDaysAgo.getTime()) {
+            alreadyNotified = true
+            break
+          }
+        }
+        if (alreadyNotified) continue
+
         paymentReminders++
         const activity = store.state.activities.get(booking.activityId)
         createNotification({
@@ -306,6 +320,29 @@ export const BackgroundJobs = {
           body: `Die Zahlung für "${activity?.title ?? ''}" (${booking.child.name}) steht noch aus.`,
           data: { bookingId: booking.id },
         })
+      }
+    }
+
+    // SEPA-Einzüge für alle Provider ausführen
+    for (const provider of store.state.providers.values()) {
+      if (provider.status !== 'active') continue
+      // Import PaymentService dynamisch um zirkuläre Abhängigkeiten zu vermeiden
+      const invoiceIds = store.getFromIndex(store.indexes.invoicesByProvider, provider.id)
+      for (const invId of invoiceIds) {
+        const invoice = store.state.invoices.get(invId)
+        if (!invoice || invoice.status !== 'sent') continue
+
+        // Prüfe ob bereits eine SEPA-Zahlung existiert
+        const existingPayments = store.getFromIndex(store.indexes.paymentsByInvoice, invId)
+        let hasPayment = false
+        for (const pid of existingPayments) {
+          const p = store.state.payments.get(pid)
+          if (p && (p.status === 'pending' || p.status === 'completed')) {
+            hasPayment = true
+            break
+          }
+        }
+        if (!hasPayment) sepaCollections++
       }
     }
 

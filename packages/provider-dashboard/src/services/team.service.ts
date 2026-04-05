@@ -25,7 +25,16 @@ export interface UpdateTeamMemberInput {
 
 export const TeamService = {
 
-  create(input: CreateTeamMemberInput): TeamMember {
+  create(input: CreateTeamMemberInput): TeamMember | { error: string } {
+    // E-Mail-Eindeutigkeit prüfen
+    const existingIds = store.getFromIndex(store.indexes.teamByProvider, input.providerId)
+    for (const tid of existingIds) {
+      const existing = store.state.teamMembers.get(tid)
+      if (existing && existing.email.toLowerCase() === input.email.toLowerCase()) {
+        return { error: 'E-Mail-Adresse ist im Team bereits vergeben' }
+      }
+    }
+
     const id = generateId('team')
 
     const member: TeamMember = {
@@ -115,6 +124,13 @@ export const TeamService = {
   delete(id: ID): boolean {
     const member = store.state.teamMembers.get(id)
     if (!member) return false
+
+    // Aktivitäten entkoppeln
+    for (const activity of store.state.activities.values()) {
+      if (activity.instructorId === id) {
+        activity.instructorId = undefined
+      }
+    }
 
     store.removeFromIndex(store.indexes.teamByProvider, member.providerId, id)
     return store.state.teamMembers.delete(id)

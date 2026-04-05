@@ -89,6 +89,14 @@ export const LocationService = {
     const location = store.state.locations.get(id)
     if (!location) return false
 
+    // Aktivitäten entkoppeln
+    const activityIds = store.getFromIndex(store.indexes.activitiesByLocation, id)
+    for (const aid of activityIds) {
+      const activity = store.state.activities.get(aid)
+      if (activity) activity.locationId = undefined
+    }
+    store.indexes.activitiesByLocation.delete(id)
+
     store.removeFromIndex(store.indexes.locationsByProvider, location.providerId, id)
     return store.state.locations.delete(id)
   },

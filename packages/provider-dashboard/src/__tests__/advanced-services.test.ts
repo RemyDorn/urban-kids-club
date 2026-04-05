@@ -19,11 +19,19 @@ import { ContractService } from '../services/contract.service'
 import { TeamService } from '../services/team.service'
 import { BuTVoucherService } from '../services/but-voucher.service'
 import { TrialConversionWorkflow, WaitlistConversionWorkflow, BackgroundJobs } from '../services/workflows'
-import { Validators } from '../services/validators'
+import { Validators, schedulesOverlap } from '../services/validators'
 import { ReportingService } from '../services/reporting.service'
 import { resetIdCounter } from '../services/id'
 
 function resetAll() { store.reset(); resetIdCounter() }
+
+// Type-Narrowing Helpers für Union-Returns
+function assertNotError<T>(result: T | { error: string }): T {
+  if (result && typeof result === 'object' && 'error' in result) {
+    throw new Error(`Unexpected error: ${result.error}`)
+  }
+  return result as T
+}
 
 function setup() {
   const provider = ProviderService.create({
@@ -41,13 +49,13 @@ function setup() {
   })
   ActivityService.publish(activity.id)
 
-  const parent = ParentService.create({
+  const parent = assertNotError(ParentService.create({
     name: 'Test Eltern', email: 'eltern@test.de',
     children: [
       { name: 'Kind1', age: 5, emergencyContact: 'Test', emergencyPhone: '123' },
       { name: 'Kind2', age: 7, emergencyContact: 'Test', emergencyPhone: '123' },
     ],
-  })
+  }))
 
   return { provider, activity, parent }
 }
@@ -154,12 +162,12 @@ describe('TrialService', () => {
     TrialService.complete(t1.id)
     TrialConversionWorkflow.convert(t1.id, activity.pricing[0].id)
 
-    const p2 = ParentService.create({ name: 'P2', email: 'p2@t.de', children: [{ name: 'K2', age: 5, emergencyContact: 'P2', emergencyPhone: '1' }] })
+    const p2 = assertNotError(ParentService.create({ name: 'P2', email: 'p2@t.de', children: [{ name: 'K2', age: 5, emergencyContact: 'P2', emergencyPhone: '1' }] }))
     const t2 = TrialService.create({ activityId: activity.id, providerId: provider.id, parentId: p2.id, child: p2.children[0], scheduledDate: '2026-04-09', scheduledTime: '15:00' })
     assert.ok(!('error' in t2))
     TrialService.complete(t2.id)
 
-    const p3 = ParentService.create({ name: 'P3', email: 'p3@t.de', children: [{ name: 'K3', age: 5, emergencyContact: 'P3', emergencyPhone: '1' }] })
+    const p3 = assertNotError(ParentService.create({ name: 'P3', email: 'p3@t.de', children: [{ name: 'K3', age: 5, emergencyContact: 'P3', emergencyPhone: '1' }] }))
     const t3 = TrialService.create({ activityId: activity.id, providerId: provider.id, parentId: p3.id, child: p3.children[0], scheduledDate: '2026-04-10', scheduledTime: '15:00' })
     assert.ok(!('error' in t3))
     TrialService.markNoShow(t3.id)
@@ -181,10 +189,10 @@ describe('WaitlistService', () => {
 
   it('should manage priority-based waitlist', () => {
     const { activity, parent } = setup()
-    const p2 = ParentService.create({ name: 'P2', email: 'p2@t.de', children: [{ name: 'Sibling', age: 5, emergencyContact: 'P2', emergencyPhone: '1' }] })
+    const p2 = assertNotError(ParentService.create({ name: 'P2', email: 'p2@t.de', children: [{ name: 'Sibling', age: 5, emergencyContact: 'P2', emergencyPhone: '1' }] }))
 
-    const e1 = WaitlistService.add({ activityId: activity.id, parentId: parent.id, child: parent.children[0], priority: 'normal' })
-    const e2 = WaitlistService.add({ activityId: activity.id, parentId: p2.id, child: p2.children[0], priority: 'sibling' })
+    const e1 = assertNotError(WaitlistService.add({ activityId: activity.id, parentId: parent.id, child: parent.children[0], priority: 'normal' }))
+    const e2 = assertNotError(WaitlistService.add({ activityId: activity.id, parentId: p2.id, child: p2.children[0], priority: 'sibling' }))
 
     const list = WaitlistService.listByActivity(activity.id)
     assert.equal(list[0].id, e2.id) // sibling comes first
@@ -193,7 +201,7 @@ describe('WaitlistService', () => {
 
   it('should convert waitlist to booking', () => {
     const { provider, activity, parent } = setup()
-    const entry = WaitlistService.add({ activityId: activity.id, parentId: parent.id, child: parent.children[0] })
+    const entry = assertNotError(WaitlistService.add({ activityId: activity.id, parentId: parent.id, child: parent.children[0] }))
     WaitlistService.offerNextSpot(activity.id)
 
     const result = WaitlistConversionWorkflow.acceptAndBook(entry.id, activity.pricing[0].id)
@@ -303,7 +311,7 @@ describe('ContractService', () => {
 
   it('should assess freelance risk', () => {
     const { provider } = setup()
-    const trainer = TeamService.create({ providerId: provider.id, name: 'Lisa', email: 'l@t.de', role: 'instructor' })
+    const trainer = assertNotError(TeamService.create({ providerId: provider.id, name: 'Lisa', email: 'l@t.de', role: 'instructor' }))
 
     // High risk: no freelance indicators documented
     const contract = ContractService.create({
@@ -320,7 +328,7 @@ describe('ContractService', () => {
 
   it('should score lower risk with good indicators', () => {
     const { provider } = setup()
-    const trainer = TeamService.create({ providerId: provider.id, name: 'Marco', email: 'm@t.de', role: 'instructor' })
+    const trainer = assertNotError(TeamService.create({ providerId: provider.id, name: 'Marco', email: 'm@t.de', role: 'instructor' }))
 
     const contract = ContractService.create({
       providerId: provider.id, teamMemberId: trainer.id, type: 'freelance',
@@ -450,5 +458,78 @@ describe('Validators', () => {
     const child = { name: 'Test', age: 5, emergencyContact: 'X', emergencyPhone: '1' }
     assert.equal(Validators.childAgeInRange(child, { min: 3, max: 7 }).valid, true)
     assert.equal(Validators.childAgeInRange(child, { min: 6, max: 10 }).valid, false)
+  })
+})
+
+// ============================================================
+// EXPANDED TESTS – Negative/Boundary Cases
+// ============================================================
+
+function setupWithBooking() {
+  const s = setup()
+  const result = BookingService.create({
+    activityId: s.activity.id, providerId: s.provider.id, parentId: s.parent.id,
+    child: s.parent.children[0], pricingOptionId: s.activity.pricing[0].id,
+  })
+  assert(!('error' in result))
+  return { ...s, booking: (result as any).booking }
+}
+
+describe('WaitlistService – Duplicate Prevention', () => {
+  beforeEach(resetAll)
+
+  it('should reject duplicate child on waitlist', () => {
+    const { activity, parent } = setupWithBooking()
+    const entry1 = WaitlistService.add({ activityId: activity.id, parentId: parent.id, child: parent.children[0] })
+    assert(!('error' in entry1))
+    const entry2 = WaitlistService.add({ activityId: activity.id, parentId: parent.id, child: parent.children[0] })
+    assert('error' in entry2)
+  })
+})
+
+describe('CouponService – Re-validation on Redeem', () => {
+  beforeEach(resetAll)
+
+  it('should reject redeem of deactivated coupon', () => {
+    const s = setup()
+    const coupon = CouponService.create({ providerId: s.provider.id, code: 'TEST10', type: 'percentage', value: 10, validFrom: new Date(Date.now() - 86400000), validUntil: new Date(Date.now() + 86400000) })
+    assert(!('error' in coupon))
+    CouponService.deactivate(coupon.id)
+    const result = CouponService.redeem(coupon.id, 'fake-booking', 'fake-parent', 5)
+    assert('error' in result)
+    assert(result.error.includes('nicht mehr aktiv'))
+  })
+})
+
+describe('Validators – IBAN MOD-97', () => {
+  beforeEach(resetAll)
+
+  it('should accept valid German IBAN', () => {
+    const result = Validators.ibanValid('DE89 3704 0044 0532 0130 00')
+    assert.equal(result.valid, true)
+  })
+
+  it('should reject IBAN with wrong checksum', () => {
+    const result = Validators.ibanValid('DE00 3704 0044 0532 0130 00')
+    assert.equal(result.valid, false)
+    assert(result.errors.some((e: string) => e.includes('Prüfsumme')))
+  })
+})
+
+describe('Validators – Mixed Schedule Overlap', () => {
+  beforeEach(resetAll)
+
+  it('should detect single vs recurring overlap', () => {
+    const single = { type: 'single' as const, date: '2026-01-05', startTime: '10:00', endTime: '11:00' }
+    const recurring = { type: 'recurring' as const, slots: [{ day: 'MO' as const, startTime: '09:30', endTime: '10:30' }], startDate: '2026-01-01' }
+    // 2026-01-05 is a Monday
+    assert.equal(schedulesOverlap(single, recurring), true)
+  })
+
+  it('should not detect single vs recurring on different day', () => {
+    const single = { type: 'single' as const, date: '2026-01-06', startTime: '10:00', endTime: '11:00' }
+    const recurring = { type: 'recurring' as const, slots: [{ day: 'MO' as const, startTime: '09:30', endTime: '10:30' }], startDate: '2026-01-01' }
+    // 2026-01-06 is a Tuesday
+    assert.equal(schedulesOverlap(single, recurring), false)
   })
 })

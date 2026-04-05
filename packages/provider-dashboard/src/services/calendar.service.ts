@@ -198,18 +198,19 @@ export const CalendarService = {
         `UID:${event.id}@urbankidsclub.de`,
         `DTSTART:${dtStart}`,
         `DTEND:${dtEnd}`,
-        `SUMMARY:${event.title}`,
+        `SUMMARY:${this._escapeIcal(event.title)}`,
       )
 
       if (event.description) {
-        ical.push(`DESCRIPTION:${event.description.replace(/\n/g, '\\n')}`)
+        ical.push(`DESCRIPTION:${this._escapeIcal(event.description)}`)
       }
 
       // Location hinzufügen
       if (event.locationId) {
         const location = store.state.locations.get(event.locationId)
         if (location) {
-          ical.push(`LOCATION:${location.name}, ${location.address.street}, ${location.address.city}`)
+          ical.push(`LOCATION:${this._escapeIcal(`${location.name}, ${location.address.street}, ${location.address.city}`)}`)
+
         }
       }
 
@@ -331,6 +332,15 @@ export const CalendarService = {
       }
     }
     return false
+  },
+
+  // RFC 5545 Text-Escaping
+  _escapeIcal(text: string): string {
+    return text
+      .replace(/\\/g, '\\\\')
+      .replace(/;/g, '\\;')
+      .replace(/,/g, '\\,')
+      .replace(/\n/g, '\\n')
   },
 
   delete(id: ID): boolean {
