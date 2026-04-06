@@ -1,9 +1,10 @@
 <!DOCTYPE html>
-<html lang="de" class="h-full bg-gray-50">
+<html lang="de" class="h-full bg-brand-50">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.tailwindcss.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'">
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <title>Urban Kids Club – Provider Dashboard</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
@@ -11,28 +12,43 @@
       theme: {
         extend: {
           colors: {
-            brand: { 50: '#f0f9ff', 100: '#e0f2fe', 200: '#bae6fd', 300: '#7dd3fc', 400: '#38bdf8', 500: '#0ea5e9', 600: '#0284c7', 700: '#0369a1', 800: '#075985', 900: '#0c4a6e' },
+            brand: {
+              50: '#FFF9F5',
+              100: '#FFEFE1',
+              200: '#F0D9C4',
+              300: '#C49980',
+              400: '#CC895E',
+              500: '#B5533A',
+              600: '#9A4432',
+              700: '#3C2124',
+              800: '#2D181A',
+              900: '#1E1012',
+            }
+          },
+          fontFamily: {
+            heading: ['Barlow Condensed', 'sans-serif'],
+            body: ['Inter', 'sans-serif'],
           }
         }
       }
     }
   </script>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-    body { font-family: 'Inter', sans-serif; }
+    body { font-family: 'Inter', sans-serif; background: #FFF9F5; }
+    h1, h2, h3, .page-title { font-family: 'Barlow Condensed', sans-serif; text-transform: uppercase; letter-spacing: 0.05em; }
     .fade-in { animation: fadeIn 0.3s ease-in; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
     .stat-card:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0,0,0,0.1); }
     .stat-card { transition: all 0.2s ease; }
-    .nav-item.active { background: linear-gradient(135deg, #0ea5e9, #0284c7); color: white; }
-    .nav-item:not(.active):hover { background: #f0f9ff; }
+    .nav-item.active { background: linear-gradient(135deg, #CC895E, #B5533A); color: white; }
+    .nav-item:not(.active):hover { background: #FFEFE1; }
     /* Calendar */
     .cal-grid { display: grid; grid-template-columns: 60px repeat(7, 1fr); }
     .cal-hour { height: 48px; border-bottom: 1px solid #f3f4f6; }
     .cal-event { position: absolute; left: 2px; right: 2px; border-radius: 6px; padding: 4px 8px; font-size: 12px; overflow: hidden; cursor: pointer; transition: all 0.15s; border: 1.5px solid; }
     .cal-event:hover { transform: scale(1.02); box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 10 !important; }
     .cal-day-col { position: relative; border-left: 1px solid #f3f4f6; }
-    .cal-today { background: #f0f9ff; }
+    .cal-today { background: #FFF9F5; }
     .cal-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 50; display: flex; align-items: center; justify-content: center; }
     .cal-modal { background: white; border-radius: 16px; padding: 24px; width: 480px; max-height: 80vh; overflow-y: auto; box-shadow: 0 25px 50px rgba(0,0,0,0.25); }
     /* Toggle Switch */
@@ -40,7 +56,7 @@
     .toggle input { opacity: 0; width: 0; height: 0; }
     .toggle .slider { position: absolute; inset: 0; background: #d1d5db; border-radius: 12px; transition: 0.2s; }
     .toggle .slider:before { content: ''; position: absolute; height: 18px; width: 18px; left: 3px; bottom: 3px; background: white; border-radius: 50%; transition: 0.2s; }
-    .toggle input:checked + .slider { background: #0ea5e9; }
+    .toggle input:checked + .slider { background: #B5533A; }
     .toggle input:checked + .slider:before { transform: translateX(20px); }
   </style>
 </head>
@@ -48,21 +64,21 @@
   <div class="flex h-full">
 
     <!-- Sidebar -->
-    <aside class="w-64 bg-white border-r border-gray-200 flex flex-col fixed h-full z-10">
+    <aside class="w-64 bg-brand-700 flex flex-col fixed h-full z-10">
       <!-- Logo -->
-      <div class="p-5 border-b border-gray-100">
+      <div class="p-5 border-b border-brand-800/50">
         <div class="flex items-center gap-3">
-          <div class="w-10 h-10 bg-gradient-to-br from-brand-400 to-brand-600 rounded-xl flex items-center justify-center text-white font-bold text-lg">U</div>
+          <div class="w-10 h-10 bg-gradient-to-br from-brand-400 to-brand-500 rounded-xl flex items-center justify-center text-white font-bold text-lg">U</div>
           <div>
-            <div class="font-bold text-gray-900 text-sm">Urban Kids Club</div>
-            <div class="text-xs text-gray-500">Provider Dashboard</div>
+            <div class="font-bold text-brand-100 text-sm">Urban Kids Club</div>
+            <div class="text-xs text-brand-300">Provider Dashboard</div>
           </div>
         </div>
       </div>
 
       <!-- Provider Selector -->
-      <div class="p-4 border-b border-gray-100">
-        <select id="providerSelect" onchange="switchProvider(this.value)" class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:ring-2 focus:ring-brand-500 focus:border-brand-500">
+      <div class="p-4 border-b border-brand-800/50">
+        <select id="providerSelect" onchange="switchProvider(this.value)" class="w-full text-sm border border-brand-800 rounded-lg px-3 py-2 bg-brand-800 text-brand-100 focus:ring-2 focus:ring-brand-400 focus:border-brand-400">
         </select>
       </div>
 
@@ -72,48 +88,48 @@
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
           Dashboard
         </button>
-        <button onclick="navigate('activities')" data-page="activities" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 transition-all">
+        <button onclick="navigate('activities')" data-page="activities" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-brand-300 transition-all">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
           Kurse
         </button>
-        <button onclick="navigate('bookings')" data-page="bookings" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 transition-all">
+        <button onclick="navigate('bookings')" data-page="bookings" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-brand-300 transition-all">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
           Buchungen
         </button>
-        <button onclick="navigate('customers')" data-page="customers" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 transition-all">
+        <button onclick="navigate('customers')" data-page="customers" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-brand-300 transition-all">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
           Kunden
         </button>
-        <button onclick="navigate('trials')" data-page="trials" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 transition-all">
+        <button onclick="navigate('trials')" data-page="trials" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-brand-300 transition-all">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
           Probestunden
         </button>
-        <button onclick="navigate('invoices')" data-page="invoices" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 transition-all">
+        <button onclick="navigate('invoices')" data-page="invoices" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-brand-300 transition-all">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z"/></svg>
           Rechnungen
         </button>
-        <button onclick="navigate('team')" data-page="team" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 transition-all">
+        <button onclick="navigate('team')" data-page="team" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-brand-300 transition-all">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
           Team
         </button>
-        <button onclick="navigate('documents')" data-page="documents" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 transition-all">
+        <button onclick="navigate('documents')" data-page="documents" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-brand-300 transition-all">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
           Dokumente
         </button>
-        <button onclick="navigate('reports')" data-page="reports" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 transition-all">
+        <button onclick="navigate('reports')" data-page="reports" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-brand-300 transition-all">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
           Berichte
         </button>
-        <button onclick="navigate('embed')" data-page="embed" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 transition-all">
+        <button onclick="navigate('embed')" data-page="embed" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-brand-300 transition-all">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
           Einbettung
         </button>
-        <button onclick="navigate('marketing')" data-page="marketing" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 transition-all">
+        <button onclick="navigate('marketing')" data-page="marketing" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-brand-300 transition-all">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z"/></svg>
           Marketing
         </button>
-        <div class="mt-4 pt-3 border-t border-gray-100">
-          <button onclick="navigate('settings')" data-page="settings" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 transition-all">
+        <div class="mt-4 pt-3 border-t border-brand-800/50">
+          <button onclick="navigate('settings')" data-page="settings" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-brand-300 transition-all">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
             Einstellungen
           </button>
@@ -121,7 +137,7 @@
       </nav>
 
       <!-- Footer -->
-      <div class="p-4 border-t border-gray-100 text-xs text-gray-400">
+      <div class="p-4 border-t border-brand-800/50 text-xs text-brand-300">
         Urban Kids Club v0.1.0
       </div>
     </aside>
@@ -129,8 +145,8 @@
     <!-- Main Content -->
     <main class="flex-1 ml-64 overflow-y-auto">
       <!-- Header -->
-      <header class="bg-white border-b border-gray-200 px-8 py-4 flex items-center justify-between sticky top-0 z-5">
-        <h1 id="pageTitle" class="text-xl font-bold text-gray-900">Dashboard</h1>
+      <header class="bg-white border-b border-brand-200 px-8 py-4 flex items-center justify-between sticky top-0 z-5">
+        <h1 id="pageTitle" class="text-xl font-bold text-brand-700 font-heading">Dashboard</h1>
         <div class="flex items-center gap-4">
           <span id="providerName" class="text-sm text-gray-500"></span>
           <button onclick="navigate('settings')" class="w-8 h-8 bg-brand-100 text-brand-700 rounded-full flex items-center justify-center text-sm font-bold hover:bg-brand-200 transition-colors cursor-pointer" id="providerAvatar" title="Profil & Einstellungen">?</button>
@@ -219,10 +235,10 @@
       currentPage = page
       document.querySelectorAll('.nav-item').forEach(el => {
         el.classList.remove('active')
-        el.classList.add('text-gray-600')
+        el.classList.add('text-brand-300')
       })
       const activeBtn = document.querySelector(`[data-page="${page}"]`)
-      if (activeBtn) { activeBtn.classList.add('active'); activeBtn.classList.remove('text-gray-600') }
+      if (activeBtn) { activeBtn.classList.add('active'); activeBtn.classList.remove('text-brand-300') }
 
       const titles = { dashboard: 'Dashboard', activities: 'Kurse & Angebote', bookings: 'Buchungen', customers: 'Kunden (CRM)', trials: 'Probestunden', invoices: 'Rechnungen', team: 'Team', documents: 'Dokumente', reports: 'Berichte & Analysen', holidays: 'Ferien & Saisons', embed: 'Einbettung & Widgets', marketing: 'Marketing & Automation', settings: 'Einstellungen' }
       document.getElementById('pageTitle').textContent = titles[page] || page
@@ -420,7 +436,7 @@
         <!-- Calendar Grid -->
         ${calView === 'month' ? `
         <!-- MONTH VIEW -->
-        <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div class="bg-white rounded-xl border border-brand-200 overflow-hidden">
           <div class="grid grid-cols-7 border-b border-gray-200">
             ${['Mo','Di','Mi','Do','Fr','Sa','So'].map(d => `<div class="p-2 text-center text-xs font-medium text-gray-500 uppercase">${d}</div>`).join('')}
           </div>
@@ -454,7 +470,7 @@
         </div>
         ` : `
         <!-- DAY / WEEK VIEW -->
-        <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div class="bg-white rounded-xl border border-brand-200 overflow-hidden">
           <div style="display:grid; grid-template-columns: 60px repeat(${calView === 'day' ? 1 : 7}, 1fr);" class="border-b border-gray-200">
             <div class="p-2"></div>
             ${(calView === 'day' ? [calWeekStart] : days).map(d => {
@@ -669,34 +685,34 @@
 
         <!-- KPI Cards -->
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
-          ${kpiCard('Aktive Kurse', d.publishedActivities, d.totalActivities + ' gesamt', 'bg-blue-50 text-blue-600', '📚')}
+          ${kpiCard('Aktive Kurse', d.publishedActivities, d.totalActivities + ' gesamt', 'bg-brand-100 text-brand-500', '📚')}
           ${kpiCard('Buchungen', d.confirmedBookings, s.total + ' gesamt', 'bg-green-50 text-green-600', '✅')}
           ${kpiCard('Unbezahlt', d.unpaidBookings, 'offene Zahlungen', 'bg-amber-50 text-amber-600', '💰')}
-          ${kpiCard('Auslastung', Math.round(d.averageOccupancy * 100) + '%', 'Durchschnitt', 'bg-purple-50 text-purple-600', '📊')}
+          ${kpiCard('Auslastung', Math.round(d.averageOccupancy * 100) + '%', 'Durchschnitt', 'bg-brand-100 text-brand-400', '📊')}
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
           ${kpiCard('Umsatz', formatCurrency(d.totalRevenue), 'Gesamt', 'bg-emerald-50 text-emerald-600', '💶')}
           ${kpiCard('Offene Rechnungen', formatCurrency(d.outstandingInvoices), '', 'bg-orange-50 text-orange-600', '📄')}
-          ${kpiCard('Probestunden', d.upcomingTrials, 'anstehend', 'bg-pink-50 text-pink-600', '🎯')}
-          ${kpiCard('Nachrichten', d.unreadMessages, 'ungelesen', 'bg-indigo-50 text-indigo-600', '✉️')}
+          ${kpiCard('Probestunden', d.upcomingTrials, 'anstehend', 'bg-brand-100 text-brand-500', '🎯')}
+          ${kpiCard('Nachrichten', d.unreadMessages, 'ungelesen', 'bg-brand-100 text-brand-700', '✉️')}
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <!-- Booking Stats -->
-          <div class="bg-white rounded-xl border border-gray-200 p-6">
+          <div class="bg-white rounded-xl border border-brand-200 p-6">
             <h3 class="font-semibold text-gray-900 mb-4">Buchungs-Status</h3>
             <div class="space-y-3">
               ${statusBar('Bestätigt', s.confirmed, s.total, 'bg-green-500')}
               ${statusBar('Warteliste', s.waitlisted, s.total, 'bg-amber-500')}
-              ${statusBar('Abgeschlossen', s.completed, s.total, 'bg-blue-500')}
+              ${statusBar('Abgeschlossen', s.completed, s.total, 'bg-brand-400')}
               ${statusBar('Storniert', s.cancelled, s.total, 'bg-red-400')}
               ${statusBar('No-Show', s.noShow, s.total, 'bg-gray-400')}
             </div>
           </div>
 
           <!-- Occupancy -->
-          <div class="bg-white rounded-xl border border-gray-200 p-6">
+          <div class="bg-white rounded-xl border border-brand-200 p-6">
             <h3 class="font-semibold text-gray-900 mb-4">Auslastung pro Kurs</h3>
             <div class="space-y-3">
               ${occupancy.data.map(o => `
@@ -757,7 +773,7 @@
         : `${a.schedule.date} ${a.schedule.startTime}–${a.schedule.endTime}`
 
       return `
-        <div class="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-md transition-shadow">
+        <div class="bg-white rounded-xl border border-brand-200 p-5 hover:shadow-md transition-shadow">
           <div class="flex items-start justify-between">
             <div class="flex-1">
               <div class="flex items-center gap-3 mb-2">
@@ -1223,7 +1239,7 @@
       bookings.sort((a, b) => (statusOrder[a.status] ?? 9) - (statusOrder[b.status] ?? 9) || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
 
       const statusLabelsDE = { confirmed: 'Angenommen', waitlisted: 'Warteliste', pending: 'Ausstehend', cancelled: 'Storniert', completed: 'Abgeschlossen', no_show: 'Nicht erschienen' }
-      const statusColors = { confirmed: 'bg-green-100 text-green-700', waitlisted: 'bg-amber-100 text-amber-700', pending: 'bg-blue-100 text-blue-700', cancelled: 'bg-red-100 text-red-700', completed: 'bg-gray-100 text-gray-600', no_show: 'bg-gray-100 text-gray-500' }
+      const statusColors = { confirmed: 'bg-green-100 text-green-700', waitlisted: 'bg-amber-100 text-amber-700', pending: 'bg-brand-100 text-brand-700', cancelled: 'bg-red-100 text-red-700', completed: 'bg-gray-100 text-gray-600', no_show: 'bg-gray-100 text-gray-500' }
       const paymentLabelsDE = { paid: 'Bezahlt', unpaid: 'Ausstehend', partial: 'Teilzahlung', refunded: 'Erstattet' }
       const paymentColors = { paid: 'text-green-600', unpaid: 'text-red-500', partial: 'text-amber-500', refunded: 'text-gray-400' }
       const filterAct = actMap[bookingsFilterActivity]
@@ -1254,7 +1270,7 @@
         </div>
         ` : ''}
 
-        <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div class="bg-white rounded-xl border border-brand-200 overflow-hidden">
           <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
             <span class="font-semibold text-gray-900">${bookings.length} Buchungen</span>
             <div class="flex gap-2">
@@ -1263,7 +1279,7 @@
             </div>
           </div>
           <table class="w-full">
-            <thead class="bg-gray-50 text-xs text-gray-500 uppercase tracking-wider">
+            <thead class="bg-brand-100 text-xs text-brand-700 uppercase tracking-wider">
               <tr>
                 <th class="px-6 py-3 text-left">Datum</th>
                 <th class="px-6 py-3 text-left">Kind</th>
@@ -1372,12 +1388,12 @@
           ${segmentCard('Aktiv', segments.active, 'bg-green-50')}
           ${segmentCard('Inaktiv', segments.inactive, 'bg-gray-50')}
           ${segmentCard('VIP', segments.vip, 'bg-purple-50')}
-          ${segmentCard('Interessenten', segments.prospects, 'bg-blue-50')}
+          ${segmentCard('Interessenten', segments.prospects, 'bg-brand-100')}
           ${segmentCard('Neu (Monat)', segments.newThisMonth, 'bg-amber-50')}
         </div>
-        <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div class="bg-white rounded-xl border border-brand-200 overflow-hidden">
           <table class="w-full">
-            <thead class="bg-gray-50 text-xs text-gray-500 uppercase tracking-wider">
+            <thead class="bg-brand-100 text-xs text-brand-700 uppercase tracking-wider">
               <tr>
                 <th class="px-6 py-3 text-left">Name</th>
                 <th class="px-6 py-3 text-left">Kinder</th>
@@ -1522,7 +1538,7 @@
 
     // --- Trials ---
     const trialStatusDE = { scheduled: 'Geplant', completed: 'Abgeschlossen', no_show: 'Nicht erschienen', converted: 'Konvertiert', cancelled: 'Abgesagt' }
-    const trialStatusColors2 = { scheduled: 'bg-blue-100 text-blue-700', completed: 'bg-green-100 text-green-700', no_show: 'bg-red-100 text-red-700', converted: 'bg-purple-100 text-purple-700', cancelled: 'bg-gray-100 text-gray-500' }
+    const trialStatusColors2 = { scheduled: 'bg-brand-100 text-brand-700', completed: 'bg-green-100 text-green-700', no_show: 'bg-red-100 text-red-700', converted: 'bg-purple-100 text-purple-700', cancelled: 'bg-gray-100 text-gray-500' }
 
     async function renderTrials() {
       const [trials, stats, activities] = await Promise.all([
@@ -1542,12 +1558,12 @@
           ${kpiCardSmall('No-Show', s.noShow)}
           ${kpiCardSmall('Conversion Rate', Math.round(s.conversionRate * 100) + '%')}
         </div>
-        <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div class="bg-white rounded-xl border border-brand-200 overflow-hidden">
           <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
             <span class="font-semibold text-gray-900">${trials.data.length} Probestunden</span>
           </div>
           <table class="w-full">
-            <thead class="bg-gray-50 text-xs text-gray-500 uppercase tracking-wider">
+            <thead class="bg-brand-100 text-xs text-brand-700 uppercase tracking-wider">
               <tr>
                 <th class="px-6 py-3 text-left">Datum</th>
                 <th class="px-6 py-3 text-left">Kind</th>
@@ -1605,7 +1621,7 @@
 
     // --- Invoices ---
     const invoiceStatusDE = { draft: 'Entwurf', sent: 'Versendet', paid: 'Bezahlt', overdue: 'Überfällig', cancelled: 'Storniert' }
-    const invoiceStatusColors = { draft: 'bg-gray-100 text-gray-600', sent: 'bg-blue-100 text-blue-700', paid: 'bg-green-100 text-green-700', overdue: 'bg-red-100 text-red-700', cancelled: 'bg-gray-100 text-gray-500' }
+    const invoiceStatusColors = { draft: 'bg-gray-100 text-gray-600', sent: 'bg-brand-100 text-brand-700', paid: 'bg-green-100 text-green-700', overdue: 'bg-red-100 text-red-700', cancelled: 'bg-gray-100 text-gray-500' }
     const paymentMethodLabels = { sepa_direct_debit: 'SEPA-Lastschrift', bank_transfer: 'Überweisung', cash: 'Bar', card: 'Kreditkarte', paypal: 'PayPal', stripe: 'Stripe' }
 
     async function renderInvoices() {
@@ -1669,7 +1685,7 @@
         ` : ''}
 
         <!-- Invoices Table -->
-        <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div class="bg-white rounded-xl border border-brand-200 overflow-hidden">
           <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
             <span class="font-semibold text-gray-900">${invoices.data.length} Rechnungen</span>
             <div class="flex gap-2">
@@ -1679,7 +1695,7 @@
           </div>
           ${invoices.data.length === 0 ? '<div class="p-8 text-center text-gray-400">Noch keine Rechnungen. Erstelle Rechnungen aus bestätigten Buchungen.</div>' : `
           <table class="w-full">
-            <thead class="bg-gray-50 text-xs text-gray-500 uppercase tracking-wider">
+            <thead class="bg-brand-100 text-xs text-brand-700 uppercase tracking-wider">
               <tr>
                 <th class="px-6 py-3 text-left">Nr.</th>
                 <th class="px-6 py-3 text-left">Kunde</th>
@@ -1709,7 +1725,7 @@
                   <td class="px-6 py-4 text-sm ${isOverdue ? 'text-red-600 font-medium' : 'text-gray-500'}">${new Date(inv.dueDate).toLocaleDateString('de-DE')}</td>
                   <td class="px-6 py-4">
                     <div class="flex items-center gap-1">
-                      ${inv.status === 'draft' ? `<button onclick="sendInvoice('${inv.id}')" class="px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded hover:bg-blue-100">Versenden</button>` : ''}
+                      ${inv.status === 'draft' ? `<button onclick="sendInvoice('${inv.id}')" class="px-2 py-1 text-xs bg-brand-100 text-brand-700 rounded hover:bg-brand-200">Versenden</button>` : ''}
                       ${inv.status === 'sent' || inv.status === 'overdue' ? `<button onclick="markInvoicePaid('${inv.id}')" class="px-2 py-1 text-xs bg-green-50 text-green-700 rounded hover:bg-green-100">Bezahlt</button>` : ''}
                       ${inv.status !== 'paid' && inv.status !== 'cancelled' ? `<button onclick="cancelInvoice('${inv.id}')" class="px-2 py-1 text-xs bg-red-50 text-red-600 rounded hover:bg-red-100">Stornieren</button>` : ''}
                     </div>
@@ -1721,7 +1737,7 @@
         </div>
 
         <!-- Zahlungsmethoden Info -->
-        <div class="mt-6 bg-white rounded-xl border border-gray-200 p-6">
+        <div class="mt-6 bg-white rounded-xl border border-brand-200 p-6">
           <h3 class="font-semibold text-gray-900 mb-3">Zahlungsmethoden</h3>
           <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div class="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
@@ -1789,7 +1805,7 @@
 
     // --- Team ---
     const roleLabels = { owner: 'Inhaber', admin: 'Admin', instructor: 'Trainer', assistant: 'Assistent' }
-    const roleColors = { owner: 'bg-purple-100 text-purple-700', admin: 'bg-blue-100 text-blue-700', instructor: 'bg-green-100 text-green-700', assistant: 'bg-gray-100 text-gray-600' }
+    const roleColors = { owner: 'bg-purple-100 text-purple-700', admin: 'bg-brand-100 text-brand-700', instructor: 'bg-green-100 text-green-700', assistant: 'bg-gray-100 text-gray-600' }
 
     const docTypeLabels = { fuehrungszeugnis: 'Erw. Führungszeugnis', first_aid: 'Erste-Hilfe-Nachweis', qualification: 'Qualifikation', insurance: 'Haftpflicht', custom: 'Sonstiges' }
     const absenceTypeLabels = { vacation: 'Urlaub', sick: 'Krank', training: 'Fortbildung', personal: 'Privat', other: 'Sonstiges' }
@@ -1818,7 +1834,7 @@
             const hasFZ = docs.some(d => d.type === 'fuehrungszeugnis' && d.verified)
             const hasFirstAid = docs.some(d => d.type === 'first_aid' && d.verified)
             return `
-            <div class="bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-md transition-shadow">
+            <div class="bg-white rounded-xl border border-brand-200 overflow-hidden hover:shadow-md transition-shadow">
               <div class="p-5 flex items-center justify-between">
                 <div class="flex items-center gap-4">
                   <div class="w-14 h-14 rounded-full ${m.active ? 'bg-brand-100 text-brand-700' : 'bg-gray-100 text-gray-400'} flex items-center justify-center text-xl font-bold">${escapeHtml(m.name[0])}</div>
@@ -2028,7 +2044,7 @@
       document.getElementById('content').innerHTML = `
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <!-- Aktive Saison -->
-          <div class="bg-white rounded-xl border border-gray-200 p-6">
+          <div class="bg-white rounded-xl border border-brand-200 p-6">
             <h3 class="font-semibold text-gray-900 mb-4">Saisons</h3>
             ${seasons.data.length === 0 ? '<p class="text-sm text-gray-400">Keine Saisons angelegt</p>' : ''}
             <div class="space-y-3">
@@ -2046,7 +2062,7 @@
           </div>
 
           <!-- Ferien -->
-          <div class="bg-white rounded-xl border border-gray-200 p-6">
+          <div class="bg-white rounded-xl border border-brand-200 p-6">
             <h3 class="font-semibold text-gray-900 mb-4">Ferien (${holidays.data.length} eingetragen)</h3>
             <div class="space-y-2 max-h-80 overflow-y-auto">
               ${holidays.data.map(h => `
@@ -2060,7 +2076,7 @@
         </div>
 
         <!-- Bundesländer -->
-        <div class="mt-6 bg-white rounded-xl border border-gray-200 p-6">
+        <div class="mt-6 bg-white rounded-xl border border-brand-200 p-6">
           <h3 class="font-semibold text-gray-900 mb-4">Verfügbare Bundesländer</h3>
           <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
             ${bundeslaender.data.map(bl => `
@@ -2158,7 +2174,7 @@
 
           <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <!-- Top Kurse -->
-            <div class="bg-white rounded-xl border border-gray-200 p-6">
+            <div class="bg-white rounded-xl border border-brand-200 p-6">
               <h3 class="font-semibold text-gray-900 mb-4">Beliebteste Kurse (nach Buchungen)</h3>
               <div class="space-y-3">
                 ${Object.entries(bookingsByAct).sort((a,b) => b[1]-a[1]).slice(0,5).map(([actId, count]) => {
@@ -2171,7 +2187,7 @@
             </div>
 
             <!-- Umsatz pro Kurs -->
-            <div class="bg-white rounded-xl border border-gray-200 p-6">
+            <div class="bg-white rounded-xl border border-brand-200 p-6">
               <h3 class="font-semibold text-gray-900 mb-4">Umsatz nach Kurs</h3>
               <div class="space-y-3">
                 ${Object.entries(revenueByAct).sort((a,b) => b[1]-a[1]).slice(0,5).map(([actId, rev]) => {
@@ -2187,9 +2203,9 @@
         `
       } else if (reportTab === 'courses') {
         rc.innerHTML = `
-          <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div class="bg-white rounded-xl border border-brand-200 overflow-hidden">
             <table class="w-full">
-              <thead class="bg-gray-50 text-xs text-gray-500 uppercase">
+              <thead class="bg-brand-100 text-xs text-brand-700 uppercase">
                 <tr>
                   <th class="px-6 py-3 text-left">Kurs</th>
                   <th class="px-6 py-3 text-right">Kapazität</th>
@@ -2220,11 +2236,11 @@
             ${kpiCardSmall('Abgewandert', ch.churnedCustomers)}
             ${kpiCardSmall('Churn Rate', Math.round(ch.churnRate * 100) + '%')}
           </div>
-          <div class="bg-white rounded-xl border border-gray-200 p-6 mb-6">
+          <div class="bg-white rounded-xl border border-brand-200 p-6 mb-6">
             <h3 class="font-semibold text-gray-900 mb-4">Customer Lifetime Value (Top 10)</h3>
             <div class="overflow-x-auto">
               <table class="w-full">
-                <thead class="text-xs text-gray-500 uppercase"><tr><th class="px-4 py-2 text-left">Kunde</th><th class="px-4 py-2 text-right">Buchungen</th><th class="px-4 py-2 text-right">Kinder</th><th class="px-4 py-2 text-right">Ø Wert</th><th class="px-4 py-2 text-right">Gesamtausgaben</th></tr></thead>
+                <thead class="text-xs text-brand-700 uppercase"><tr><th class="px-4 py-2 text-left">Kunde</th><th class="px-4 py-2 text-right">Buchungen</th><th class="px-4 py-2 text-right">Kinder</th><th class="px-4 py-2 text-right">Ø Wert</th><th class="px-4 py-2 text-right">Gesamtausgaben</th></tr></thead>
                 <tbody class="divide-y divide-gray-100">
                   ${clv.data.slice(0,10).map(c => '<tr class="hover:bg-gray-50"><td class="px-4 py-3 text-sm font-medium text-gray-900">'+escapeHtml(c.parentName)+'</td><td class="px-4 py-3 text-sm text-right text-gray-700">'+c.bookingCount+'</td><td class="px-4 py-3 text-sm text-right text-gray-700">'+c.childCount+'</td><td class="px-4 py-3 text-sm text-right text-gray-700">'+formatCurrency(c.avgBookingValue)+'</td><td class="px-4 py-3 text-sm text-right font-medium text-gray-900">'+formatCurrency(c.totalSpent)+'</td></tr>').join('')}
                 </tbody>
@@ -2241,11 +2257,11 @@
             ${kpiCardSmall('No-Show', t.noShow)}
             ${kpiCardSmall('Conversion Rate', Math.round(t.conversionRate * 100) + '%')}
           </div>
-          <div class="bg-white rounded-xl border border-gray-200 p-6">
+          <div class="bg-white rounded-xl border border-brand-200 p-6">
             <h3 class="font-semibold text-gray-900 mb-4">Conversion-Funnel</h3>
             <div class="space-y-4">
               ${[
-                { label: 'Probestunden gebucht', count: t.total, pct: 100, color: 'bg-blue-500' },
+                { label: 'Probestunden gebucht', count: t.total, pct: 100, color: 'bg-brand-500' },
                 { label: 'Erschienen', count: t.completed + t.converted, pct: t.total > 0 ? Math.round((t.completed+t.converted)/t.total*100) : 0, color: 'bg-amber-500' },
                 { label: 'Zu Buchung konvertiert', count: t.converted, pct: t.total > 0 ? Math.round(t.converted/t.total*100) : 0, color: 'bg-green-500' },
               ].map(step => '<div class="flex items-center gap-4"><span class="text-sm text-gray-700 w-48">'+step.label+'</span><div class="flex-1 bg-gray-100 rounded-full h-6 relative"><div class="'+step.color+' h-6 rounded-full flex items-center justify-end pr-2" style="width:'+step.pct+'%"><span class="text-xs text-white font-medium">'+step.count+'</span></div></div><span class="text-sm font-medium text-gray-500 w-12 text-right">'+step.pct+'%</span></div>').join('')}
@@ -2263,7 +2279,7 @@
             ${kpiCardSmall('Offene Zahlungen', unpaidTotal)}
           </div>
           <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div class="bg-white rounded-xl border border-gray-200 p-6">
+            <div class="bg-white rounded-xl border border-brand-200 p-6">
               <h3 class="font-semibold text-gray-900 mb-4">Umsatz nach Kurs</h3>
               <div class="space-y-3">
                 ${acts.map(a => {
@@ -2273,7 +2289,7 @@
                 }).join('')}
               </div>
             </div>
-            <div class="bg-white rounded-xl border border-gray-200 p-6">
+            <div class="bg-white rounded-xl border border-brand-200 p-6">
               <h3 class="font-semibold text-gray-900 mb-4">Zahlungsmethoden</h3>
               <div class="space-y-3">
                 ${[
@@ -2288,10 +2304,10 @@
         `
       } else if (reportTab === 'staff_rep') {
         rc.innerHTML = `
-          <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div class="bg-white rounded-xl border border-brand-200 overflow-hidden">
             <div class="px-6 py-4 border-b border-gray-100"><span class="font-semibold text-gray-900">Team-Auslastung</span></div>
             <table class="w-full">
-              <thead class="bg-gray-50 text-xs text-gray-500 uppercase"><tr><th class="px-6 py-3 text-left">Name</th><th class="px-6 py-3 text-left">Rolle</th><th class="px-6 py-3 text-right">Kurse</th><th class="px-6 py-3 text-right">Wochenstunden</th><th class="px-6 py-3 text-right">Teilnehmer</th></tr></thead>
+              <thead class="bg-brand-100 text-xs text-brand-700 uppercase"><tr><th class="px-6 py-3 text-left">Name</th><th class="px-6 py-3 text-left">Rolle</th><th class="px-6 py-3 text-right">Kurse</th><th class="px-6 py-3 text-right">Wochenstunden</th><th class="px-6 py-3 text-right">Teilnehmer</th></tr></thead>
               <tbody class="divide-y divide-gray-100">
                 ${staffRes.data.map(s => '<tr class="hover:bg-gray-50"><td class="px-6 py-4 text-sm font-medium text-gray-900">'+escapeHtml(s.name)+'</td><td class="px-6 py-4 text-sm text-gray-700">'+(roleLabels[s.role]||escapeHtml(s.role))+'</td><td class="px-6 py-4 text-sm text-right text-gray-700">'+s.activeActivities+'</td><td class="px-6 py-4 text-sm text-right text-gray-700">'+s.weeklySlots+'</td><td class="px-6 py-4 text-sm text-right font-medium text-gray-900">'+s.totalStudents+'</td></tr>').join('')}
                 ${staffRes.data.length === 0 ? '<tr><td colspan="5" class="px-6 py-8 text-center text-gray-400">Keine Teammitglieder mit zugeordneten Kursen</td></tr>' : ''}
@@ -2338,7 +2354,7 @@
         </div>
 
         ${docs.length === 0 ? `
-        <div class="bg-white rounded-xl border border-gray-200 p-12 text-center">
+        <div class="bg-white rounded-xl border border-brand-200 p-12 text-center">
           <div class="text-4xl mb-3">📁</div>
           <div class="font-semibold text-gray-900 mb-1">Noch keine Dokumente</div>
           <div class="text-sm text-gray-500 mb-4">Lade Verträge, AGB, Versicherungen und andere Dokumente hoch.</div>
@@ -2358,10 +2374,10 @@
               </div>
               <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 ${catDocs.map(d => `
-                  <div class="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition-shadow group">
+                  <div class="bg-white rounded-xl border border-brand-200 p-4 hover:shadow-md transition-shadow group">
                     <div class="flex items-start justify-between">
                       <div class="flex items-center gap-3 flex-1 min-w-0">
-                        <div class="w-10 h-10 rounded-lg ${d.fileType === 'pdf' ? 'bg-red-50 text-red-500' : d.fileType === 'image' ? 'bg-blue-50 text-blue-500' : 'bg-gray-50 text-gray-500'} flex items-center justify-center text-sm font-bold">
+                        <div class="w-10 h-10 rounded-lg ${d.fileType === 'pdf' ? 'bg-red-50 text-red-500' : d.fileType === 'image' ? 'bg-brand-100 text-brand-500' : 'bg-gray-50 text-gray-500'} flex items-center justify-center text-sm font-bold">
                           ${d.fileType === 'pdf' ? 'PDF' : d.fileType === 'image' ? 'IMG' : 'DOC'}
                         </div>
                         <div class="min-w-0">
@@ -2492,7 +2508,7 @@
           name: 'Buchungsbutton',
           desc: 'Ein kompakter Button, der direkt zur Buchungsseite auf Kids Club führt.',
           icon: '🔘',
-          code: `<a href="${baseUrl}/p/${slug}" target="_blank" style="display:inline-block;padding:12px 24px;background:#0ea5e9;color:white;border-radius:8px;font-family:sans-serif;font-weight:600;text-decoration:none;">Jetzt Kurs buchen</a>`,
+          code: `<a href="${baseUrl}/p/${slug}" target="_blank" style="display:inline-block;padding:12px 24px;background:#B5533A;color:white;border-radius:8px;font-family:sans-serif;font-weight:600;text-decoration:none;">Jetzt Kurs buchen</a>`,
         },
         {
           name: 'Kursliste',
@@ -2522,7 +2538,7 @@
           ${widgets.map((w, idx) => {
             if (w.courses) {
               return `
-              <div class="bg-white rounded-xl border border-gray-200 p-5">
+              <div class="bg-white rounded-xl border border-brand-200 p-5">
                 <div class="flex items-center gap-3 mb-3">
                   <span class="text-2xl">${w.icon}</span>
                   <div><div class="font-semibold text-gray-900">${w.name}</div><div class="text-xs text-gray-500">${w.desc}</div></div>
@@ -2538,7 +2554,7 @@
               </div>`
             }
             return `
-            <div class="bg-white rounded-xl border border-gray-200 p-5">
+            <div class="bg-white rounded-xl border border-brand-200 p-5">
               <div class="flex items-center justify-between mb-3">
                 <div class="flex items-center gap-3">
                   <span class="text-2xl">${w.icon}</span>
@@ -2552,10 +2568,10 @@
         </div>
 
         <!-- Vorschau -->
-        <div class="mt-8 bg-white rounded-xl border border-gray-200 p-6">
+        <div class="mt-8 bg-white rounded-xl border border-brand-200 p-6">
           <h3 class="font-semibold text-gray-900 mb-4">Vorschau: Buchungsbutton</h3>
           <div class="bg-gray-50 rounded-lg p-8 flex items-center justify-center">
-            <a href="#" style="display:inline-block;padding:12px 24px;background:#0ea5e9;color:white;border-radius:8px;font-family:sans-serif;font-weight:600;text-decoration:none;">Jetzt Kurs buchen</a>
+            <a href="#" style="display:inline-block;padding:12px 24px;background:#B5533A;color:white;border-radius:8px;font-family:sans-serif;font-weight:600;text-decoration:none;">Jetzt Kurs buchen</a>
           </div>
         </div>
       `
@@ -2603,7 +2619,7 @@
     }
     const channelInfo = {
       whatsapp: { label: 'WhatsApp', icon: '💬', color: 'bg-green-100 text-green-700' },
-      email: { label: 'E-Mail', icon: '📧', color: 'bg-blue-100 text-blue-700' },
+      email: { label: 'E-Mail', icon: '📧', color: 'bg-brand-100 text-brand-700' },
       sms: { label: 'SMS', icon: '📱', color: 'bg-purple-100 text-purple-700' },
     }
     const flowStatusInfo = {
@@ -2764,7 +2780,7 @@
           ${templates.map((t, idx) => {
             const ch = channelInfo[t.channel] || channelInfo.whatsapp
             return `
-            <div class="bg-white rounded-xl border border-gray-200 p-4">
+            <div class="bg-white rounded-xl border border-brand-200 p-4">
               <div class="flex items-center justify-between mb-2">
                 <div class="flex items-center gap-2">
                   <span class="font-semibold text-sm text-gray-900">${escapeHtml(t.name)}</span>
@@ -2926,10 +2942,10 @@
       return `
         <div class="space-y-6">
           <!-- Google Tag Manager -->
-          <div class="bg-white rounded-xl border border-gray-200 p-5">
+          <div class="bg-white rounded-xl border border-brand-200 p-5">
             <div class="flex items-center gap-3 mb-4">
-              <div class="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
-                <svg class="w-6 h-6 text-blue-600" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+              <div class="w-10 h-10 rounded-lg bg-brand-100 flex items-center justify-center">
+                <svg class="w-6 h-6 text-brand-500" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
               </div>
               <div>
                 <div class="font-semibold text-gray-900">Google Tag Manager</div>
@@ -2940,9 +2956,9 @@
           </div>
 
           <!-- Meta / Facebook Pixel -->
-          <div class="bg-white rounded-xl border border-gray-200 p-5">
+          <div class="bg-white rounded-xl border border-brand-200 p-5">
             <div class="flex items-center gap-3 mb-4">
-              <div class="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center text-xl">📘</div>
+              <div class="w-10 h-10 rounded-lg bg-brand-100 flex items-center justify-center text-xl">📘</div>
               <div>
                 <div class="font-semibold text-gray-900">Meta / Facebook Pixel</div>
                 <div class="text-xs text-gray-500">Für Retargeting und Conversion-Tracking</div>
@@ -2952,7 +2968,7 @@
           </div>
 
           <!-- Google Analytics -->
-          <div class="bg-white rounded-xl border border-gray-200 p-5">
+          <div class="bg-white rounded-xl border border-brand-200 p-5">
             <div class="flex items-center gap-3 mb-4">
               <div class="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center text-xl">📊</div>
               <div>
@@ -2964,7 +2980,7 @@
           </div>
 
           <!-- TikTok Pixel -->
-          <div class="bg-white rounded-xl border border-gray-200 p-5">
+          <div class="bg-white rounded-xl border border-brand-200 p-5">
             <div class="flex items-center gap-3 mb-4">
               <div class="w-10 h-10 rounded-lg bg-gray-900 flex items-center justify-center text-xl">🎵</div>
               <div>
@@ -2976,7 +2992,7 @@
           </div>
 
           <!-- Custom Script -->
-          <div class="bg-white rounded-xl border border-gray-200 p-5">
+          <div class="bg-white rounded-xl border border-brand-200 p-5">
             <div class="flex items-center gap-3 mb-4">
               <div class="w-10 h-10 rounded-lg bg-gray-50 flex items-center justify-center text-xl">🔧</div>
               <div>
@@ -3053,7 +3069,7 @@
     function renderCompanyTab(p, s) {
       return `
         <div class="max-w-2xl space-y-6">
-          <div class="bg-white rounded-xl border border-gray-200 p-6">
+          <div class="bg-white rounded-xl border border-brand-200 p-6">
             <h3 class="font-semibold text-gray-900 mb-4">Unternehmensprofil</h3>
             <div class="space-y-4">
               <div class="flex items-center gap-4 mb-4">
@@ -3090,7 +3106,7 @@
             </div>
           </div>
 
-          <div class="bg-white rounded-xl border border-gray-200 p-6">
+          <div class="bg-white rounded-xl border border-brand-200 p-6">
             <h3 class="font-semibold text-gray-900 mb-4">Adresse</h3>
             <div class="space-y-4">
               <div>
@@ -3117,7 +3133,7 @@
             </div>
           </div>
 
-          <div class="bg-white rounded-xl border border-gray-200 p-6">
+          <div class="bg-white rounded-xl border border-brand-200 p-6">
             <h3 class="font-semibold text-gray-900 mb-4">Beschreibung & Kategorien</h3>
             <div class="space-y-4">
               <div>
@@ -3132,7 +3148,7 @@
             </div>
           </div>
 
-          <div class="bg-white rounded-xl border border-gray-200 p-6">
+          <div class="bg-white rounded-xl border border-brand-200 p-6">
             <h3 class="font-semibold text-gray-900 mb-4">Bilder & Branding</h3>
             <div class="space-y-5">
               <!-- Logo Upload -->
@@ -3183,7 +3199,7 @@
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Primärfarbe</label>
                 <div class="flex items-center gap-3">
-                  <input id="sBrandColor" type="color" value="${s.brandColor || '#0ea5e9'}" class="w-10 h-10 rounded-lg border border-gray-200 cursor-pointer">
+                  <input id="sBrandColor" type="color" value="${s.brandColor || '#B5533A'}" class="w-10 h-10 rounded-lg border border-gray-200 cursor-pointer">
                   <span class="text-sm text-gray-500">Profilseite & Widgets</span>
                 </div>
               </div>
@@ -3198,7 +3214,7 @@
     function renderFinanceTab(p, s) {
       return `
         <div class="max-w-2xl space-y-6">
-          <div class="bg-white rounded-xl border border-gray-200 p-6">
+          <div class="bg-white rounded-xl border border-brand-200 p-6">
             <h3 class="font-semibold text-gray-900 mb-4">Steuerdaten</h3>
             <div class="space-y-4">
               <div>
@@ -3224,7 +3240,7 @@
             </div>
           </div>
 
-          <div class="bg-white rounded-xl border border-gray-200 p-6">
+          <div class="bg-white rounded-xl border border-brand-200 p-6">
             <h3 class="font-semibold text-gray-900 mb-4">Bankverbindung</h3>
             <div class="space-y-4">
               <div>
@@ -3246,7 +3262,7 @@
             </div>
           </div>
 
-          <div class="bg-white rounded-xl border border-gray-200 p-6">
+          <div class="bg-white rounded-xl border border-brand-200 p-6">
             <h3 class="font-semibold text-gray-900 mb-4">SEPA-Lastschrift</h3>
             <div class="space-y-4">
               <div>
@@ -3261,7 +3277,7 @@
             </div>
           </div>
 
-          <div class="bg-white rounded-xl border border-gray-200 p-6">
+          <div class="bg-white rounded-xl border border-brand-200 p-6">
             <h3 class="font-semibold text-gray-900 mb-4">Rechnungseinstellungen</h3>
             <div class="space-y-4">
               <div>
@@ -3288,7 +3304,7 @@
     function renderLegalTab(s) {
       return `
         <div class="max-w-2xl space-y-6">
-          <div class="bg-white rounded-xl border border-gray-200 p-6">
+          <div class="bg-white rounded-xl border border-brand-200 p-6">
             <h3 class="font-semibold text-gray-900 mb-4">Impressum</h3>
             <div class="space-y-4">
               <div>
@@ -3302,7 +3318,7 @@
             </div>
           </div>
 
-          <div class="bg-white rounded-xl border border-gray-200 p-6">
+          <div class="bg-white rounded-xl border border-brand-200 p-6">
             <h3 class="font-semibold text-gray-900 mb-4">Datenschutz (DSGVO)</h3>
             <div class="space-y-4">
               <div>
@@ -3334,14 +3350,14 @@
         { value: 'bg-gray-200 text-gray-700', label: 'Silber' },
         { value: 'bg-yellow-100 text-yellow-800', label: 'Gold' },
         { value: 'bg-purple-100 text-purple-700', label: 'Lila' },
-        { value: 'bg-blue-100 text-blue-700', label: 'Blau' },
+        { value: 'bg-brand-100 text-brand-700', label: 'Terrakotta' },
         { value: 'bg-emerald-100 text-emerald-700', label: 'Grün' },
         { value: 'bg-pink-100 text-pink-700', label: 'Pink' },
       ]
 
       return `
         <!-- Loyalty / Treueprogramm -->
-        <div class="bg-white rounded-xl border border-gray-200 p-6 mb-6">
+        <div class="bg-white rounded-xl border border-brand-200 p-6 mb-6">
           <div class="flex items-center justify-between mb-6">
             <div>
               <h3 class="font-semibold text-gray-900 text-lg">Treueprogramm</h3>
@@ -3407,7 +3423,7 @@
         </div>
 
         <!-- Vorschau -->
-        <div class="bg-white rounded-xl border border-gray-200 p-6">
+        <div class="bg-white rounded-xl border border-brand-200 p-6">
           <h3 class="font-semibold text-gray-900 mb-4">Vorschau</h3>
           <div class="flex gap-3 flex-wrap" id="tierPreview">
             ${tiers.map(t => `
@@ -3524,7 +3540,7 @@
     function formatCurrency(amount) { return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(amount || 0) }
 
     function kpiCard(label, value, sub, bgClass, icon) {
-      return `<div class="stat-card bg-white rounded-xl border border-gray-200 p-5 cursor-default">
+      return `<div class="stat-card bg-white rounded-xl border border-brand-200 p-5 cursor-default">
         <div class="flex items-center justify-between mb-3">
           <span class="text-sm font-medium text-gray-500">${label}</span>
           <span class="w-10 h-10 rounded-lg ${bgClass} flex items-center justify-center text-lg">${icon}</span>
@@ -3535,7 +3551,7 @@
     }
 
     function kpiCardSmall(label, value) {
-      return `<div class="bg-white rounded-xl border border-gray-200 p-4 text-center">
+      return `<div class="bg-white rounded-xl border border-brand-200 p-4 text-center">
         <div class="text-2xl font-bold text-gray-900">${value}</div>
         <div class="text-xs text-gray-500 mt-1">${label}</div>
       </div>`
@@ -3555,17 +3571,17 @@
     }
 
     function tagColor(tag) {
-      const m = { active: 'bg-green-100 text-green-700', inactive: 'bg-gray-100 text-gray-600', vip: 'bg-purple-100 text-purple-700', prospect: 'bg-blue-100 text-blue-700', returning: 'bg-amber-100 text-amber-700' }
+      const m = { active: 'bg-green-100 text-green-700', inactive: 'bg-gray-100 text-gray-600', vip: 'bg-purple-100 text-purple-700', prospect: 'bg-brand-100 text-brand-700', returning: 'bg-amber-100 text-amber-700' }
       return m[tag] || 'bg-gray-100 text-gray-600'
     }
 
     function trialStatusColor(s) {
-      const m = { scheduled: 'bg-blue-100 text-blue-700', completed: 'bg-green-100 text-green-700', converted: 'bg-purple-100 text-purple-700', no_show: 'bg-red-100 text-red-700', cancelled: 'bg-gray-100 text-gray-600' }
+      const m = { scheduled: 'bg-brand-100 text-brand-700', completed: 'bg-green-100 text-green-700', converted: 'bg-purple-100 text-purple-700', no_show: 'bg-red-100 text-red-700', cancelled: 'bg-gray-100 text-gray-600' }
       return m[s] || 'bg-gray-100 text-gray-600'
     }
 
     function invoiceStatusColor(s) {
-      const m = { draft: 'bg-gray-100 text-gray-600', sent: 'bg-blue-100 text-blue-700', paid: 'bg-green-100 text-green-700', overdue: 'bg-red-100 text-red-700', cancelled: 'bg-gray-100 text-gray-500' }
+      const m = { draft: 'bg-gray-100 text-gray-600', sent: 'bg-brand-100 text-brand-700', paid: 'bg-green-100 text-green-700', overdue: 'bg-red-100 text-red-700', cancelled: 'bg-gray-100 text-gray-500' }
       return m[s] || 'bg-gray-100 text-gray-600'
     }
 
