@@ -1,107 +1,137 @@
 {
-  "name": "Dokio Sekretaer",
   "nodes": [
     {
       "parameters": {
         "pollTimes": {
-          "item": [{ "mode": "everyMinute" }]
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
         },
         "triggerOn": "specificFolder",
-        "folderToWatch": "DEINE_INBOX_FOLDER_ID",
+        "folderToWatch": {
+          "value": "1YBbCqlKrctUCe51gZ0oWjHoxj_x6ucW8",
+          "mode": "id"
+        },
         "event": "fileCreated",
         "options": {}
       },
-      "id": "a1b2c3d4-0001-4000-8000-000000000001",
       "name": "Google Drive – Neue PDF in _inbox",
       "type": "n8n-nodes-base.googleDriveTrigger",
       "typeVersion": 1,
-      "position": [0, 300],
+      "position": [
+        -3584,
+        688
+      ],
+      "id": "bfa7e64b-b7ea-40f5-964c-57ebbd365dce",
       "credentials": {
         "googleDriveOAuth2Api": {
-          "id": "CREDENTIAL_ID",
-          "name": "Google Drive"
+          "id": "FpNVTsO3uDfsdhlN",
+          "name": "Google Drive account"
         }
       }
-    },
-    {
-      "parameters": {
-        "amount": 120,
-        "unit": "seconds"
-      },
-      "id": "a1b2c3d4-0001-4000-8000-000000000002",
-      "name": "Warten (2 Min fuer Splitter)",
-      "type": "n8n-nodes-base.wait",
-      "typeVersion": 1.1,
-      "position": [220, 300],
-      "webhookId": "wait-dokio"
     },
     {
       "parameters": {
         "operation": "download",
         "fileId": {
-          "__rl": true,
-          "__regex": "={{$json.id}}",
-          "value": "={{$json.id}}",
+          "value": "={{ $json.id }}",
           "mode": "id"
         },
-        "options": {}
+        "options": {
+          "binaryPropertyName": "data"
+        }
       },
-      "id": "a1b2c3d4-0001-4000-8000-000000000003",
       "name": "PDF herunterladen",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
-      "position": [440, 300],
+      "position": [
+        -3376,
+        688
+      ],
+      "id": "7f5133af-36d7-4101-b18d-7f3cd2ba3227",
       "credentials": {
         "googleDriveOAuth2Api": {
-          "id": "CREDENTIAL_ID",
-          "name": "Google Drive"
+          "id": "FpNVTsO3uDfsdhlN",
+          "name": "Google Drive account"
         }
       }
     },
     {
       "parameters": {
-        "__HINWEIS__": "Diesen Node MANUELL konfigurieren: + > Anthropic > Analyze Document. Model: claude-sonnet-4-6, Input Type: Binary, Binary Property: data. Prompt siehe README."
+        "resource": "document",
+        "modelId": {
+          "__rl": true,
+          "value": "claude-sonnet-4-6",
+          "mode": "list",
+          "cachedResultName": "claude-sonnet-4-6"
+        },
+        "text": "Analysiere dieses Dokument präzise. Antworte NUR mit validem JSON ohne Markdown-Backticks:\n{\n  \"dokumenttyp\": \"Rechnung|Vertrag|Kontoauszug|Behoerdenpost|Mahnung|Bescheid|Sonstiges\",\n  \"datum\": \"YYYY-MM-DD oder null\",\n  \"absender\": \"Vollständiger Name des Absenders\",\n  \"absender_kurz\": \"Kurzer eindeutiger Name fuer Ordner z.B. Finanzamt, AOK, IHK, Telekom - maximal 30 Zeichen, keine Sonderzeichen ausser Bindestrich\",\n  \"empfaenger\": \"Name des Empfaengers\",\n  \"betrag\": \"Betrag als Zahl in EUR oder null\",\n  \"faelligkeit\": \"YYYY-MM-DD oder null\",\n  \"prioritaet\": \"hoch|mittel|niedrig\",\n  \"zusammenfassung\": \"Kurze praezise Zusammenfassung auf Deutsch in einem Satz\",\n  \"aktion_empfohlen\": \"Konkrete naechste Aktion\"\n}",
+        "inputType": "binary",
+        "options": {}
       },
-      "id": "a1b2c3d4-0001-4000-8000-000000000004",
-      "name": "Analyze document",
-      "type": "MANUELL_KONFIGURIEREN",
+      "type": "@n8n/n8n-nodes-langchain.anthropic",
       "typeVersion": 1,
-      "position": [660, 300]
+      "position": [
+        -3168,
+        688
+      ],
+      "id": "8254c104-3f6d-4a9f-a6af-6af147881637",
+      "name": "Analyze document",
+      "credentials": {
+        "anthropicApi": {
+          "id": "bUDD64wRwbXpXKJu",
+          "name": "Anthropic account"
+        }
+      }
     },
     {
       "parameters": {
-        "jsCode": "// Claude Antwort parsen\nconst input = $input.first();\nlet text = '';\n\n// Antwort aus dem Anthropic Node extrahieren\nif (input.json.message && input.json.message.content) {\n  text = input.json.message.content[0].text;\n} else if (input.json.content) {\n  text = input.json.content[0].text;\n} else if (input.json.text) {\n  text = input.json.text;\n} else {\n  // Fallback: gesamtes JSON durchsuchen\n  text = JSON.stringify(input.json);\n  const match = text.match(/\\{[\\s\\S]*dokumenttyp[\\s\\S]*\\}/);\n  if (match) text = match[0];\n}\n\n// JSON extrahieren (Backticks entfernen)\ntext = text.replace(/```json/g, '').replace(/```/g, '').trim();\n\nlet parsed;\ntry {\n  parsed = JSON.parse(text);\n} catch(e) {\n  // Fallback: JSON aus Text extrahieren\n  const jsonMatch = text.match(/\\{[\\s\\S]*\\}/);\n  if (jsonMatch) {\n    parsed = JSON.parse(jsonMatch[0]);\n  } else {\n    throw new Error('Konnte JSON nicht parsen: ' + text.substring(0, 200));\n  }\n}\n\n// file_id vom Download Node durchreichen\nconst fileId = $('PDF herunterladen').first().json.id || $input.first().json.file_id || '';\nconst fileName = $('PDF herunterladen').first().json.name || '';\n\n// Neuen Dateinamen erstellen: YYYY-MM-DD_Typ_Absender_Betrag.pdf\nconst datum = parsed.datum || new Date().toISOString().split('T')[0];\nconst typ = (parsed.dokumenttyp || 'Dokument').replace(/[^a-zA-Z0-9äöüÄÖÜß]/g, '-').substring(0, 20);\nconst absender = (parsed.absender_kurz || parsed.absender || 'Unbekannt').replace(/[^a-zA-Z0-9äöüÄÖÜß\\-]/g, '-').substring(0, 30);\nconst betrag = parsed.betrag ? '_' + parsed.betrag + 'EUR' : '';\nconst neuerName = datum + '_' + typ + '_' + absender + betrag + '.pdf';\n\nreturn [{\n  json: {\n    ...parsed,\n    file_id: fileId,\n    original_dateiname: fileName,\n    neuer_dateiname: neuerName,\n    absender_kurz: parsed.absender_kurz || absender,\n    scan_datum: new Date().toISOString().split('T')[0]\n  }\n}];"
+        "jsCode": "const raw = $input.first().json.text || $input.first().json.content?.[0]?.text || '';\nlet analysis;\ntry {\n  const cleaned = raw.replace(/```json|```/g, '').trim();\n  analysis = JSON.parse(cleaned);\n} catch(e) {\n  analysis = { dokumenttyp: 'Sonstiges', datum: null, absender: 'Unbekannt', absender_kurz: 'Sonstiges', empfaenger: '', betrag: null, faelligkeit: null, prioritaet: 'niedrig', zusammenfassung: 'Konnte nicht analysiert werden', aktion_empfohlen: 'Manuell pruefen' };\n}\nconst trigger = $('Google Drive – Neue PDF in _inbox').first().json;\nconst fileId = trigger.id;\nconst originalName = trigger.name || 'Dokument.pdf';\nconst heute = new Date().toISOString().split('T')[0];\nconst docDatum = analysis.datum || heute;\nconst datumFormatiert = docDatum.substring(0, 10);\nlet absenderKurz = (analysis.absender_kurz || 'Sonstiges').replace(/[^a-zA-Z0-9äöüÄÖÜß\\s\\-]/g, '').trim().substring(0, 30);\nif (!absenderKurz) absenderKurz = 'Sonstiges';\nconst betrag = analysis.betrag ? `_${String(analysis.betrag).replace('.', '-')}EUR` : '';\nconst typ = (analysis.dokumenttyp || 'Dokument').replace(/[^a-zA-Z0-9äöüÄÖÜß]/g, '-');\nconst neuerName = `${datumFormatiert}_${typ}${betrag}.pdf`;\nreturn [{ json: { ...analysis, file_id: fileId, original_dateiname: originalName, neuer_dateiname: neuerName, absender_kurz: absenderKurz, scan_datum: heute, timestamp: new Date().toISOString() } }];"
       },
-      "id": "a1b2c3d4-0001-4000-8000-000000000005",
       "name": "Antwort verarbeiten",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [880, 300]
+      "position": [
+        -2976,
+        688
+      ],
+      "id": "ed465b8d-9680-4652-a47a-93cd1405fdfb"
     },
     {
       "parameters": {
-        "operation": "search",
+        "resource": "fileFolder",
         "queryString": "={{ $json.absender_kurz }}",
-        "searchType": "folder",
-        "driveId": "myDrive",
-        "folderId": {
-          "__rl": true,
-          "value": "DEINE_SORTED_FOLDER_ID",
-          "mode": "id"
+        "filter": {
+          "driveId": {
+            "mode": "list",
+            "value": "My Drive"
+          },
+          "folderId": {
+            "__rl": true,
+            "value": "1i5swxp4LUzafu5k6wfRJ6ELuuYO7QFZF",
+            "mode": "list",
+            "cachedResultName": "_sorted",
+            "cachedResultUrl": "https://drive.google.com/drive/folders/1i5swxp4LUzafu5k6wfRJ6ELuuYO7QFZF"
+          },
+          "whatToSearch": "folders"
         },
-        "options": {
-          "fields": ["id", "name"]
-        }
+        "options": {}
       },
-      "id": "a1b2c3d4-0001-4000-8000-000000000006",
       "name": "Ordner suchen",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
-      "position": [1100, 300],
+      "position": [
+        -2752,
+        688
+      ],
+      "id": "6b4fed50-17cb-4377-9e42-14596dfbb8ea",
+      "alwaysOutputData": true,
       "credentials": {
         "googleDriveOAuth2Api": {
-          "id": "CREDENTIAL_ID",
-          "name": "Google Drive"
+          "id": "FpNVTsO3uDfsdhlN",
+          "name": "Google Drive account"
         }
       }
     },
@@ -111,16 +141,17 @@
           "options": {
             "caseSensitive": true,
             "leftValue": "",
-            "typeValidation": "strict"
+            "typeValidation": "strict",
+            "version": 1
           },
           "conditions": [
             {
-              "id": "condition-1",
+              "id": "folder-exists",
               "leftValue": "={{ $json.id }}",
               "rightValue": "",
               "operator": {
                 "type": "string",
-                "operation": "exists"
+                "operation": "notEmpty"
               }
             }
           ],
@@ -128,66 +159,272 @@
         },
         "options": {}
       },
-      "id": "a1b2c3d4-0001-4000-8000-000000000007",
       "name": "Ordner existiert?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [1320, 300]
+      "position": [
+        -2560,
+        688
+      ],
+      "id": "b7d3efb3-62ec-4bd5-9c21-936883349555"
     },
     {
       "parameters": {
-        "jsCode": "// Ordner wurde gefunden - ID durchreichen\nconst folderResult = $input.first().json;\nconst verarbeitet = $('Antwort verarbeiten').first().json;\n\nreturn [{\n  json: {\n    ...verarbeitet,\n    ziel_ordner_id: folderResult.id,\n    ziel_ordner_name: folderResult.name\n  }\n}];"
+        "jsCode": "const folderId = $input.first().json.id;\nconst analysis = $('Antwort verarbeiten').first().json;\nreturn [{ json: { ...analysis, ziel_ordner_id: folderId } }];"
       },
-      "id": "a1b2c3d4-0001-4000-8000-000000000008",
       "name": "Ordner ID – vorhanden",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1540, 180]
+      "position": [
+        -2224,
+        608
+      ],
+      "id": "2dc0f42c-238a-483c-a0bb-fb18c07a9b18"
     },
     {
       "parameters": {
-        "operation": "createFolder",
+        "resource": "folder",
         "name": "={{ $('Antwort verarbeiten').item.json.absender_kurz }}",
-        "driveId": "myDrive",
-        "folderId": {
+        "driveId": {
           "__rl": true,
-          "value": "DEINE_SORTED_FOLDER_ID",
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "value": "1i5swxp4LUzafu5k6wfRJ6ELuuYO7QFZF",
           "mode": "id"
         },
         "options": {}
       },
-      "id": "a1b2c3d4-0001-4000-8000-000000000009",
       "name": "Ordner erstellen",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
-      "position": [1540, 420],
+      "position": [
+        -2336,
+        784
+      ],
+      "id": "e4ed0953-56eb-4526-95e4-536cee164653",
       "credentials": {
         "googleDriveOAuth2Api": {
-          "id": "CREDENTIAL_ID",
-          "name": "Google Drive"
+          "id": "FpNVTsO3uDfsdhlN",
+          "name": "Google Drive account"
         }
       }
     },
     {
       "parameters": {
-        "jsCode": "// Neuer Ordner wurde erstellt - ID durchreichen\nconst newFolder = $input.first().json;\nconst verarbeitet = $('Antwort verarbeiten').first().json;\n\nreturn [{\n  json: {\n    ...verarbeitet,\n    ziel_ordner_id: newFolder.id,\n    ziel_ordner_name: newFolder.name\n  }\n}];"
+        "jsCode": "const newFolderId = $input.first().json.id;\nconst analysis = $('Antwort verarbeiten').first().json;\nreturn [{ json: { ...analysis, ziel_ordner_id: newFolderId } }];"
       },
-      "id": "a1b2c3d4-0001-4000-8000-000000000010",
       "name": "Ordner ID – neu erstellt",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1760, 420]
+      "position": [
+        -2112,
+        784
+      ],
+      "id": "2f360eb6-9384-462e-afaf-d563b154d7c3"
     },
     {
       "parameters": {
         "mode": "chooseBranch",
         "output": "empty"
       },
-      "id": "a1b2c3d4-0001-4000-8000-000000000011",
-      "name": "Zusammenfuehren",
+      "name": "Zusammenführen",
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3,
-      "position": [1980, 300]
+      "position": [
+        -1904,
+        688
+      ],
+      "id": "ab8986a1-d524-488a-bd93-c761fef99bd1"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "value": "1tbuONUfnfyvJf3vnLTjXYajrcy5u8c25Pj4YAFkerDY",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Dokumente",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "dokumenttyp",
+              "displayName": "dokumenttyp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "datum",
+              "displayName": "datum",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "absender",
+              "displayName": "absender",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "betrag",
+              "displayName": "betrag",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "prioritaet",
+              "displayName": "prioritaet",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "zusammenfassung",
+              "displayName": "zusammenfassung",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "aktion_empfohlen",
+              "displayName": "aktion_empfohlen",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "original_dateiname",
+              "displayName": "original_dateiname",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "neuer_dateiname",
+              "displayName": "neuer_dateiname",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "scan_datum",
+              "displayName": "scan_datum",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "file_id",
+              "displayName": "file_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "timestamp",
+              "displayName": "timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "absender_kurz",
+              "displayName": "absender_kurz",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "empfaenger",
+              "displayName": "empfaenger",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "faelligkeit",
+              "displayName": "faelligkeit",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "name": "Google Sheets – Eintrag loggen",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        -1696,
+        688
+      ],
+      "id": "492778f8-896a-444b-a9c0-3c9040fc7386",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "XfhBiKWDhtBrNdxt",
+          "name": "Google Sheets account"
+        }
+      }
     },
     {
       "parameters": {
@@ -197,23 +434,29 @@
           "value": "={{ $json.file_id }}",
           "mode": "id"
         },
-        "driveId": "myDrive",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
         "folderId": {
           "__rl": true,
           "value": "={{ $json.ziel_ordner_id }}",
           "mode": "id"
-        },
-        "options": {}
+        }
       },
-      "id": "a1b2c3d4-0001-4000-8000-000000000012",
       "name": "Datei verschieben",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
-      "position": [2200, 300],
+      "position": [
+        -1472,
+        688
+      ],
+      "id": "6cdddd7e-c444-4b7b-9514-650b416d0c10",
       "credentials": {
         "googleDriveOAuth2Api": {
-          "id": "CREDENTIAL_ID",
-          "name": "Google Drive"
+          "id": "FpNVTsO3uDfsdhlN",
+          "name": "Google Drive account"
         }
       }
     },
@@ -225,111 +468,64 @@
           "value": "={{ $json.file_id }}",
           "mode": "id"
         },
-        "updateFields": {
-          "fileName": "={{ $json.neuer_dateiname }}"
-        },
+        "newUpdatedFileName": "={{ $json.neuer_dateiname }}",
         "options": {}
       },
-      "id": "a1b2c3d4-0001-4000-8000-000000000013",
       "name": "Datei umbenennen",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
-      "position": [2420, 300],
+      "position": [
+        -1216,
+        688
+      ],
+      "id": "2964a1ae-9396-4b73-8b30-e11b689b3fbc",
       "credentials": {
         "googleDriveOAuth2Api": {
-          "id": "CREDENTIAL_ID",
-          "name": "Google Drive"
+          "id": "FpNVTsO3uDfsdhlN",
+          "name": "Google Drive account"
         }
       }
     },
     {
       "parameters": {
-        "operation": "append",
-        "documentId": {
-          "__rl": true,
-          "value": "DEINE_SHEETS_ID",
-          "mode": "id"
-        },
-        "sheetName": {
-          "__rl": true,
-          "value": "Dokumente",
-          "mode": "name"
-        },
-        "columns": {
-          "mappingMode": "defineBelow",
-          "value": {
-            "dokumenttyp": "={{ $json.dokumenttyp }}",
-            "datum": "={{ $json.datum }}",
-            "absender": "={{ $json.absender }}",
-            "betrag": "={{ $json.betrag }}",
-            "prioritaet": "={{ $json.prioritaet }}",
-            "zusammenfassung": "={{ $json.zusammenfassung }}",
-            "aktion_empfohlen": "={{ $json.aktion_empfohlen }}",
-            "original_dateiname": "={{ $json.original_dateiname }}",
-            "neuer_dateiname": "={{ $json.neuer_dateiname }}",
-            "scan_datum": "={{ $json.scan_datum }}"
-          },
-          "matchingColumns": []
-        },
-        "options": {}
+        "jsCode": "const d = $('Antwort verarbeiten').first().json;\nconst prio = d.prioritaet === 'hoch' ? '🔴' : d.prioritaet === 'mittel' ? '🟡' : '🟢';\nconst betrag = d.betrag ? ` | 💶 ${d.betrag}€` : '';\nconst faellig = d.faelligkeit ? `\\n⏰ Fällig: ${d.faelligkeit}` : '';\nconst text = `📄 *Neues Dokument gescannt*\\n\\n${prio} *${d.dokumenttyp}*\\n📤 Von: ${d.absender}\\n📅 Datum: ${d.datum || 'unbekannt'}${betrag}${faellig}\\n\\n📁 Abgelegt in: _sorted/${d.absender_kurz}\\n📝 ${d.zusammenfassung}\\n\\n✅ *Empfehlung:* ${d.aktion_empfohlen}`;\nreturn [{ json: { text } }];"
       },
-      "id": "a1b2c3d4-0001-4000-8000-000000000014",
-      "name": "Google Sheets – Eintrag loggen",
-      "type": "n8n-nodes-base.googleSheets",
-      "typeVersion": 4.5,
-      "position": [2200, 120],
-      "credentials": {
-        "googleSheetsOAuth2Api": {
-          "id": "CREDENTIAL_ID",
-          "name": "Google Sheets"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "jsCode": "const d = $input.first().json;\n\nconst prio = d.prioritaet === 'hoch' ? '🔴' : d.prioritaet === 'mittel' ? '🟡' : '🟢';\nconst betrag = d.betrag ? d.betrag + ' EUR' : '-';\nconst faellig = d.faelligkeit || '-';\n\nconst text = `📄 *Neues Dokument verarbeitet*\\n\\n`\n  + `${prio} *${d.dokumenttyp}*\\n`\n  + `📨 Absender: ${d.absender}\\n`\n  + `📅 Datum: ${d.datum || '-'}\\n`\n  + `💰 Betrag: ${betrag}\\n`\n  + `⏰ Faellig: ${faellig}\\n`\n  + `📊 Prioritaet: ${d.prioritaet}\\n\\n`\n  + `📝 ${d.zusammenfassung}\\n\\n`\n  + `💡 *Empfohlene Aktion:*\\n${d.aktion_empfohlen}\\n\\n`\n  + `📁 Abgelegt in: _sorted/${d.absender_kurz}/${d.neuer_dateiname}`;\n\nreturn [{ json: { text: text } }];"
-      },
-      "id": "a1b2c3d4-0001-4000-8000-000000000015",
-      "name": "Telegram Nachricht Vorbereiten",
+      "name": "Telegram Nachricht vorbereiten",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2640, 300]
+      "position": [
+        -832,
+        784
+      ],
+      "id": "c914326b-8f51-4b4f-a404-32cd4d5f5872"
     },
     {
       "parameters": {
-        "operation": "sendMessage",
-        "chatId": "DEINE_TELEGRAM_CHAT_ID",
+        "chatId": "686108062",
         "text": "={{ $json.text }}",
         "additionalFields": {
           "parse_mode": "Markdown"
         }
       },
-      "id": "a1b2c3d4-0001-4000-8000-000000000016",
       "name": "Telegram – Benachrichtigung",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
-      "position": [2860, 300],
+      "position": [
+        -608,
+        784
+      ],
+      "id": "328bba01-25c3-4362-a567-4e92bf524f75",
+      "webhookId": "4cda8509-7c2a-401d-9610-1bae09b86a45",
       "credentials": {
         "telegramApi": {
-          "id": "CREDENTIAL_ID",
-          "name": "Telegram"
+          "id": "i4bfVQUzxn8dBkEK",
+          "name": "Telegram account"
         }
       }
     }
   ],
   "connections": {
     "Google Drive – Neue PDF in _inbox": {
-      "main": [
-        [
-          {
-            "node": "Warten (2 Min fuer Splitter)",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Warten (2 Min fuer Splitter)": {
       "main": [
         [
           {
@@ -406,7 +602,7 @@
       "main": [
         [
           {
-            "node": "Zusammenfuehren",
+            "node": "Zusammenführen",
             "type": "main",
             "index": 0
           }
@@ -428,23 +624,29 @@
       "main": [
         [
           {
-            "node": "Zusammenfuehren",
+            "node": "Zusammenführen",
             "type": "main",
             "index": 1
           }
         ]
       ]
     },
-    "Zusammenfuehren": {
+    "Zusammenführen": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets – Eintrag loggen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets – Eintrag loggen": {
       "main": [
         [
           {
             "node": "Datei verschieben",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Google Sheets – Eintrag loggen",
             "type": "main",
             "index": 0
           }
@@ -466,14 +668,14 @@
       "main": [
         [
           {
-            "node": "Telegram Nachricht Vorbereiten",
+            "node": "Telegram Nachricht vorbereiten",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Telegram Nachricht Vorbereiten": {
+    "Telegram Nachricht vorbereiten": {
       "main": [
         [
           {
@@ -486,7 +688,8 @@
     }
   },
   "pinData": {},
-  "settings": {
-    "executionOrder": "v1"
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "cd73567741abbe30821d2d507cd208939cc6eab77bcee3bd81870553e1571af7"
   }
 }
