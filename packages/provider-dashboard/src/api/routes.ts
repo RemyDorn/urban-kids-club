@@ -1180,8 +1180,8 @@ export function registerRoutes(router: Router) {
   router.post('/api/auth/register', async (req, res) => {
     const { email, password, companyName, contactName, phone, street, zip, city } = req.body as any
 
-    if (!email || !password || !companyName || !contactName) {
-      return res.error(400, 'E-Mail, Passwort, Firmenname und Kontaktperson sind erforderlich')
+    if (!email || !password || !companyName || !contactName || !phone || !street || !zip || !city) {
+      return res.error(400, 'Alle Felder sind erforderlich: Firmenname, Kontaktperson, E-Mail, Telefon, Adresse und Passwort')
     }
     if (password.length < 6) {
       return res.error(400, 'Passwort muss mindestens 6 Zeichen lang sein')
@@ -1221,7 +1221,7 @@ export function registerRoutes(router: Router) {
         longitude: 0,
         login_email: email,
         slug: slug,
-        status: 'active',
+        status: 'onboarding',
         subscription: 'free',
       })
       .select()

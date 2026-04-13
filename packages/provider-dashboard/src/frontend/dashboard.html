@@ -113,22 +113,22 @@
           <input id="regEmail" type="email" placeholder="email@beispiel.de" class="w-full px-4 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2" style="background:#1a0a00;border:1px solid #5a3828;color:#f5e6d3" />
         </div>
         <div>
-          <label class="block text-sm font-medium mb-1.5" style="color:#f5e6d3">Telefon</label>
-          <input id="regPhone" type="tel" placeholder="Optional" class="w-full px-4 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2" style="background:#1a0a00;border:1px solid #5a3828;color:#f5e6d3" />
+          <label class="block text-sm font-medium mb-1.5" style="color:#f5e6d3">Telefon *</label>
+          <input id="regPhone" type="tel" placeholder="z.B. 0211 1234567" class="w-full px-4 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2" style="background:#1a0a00;border:1px solid #5a3828;color:#f5e6d3" />
         </div>
         <div class="grid grid-cols-3 gap-2">
           <div class="col-span-2">
-            <label class="block text-sm font-medium mb-1.5" style="color:#f5e6d3">Stra&szlig;e</label>
-            <input id="regStreet" type="text" placeholder="Optional" class="w-full px-4 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2" style="background:#1a0a00;border:1px solid #5a3828;color:#f5e6d3" />
+            <label class="block text-sm font-medium mb-1.5" style="color:#f5e6d3">Stra&szlig;e *</label>
+            <input id="regStreet" type="text" placeholder="z.B. Venloer Str. 123" class="w-full px-4 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2" style="background:#1a0a00;border:1px solid #5a3828;color:#f5e6d3" />
           </div>
           <div>
-            <label class="block text-sm font-medium mb-1.5" style="color:#f5e6d3">PLZ</label>
-            <input id="regZip" type="text" placeholder="Optional" class="w-full px-4 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2" style="background:#1a0a00;border:1px solid #5a3828;color:#f5e6d3" />
+            <label class="block text-sm font-medium mb-1.5" style="color:#f5e6d3">PLZ *</label>
+            <input id="regZip" type="text" placeholder="50823" class="w-full px-4 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2" style="background:#1a0a00;border:1px solid #5a3828;color:#f5e6d3" />
           </div>
         </div>
         <div>
-          <label class="block text-sm font-medium mb-1.5" style="color:#f5e6d3">Stadt</label>
-          <input id="regCity" type="text" placeholder="Optional" class="w-full px-4 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2" style="background:#1a0a00;border:1px solid #5a3828;color:#f5e6d3" />
+          <label class="block text-sm font-medium mb-1.5" style="color:#f5e6d3">Stadt *</label>
+          <input id="regCity" type="text" placeholder="z.B. Köln" class="w-full px-4 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2" style="background:#1a0a00;border:1px solid #5a3828;color:#f5e6d3" />
         </div>
         <div>
           <label class="block text-sm font-medium mb-1.5" style="color:#f5e6d3">Passwort * (min. 6 Zeichen)</label>
@@ -145,6 +145,22 @@
           Bereits ein Konto? <a href="#" onclick="toggleRegister(false);return false" class="underline" style="color:#d4956a">Anmelden</a>
         </p>
       </div>
+    </div>
+  </div>
+
+  <!-- Pending Approval Screen -->
+  <div id="pendingScreen" style="display:none" class="fixed inset-0 z-50 flex items-center justify-center">
+    <div class="absolute inset-0" style="background:#1a0a00"></div>
+    <div class="relative w-full max-w-md mx-4 rounded-2xl p-8 shadow-2xl text-center" style="background:#2d1810;border:1px solid #5a3828">
+      <div class="w-16 h-16 rounded-xl mx-auto mb-6 flex items-center justify-center text-2xl" style="background:linear-gradient(135deg,#d4956a,#b87a50)">
+        <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      </div>
+      <h2 class="text-xl font-bold mb-3" style="color:#f5e6d3;font-family:'Barlow Condensed',sans-serif">KONTO WIRD GEPRÜFT</h2>
+      <p class="text-sm mb-6" style="color:#c49980">Vielen Dank für Ihre Registrierung! Ihr Konto wird aktuell von unserem Team geprüft. Sobald die Freigabe erfolgt ist, erhalten Sie eine Benachrichtigung per E-Mail und können sich anmelden.</p>
+      <p class="text-xs mb-6" style="color:#8a6a50">Bei Fragen kontaktieren Sie uns unter <span style="color:#d4956a">support@socialy.club</span></p>
+      <button type="button" onclick="handleLogout()" class="px-6 py-2.5 rounded-lg text-sm font-semibold transition-all hover:opacity-90" style="background:rgba(255,255,255,0.1);color:#f5e6d3;border:1px solid #5a3828">
+        Abmelden
+      </button>
     </div>
   </div>
 
@@ -307,8 +323,14 @@
         const { data: { session } } = await sb.auth.getSession()
         if (session) {
           currentSession = session
-          showDashboard()
-          init()
+          // Check if provider is active
+          const approved = await checkProviderApproved()
+          if (approved) {
+            showDashboard()
+            init()
+          } else {
+            showPendingScreen()
+          }
         } else {
           currentSession = null
           showLoginScreen()
@@ -317,6 +339,24 @@
         console.error('Auth check failed:', err)
         showLoginScreen()
       }
+    }
+
+    async function checkProviderApproved() {
+      try {
+        const resp = await fetch(API + '/providers', {
+          headers: { 'Authorization': 'Bearer ' + currentSession.access_token }
+        })
+        if (!resp.ok) return false
+        const result = await resp.json()
+        const provider = result.data?.[0] || result.data
+        return provider && provider.status === 'active'
+      } catch { return false }
+    }
+
+    function showPendingScreen() {
+      document.getElementById('loginScreen').style.display = 'none'
+      document.getElementById('dashboardApp').style.display = 'none'
+      document.getElementById('pendingScreen').style.display = 'flex'
     }
 
     async function handleLogin() {
@@ -334,8 +374,13 @@
           showLoginError('Anmeldung fehlgeschlagen: ' + error.message)
         } else {
           currentSession = data.session
-          showDashboard()
-          init()
+          const approved = await checkProviderApproved()
+          if (approved) {
+            showDashboard()
+            init()
+          } else {
+            showPendingScreen()
+          }
         }
       } catch (err) {
         showLoginError('Ein unerwarteter Fehler ist aufgetreten.')
@@ -405,8 +450,8 @@
       const password = document.getElementById('regPassword').value
       const passwordConfirm = document.getElementById('regPasswordConfirm').value
 
-      if (!companyName || !contactName || !email || !password) {
-        showLoginError('Bitte alle Pflichtfelder (*) ausfüllen.')
+      if (!companyName || !contactName || !email || !phone || !street || !zip || !city || !password) {
+        showLoginError('Bitte alle Pflichtfelder ausfüllen.')
         return
       }
       if (password.length < 6) {
@@ -434,15 +479,10 @@
           showLoginError(result.error || 'Registrierung fehlgeschlagen.')
           return
         }
-        // Auto-login after successful registration
-        const { data, error } = await sb.auth.signInWithPassword({ email, password })
-        if (error) {
-          showLoginSuccess('Konto erstellt! Bitte melden Sie sich an.')
-          toggleRegister(false)
-        } else {
-          currentSession = data.session
-          showDashboard()
-          init()
+        // Registration successful — show pending message, no auto-login
+        showLoginSuccess('Konto erfolgreich erstellt! Ihr Zugang wird geprüft und freigeschaltet. Sie erhalten eine Benachrichtigung per E-Mail.')
+        toggleRegister(false)
+        if (false) { // disabled — admin must approve first
         }
       } catch (err) {
         showLoginError('Ein unerwarteter Fehler ist aufgetreten.')
