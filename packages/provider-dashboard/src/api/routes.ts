@@ -1235,6 +1235,20 @@ export function registerRoutes(router: Router) {
       return res.error(500, 'Provider-Erstellung fehlgeschlagen: ' + provError.message)
     }
 
+    // 3. Create lead entry for admin pipeline tracking
+    await db.from('provider_leads').insert({
+      company_name: companyName,
+      contact_name: contactName,
+      email: email,
+      phone: phone,
+      address_street: street,
+      address_zip: zip,
+      address_city: city,
+      description: `Selbst-Registrierung über Provider Dashboard. Anzeigename: ${displayName}, Rechtsform: ${legalForm}`,
+      status: 'onboarding',
+      converted_provider_id: provider.id,
+    }).then(() => {}).catch(() => {}) // Non-critical, don't fail registration
+
     res.json({ success: true, provider })
   })
 
