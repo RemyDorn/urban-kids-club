@@ -6,6 +6,10 @@ set -e
 
 echo "=== Dashboard Setup ==="
 
+# 0. Docker Gateway IP ermitteln (Host-IP aus Sicht der Container)
+GATEWAY_IP=$(docker network inspect bridge --format '{{range .IPAM.Config}}{{.Gateway}}{{end}}' 2>/dev/null || echo "172.17.0.1")
+echo "[OK] Docker Gateway IP: $GATEWAY_IP"
+
 # 1. Systemd Service erstellen
 cat > /etc/systemd/system/dashboard.service << 'SERVICEEOF'
 [Unit]
@@ -28,17 +32,17 @@ SERVICEEOF
 echo "[OK] Systemd Service erstellt"
 
 # 2. Caddy Config erweitern - app.socialy.club hinzufuegen
-cat > /opt/n8n/Caddyfile << 'CADDYEOF'
-{$N8N_DOMAIN} {
+cat > /opt/n8n/Caddyfile << CADDYEOF
+{\$N8N_DOMAIN} {
   reverse_proxy n8n:5678
 }
 
 app.socialy.club {
-  reverse_proxy localhost:3000
+  reverse_proxy ${GATEWAY_IP}:3000
 }
 CADDYEOF
 
-echo "[OK] Caddyfile erweitert"
+echo "[OK] Caddyfile erweitert (reverse_proxy -> ${GATEWAY_IP}:3000)"
 
 # 3. Data-Verzeichnis sicherstellen
 mkdir -p /opt/urban-kids-club/packages/provider-dashboard/data
@@ -52,12 +56,12 @@ echo "[OK] Dashboard Service gestartet"
 
 # 5. Caddy neu laden (Docker)
 cd /opt/n8n
-docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile
+docker compose restart caddy
 
-echo "[OK] Caddy neu geladen"
+echo "[OK] Caddy neu gestartet"
 
 # 6. Status pruefen
-sleep 2
+sleep 3
 systemctl status dashboard.service --no-pager
 
 echo ""
