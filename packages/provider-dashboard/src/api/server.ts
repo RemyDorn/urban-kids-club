@@ -8,28 +8,36 @@ import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Router } from './router'
 import { registerRoutes } from './routes'
-import { seedDemoData } from './seed'
-import { loadFromDisk, saveToDisk, startAutoSave, markDirty } from '../domain/persistence'
 
 const PORT = parseInt(process.env.PORT ?? '3000')
 const __dirname = dirname(fileURLToPath(import.meta.url))
+const USE_SUPABASE = process.env.USE_SUPABASE === 'true'
 
 // ============================================================
-// Persistence: Gespeicherte Daten laden
+// Persistence: Nur im In-Memory-Modus
 // ============================================================
-const loadResult = loadFromDisk()
-const hasPersistedData = loadResult.success && loadResult.entries > 0
+let hasPersistedData = false
 
-if (hasPersistedData) {
-  console.log(`[Server] ${loadResult.entries} Einträge aus Disk geladen – überspringe Demo-Daten.`)
+if (!USE_SUPABASE) {
+  const { loadFromDisk, startAutoSave } = await import('../domain/persistence')
+  const { seedDemoData } = await import('./seed')
+
+  const loadResult = loadFromDisk()
+  hasPersistedData = loadResult.success && loadResult.entries > 0
+
+  if (hasPersistedData) {
+    console.log(`[Server] ${loadResult.entries} Einträge aus Disk geladen – überspringe Demo-Daten.`)
+  } else {
+    // Nur Demo-Daten laden wenn keine persistierten Daten vorhanden
+    seedDemoData()
+    console.log('[Server] Demo-Daten geladen (keine persistierten Daten gefunden).')
+  }
+
+  // Auto-Save starten (alle 30 Sek oder via SAVE_INTERVAL env)
+  startAutoSave()
 } else {
-  // Nur Demo-Daten laden wenn keine persistierten Daten vorhanden
-  seedDemoData()
-  console.log('[Server] Demo-Daten geladen (keine persistierten Daten gefunden).')
+  console.log('[Server] Supabase-Modus – Persistence deaktiviert')
 }
-
-// Auto-Save starten (alle 30 Sek oder via SAVE_INTERVAL env)
-startAutoSave()
 
 // Dashboard HTML laden
 let dashboardHtml: string
@@ -72,13 +80,13 @@ const server = createServer((req, res) => {
     return
   }
 
-  // POST/PUT/PATCH/DELETE → markDirty für Auto-Save
-  if (req.method && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) {
+  // POST/PUT/PATCH/DELETE → markDirty für Auto-Save (nur im In-Memory-Modus)
+  if (!USE_SUPABASE && req.method && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) {
     // Nach Response markieren wir dirty
     const origEnd = res.end.bind(res)
     res.end = function (...args: Parameters<typeof res.end>) {
       if (res.statusCode >= 200 && res.statusCode < 300) {
-        markDirty()
+        import('../domain/persistence').then(({ markDirty }) => markDirty())
       }
       return origEnd(...args)
     } as typeof res.end
@@ -87,6 +95,8 @@ const server = createServer((req, res) => {
   // Alles andere → API Router
   router.handle(req, res)
 })
+
+const modeLabel = USE_SUPABASE ? 'Supabase' : 'In-Memory'
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`
@@ -98,8 +108,9 @@ server.listen(PORT, '0.0.0.0', () => {
 │  API:       http://localhost:${PORT}/api/health    │
 │  Widget:    http://localhost:${PORT}/widget/       │
 │                                                 │
-│  Persistence: ${hasPersistedData ? 'Daten geladen ✓' : 'Neuer Start (Demo-Daten) ✓'}       │
-│  Auto-Save:  aktiv ✓                            │
+│  Modus:      ${modeLabel.padEnd(35)}│
+│  Persistence: ${USE_SUPABASE ? 'Supabase (extern)' : hasPersistedData ? 'Daten geladen' : 'Neuer Start (Demo-Daten)'}${' '.repeat(Math.max(0, 34 - (USE_SUPABASE ? 'Supabase (extern)' : hasPersistedData ? 'Daten geladen' : 'Neuer Start (Demo-Daten)').length))}│
+│  Auto-Save:  ${USE_SUPABASE ? 'n/a (Supabase)' : 'aktiv'}${' '.repeat(Math.max(0, 35 - (USE_SUPABASE ? 'n/a (Supabase)' : 'aktiv').length))}│
 └─────────────────────────────────────────────────┘
   `)
 })

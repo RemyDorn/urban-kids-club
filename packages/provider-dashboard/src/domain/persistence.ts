@@ -38,10 +38,15 @@ function serializeState(): Record<string, [string, unknown][]> {
 // ============================================================
 // Deserialize: [key, value] Array → Map
 // ============================================================
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{3}Z$/
+
 function deserializeValue(val: unknown): unknown {
+  if (typeof val === 'string' && ISO_DATE_RE.test(val)) {
+    return new Date(val)
+  }
   if (val && typeof val === 'object' && !Array.isArray(val)) {
     const obj = val as Record<string, unknown>
-    // Date-Objekte wiederherstellen
+    // Date-Objekte wiederherstellen (__date Format)
     if ('__date' in obj && typeof obj.__date === 'string') {
       return new Date(obj.__date)
     }
