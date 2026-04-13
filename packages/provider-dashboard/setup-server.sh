@@ -43,7 +43,7 @@ cat > /opt/n8n/Caddyfile << CADDYEOF
 }
 
 app.socialy.club {
-  reverse_proxy ${HOST_IP}:3000
+  reverse_proxy host.docker.internal:3000
 }
 CADDYEOF
 
