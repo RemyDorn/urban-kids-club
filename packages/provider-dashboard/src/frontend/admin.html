@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="de" class="h-full bg-brand-50">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.tailwindcss.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://yuilhiqnrjuuqoqggihm.supabase.co">
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <title>Urban Kids Club – Admin Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#FFF9F5',
+              100: '#FFEFE1',
+              200: '#F0D9C4',
+              300: '#C49980',
+              400: '#CC895E',
+              500: '#B5533A',
+              600: '#9A4432',
+              700: '#3C2124',
+              800: '#2D181A',
+              900: '#1E1012',
+            }
+          },
+          fontFamily: {
+            heading: ['Barlow Condensed', 'sans-serif'],
+            body: ['Inter', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { font-family: 'Inter', sans-serif; background: #FFF9F5; }
+    h1, h2, h3, .page-title { font-family: 'Barlow Condensed', sans-serif; text-transform: uppercase; letter-spacing: 0.05em; }
+    .fade-in { animation: fadeIn 0.3s ease-in; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .provider-row:hover { background: #FFEFE1; cursor: pointer; }
+    .provider-row { transition: background 0.15s ease; }
+    .badge-onboarding { background: #FEF3C7; color: #92400E; }
+    .badge-active { background: #D1FAE5; color: #065F46; }
+    .badge-suspended { background: #FEE2E2; color: #991B1B; }
+    .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 50; display: flex; align-items: center; justify-content: center; }
+    .modal-content { background: white; border-radius: 16px; padding: 24px; width: 600px; max-width: 95vw; max-height: 85vh; overflow-y: auto; box-shadow: 0 25px 50px rgba(0,0,0,0.25); }
+  </style>
+</head>
+<body class="h-full">
+
+  <!-- Login Screen -->
+  <div id="loginScreen" style="display:flex" class="fixed inset-0 z-50 flex items-center justify-center">
+    <div class="absolute inset-0" style="background:#1a0a00"></div>
+    <div class="relative w-full max-w-md mx-4 rounded-2xl p-8 shadow-2xl" style="background:#2d1810;border:1px solid #5a3828">
+      <div class="flex flex-col items-center mb-8">
+        <div class="w-16 h-16 rounded-2xl flex items-center justify-center text-white font-bold text-2xl mb-4" style="background:linear-gradient(135deg,#d4956a,#b87a50)">A</div>
+        <h1 class="text-2xl font-bold font-heading" style="color:#f5e6d3">URBAN KIDS CLUB</h1>
+        <p class="text-sm mt-1" style="color:#c49980">Admin Dashboard</p>
+      </div>
+      <div id="loginError" style="display:none" class="mb-4 p-3 rounded-lg text-sm" role="alert"></div>
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium mb-1.5" style="color:#f5e6d3">E-Mail</label>
+          <input id="loginEmail" type="email" placeholder="admin@beispiel.de" class="w-full px-4 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2" style="background:#1a0a00;border:1px solid #5a3828;color:#f5e6d3" onkeydown="if(event.key==='Enter')document.getElementById('loginBtn').click()" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1.5" style="color:#f5e6d3">Passwort</label>
+          <input id="loginPassword" type="password" placeholder="Passwort" class="w-full px-4 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2" style="background:#1a0a00;border:1px solid #5a3828;color:#f5e6d3" onkeydown="if(event.key==='Enter')document.getElementById('loginBtn').click()" />
+        </div>
+        <button id="loginBtn" onclick="doLogin()" class="w-full py-2.5 rounded-lg text-white font-semibold text-sm transition-all hover:opacity-90" style="background:linear-gradient(135deg,#CC895E,#B5533A)">Anmelden</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <div id="mainContent" style="display:none" class="min-h-full">
+    <!-- Top Bar -->
+    <div class="sticky top-0 z-40 bg-white border-b border-brand-200 shadow-sm">
+      <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-lg" style="background:linear-gradient(135deg,#d4956a,#b87a50)">A</div>
+          <div>
+            <h1 class="text-xl font-bold font-heading text-brand-800">ADMIN DASHBOARD</h1>
+            <p class="text-xs text-brand-300" id="adminEmail"></p>
+          </div>
+        </div>
+        <div class="flex items-center gap-4">
+          <button onclick="loadProviders()" class="px-4 py-2 rounded-lg text-sm font-medium bg-brand-100 text-brand-700 hover:bg-brand-200 transition-all">Aktualisieren</button>
+          <button onclick="doLogout()" class="px-4 py-2 rounded-lg text-sm font-medium bg-red-50 text-red-700 hover:bg-red-100 transition-all">Abmelden</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stats Bar -->
+    <div class="max-w-7xl mx-auto px-6 py-6">
+      <div class="grid grid-cols-4 gap-4 mb-6">
+        <div class="bg-white rounded-xl p-4 border border-brand-200 shadow-sm">
+          <p class="text-xs text-brand-300 font-medium uppercase tracking-wide">Gesamt</p>
+          <p class="text-2xl font-bold text-brand-800 mt-1" id="statTotal">0</p>
+        </div>
+        <div class="bg-white rounded-xl p-4 border border-brand-200 shadow-sm">
+          <p class="text-xs text-brand-300 font-medium uppercase tracking-wide">Aktiv</p>
+          <p class="text-2xl font-bold text-green-700 mt-1" id="statActive">0</p>
+        </div>
+        <div class="bg-white rounded-xl p-4 border border-brand-200 shadow-sm">
+          <p class="text-xs text-brand-300 font-medium uppercase tracking-wide">Onboarding</p>
+          <p class="text-2xl font-bold text-yellow-700 mt-1" id="statOnboarding">0</p>
+        </div>
+        <div class="bg-white rounded-xl p-4 border border-brand-200 shadow-sm">
+          <p class="text-xs text-brand-300 font-medium uppercase tracking-wide">Gesperrt</p>
+          <p class="text-2xl font-bold text-red-700 mt-1" id="statSuspended">0</p>
+        </div>
+      </div>
+
+      <!-- Provider Table -->
+      <div class="bg-white rounded-xl border border-brand-200 shadow-sm overflow-hidden">
+        <div class="px-6 py-4 border-b border-brand-100">
+          <h2 class="text-lg font-bold font-heading text-brand-800">ANBIETER</h2>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="bg-brand-50 text-brand-700 text-left text-xs uppercase tracking-wider">
+                <th class="px-4 py-3 font-semibold">Status</th>
+                <th class="px-4 py-3 font-semibold">Anzeigename</th>
+                <th class="px-4 py-3 font-semibold">Firmenname</th>
+                <th class="px-4 py-3 font-semibold">Rechtsform</th>
+                <th class="px-4 py-3 font-semibold">Kontaktperson</th>
+                <th class="px-4 py-3 font-semibold">E-Mail</th>
+                <th class="px-4 py-3 font-semibold">Telefon</th>
+                <th class="px-4 py-3 font-semibold">Stadt</th>
+                <th class="px-4 py-3 font-semibold">Registriert am</th>
+              </tr>
+            </thead>
+            <tbody id="providerTableBody">
+              <tr><td colspan="9" class="px-4 py-8 text-center text-brand-300">Lade Anbieter...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Detail Modal -->
+  <div id="detailModal" style="display:none" class="modal-backdrop" onclick="if(event.target===this)closeModal()">
+    <div class="modal-content fade-in">
+      <div class="flex items-center justify-between mb-6">
+        <h2 class="text-xl font-bold font-heading text-brand-800" id="modalTitle">ANBIETER DETAILS</h2>
+        <button onclick="closeModal()" class="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-brand-100 text-brand-400 text-xl">&times;</button>
+      </div>
+      <div id="modalBody"></div>
+      <div id="modalActions" class="mt-6 flex gap-3 border-t border-brand-100 pt-4"></div>
+    </div>
+  </div>
+
+  <script>
+    const SUPABASE_URL = 'https://yuilhiqnrjuuqoqggihm.supabase.co'
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl1aWxoaXFucmp1dXFvcWdnaWhtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxNzUxMDAsImV4cCI6MjA5MDc1MTEwMH0.8dnGBOapmuTwEUy0VG-VnSgIAgRf10F4L1wi9gcE0iw'
+    const API_BASE = window.location.origin + '/api'
+    const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+
+    let providers = []
+    let accessToken = null
+
+    // ---- Auth ----
+    async function doLogin() {
+      const email = document.getElementById('loginEmail').value.trim()
+      const password = document.getElementById('loginPassword').value
+      const errEl = document.getElementById('loginError')
+      errEl.style.display = 'none'
+
+      if (!email || !password) {
+        errEl.textContent = 'Bitte E-Mail und Passwort eingeben.'
+        errEl.style.display = 'block'
+        errEl.style.background = 'rgba(220,38,38,0.15)'
+        errEl.style.color = '#fca5a5'
+        errEl.style.border = '1px solid rgba(220,38,38,0.3)'
+        return
+      }
+
+      const { data, error } = await sb.auth.signInWithPassword({ email, password })
+      if (error) {
+        errEl.textContent = error.message
+        errEl.style.display = 'block'
+        errEl.style.background = 'rgba(220,38,38,0.15)'
+        errEl.style.color = '#fca5a5'
+        errEl.style.border = '1px solid rgba(220,38,38,0.3)'
+        return
+      }
+
+      accessToken = data.session.access_token
+
+      // Check admin access
+      try {
+        const resp = await apiFetch('/admin/check')
+        if (!resp.admin) throw new Error('Kein Admin')
+      } catch (e) {
+        errEl.textContent = 'Kein Admin-Zugang fuer dieses Konto.'
+        errEl.style.display = 'block'
+        errEl.style.background = 'rgba(220,38,38,0.15)'
+        errEl.style.color = '#fca5a5'
+        errEl.style.border = '1px solid rgba(220,38,38,0.3)'
+        await sb.auth.signOut()
+        accessToken = null
+        return
+      }
+
+      document.getElementById('adminEmail').textContent = email
+      document.getElementById('loginScreen').style.display = 'none'
+      document.getElementById('mainContent').style.display = 'block'
+      loadProviders()
+    }
+
+    async function doLogout() {
+      await sb.auth.signOut()
+      accessToken = null
+      document.getElementById('loginScreen').style.display = 'flex'
+      document.getElementById('mainContent').style.display = 'none'
+    }
+
+    // ---- API Helper ----
+    async function apiFetch(path, opts = {}) {
+      const resp = await fetch(API_BASE + path, {
+        ...opts,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + accessToken,
+          ...(opts.headers || {})
+        },
+        body: opts.body ? JSON.stringify(opts.body) : undefined,
+      })
+      const json = await resp.json()
+      if (!resp.ok) throw new Error(json.error || 'API-Fehler')
+      return json
+    }
+
+    // ---- Load Providers ----
+    async function loadProviders() {
+      try {
+        const resp = await apiFetch('/admin/providers')
+        providers = resp.data || []
+        renderStats()
+        renderTable()
+      } catch (e) {
+        document.getElementById('providerTableBody').innerHTML =
+          '<tr><td colspan="9" class="px-4 py-8 text-center text-red-500">Fehler: ' + escapeHtml(e.message) + '</td></tr>'
+      }
+    }
+
+    // ---- Render Stats ----
+    function renderStats() {
+      document.getElementById('statTotal').textContent = providers.length
+      document.getElementById('statActive').textContent = providers.filter(p => p.status === 'active').length
+      document.getElementById('statOnboarding').textContent = providers.filter(p => p.status === 'onboarding').length
+      document.getElementById('statSuspended').textContent = providers.filter(p => p.status === 'suspended').length
+    }
+
+    // ---- Render Table ----
+    function renderTable() {
+      const tbody = document.getElementById('providerTableBody')
+      if (providers.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" class="px-4 py-8 text-center text-brand-300">Keine Anbieter gefunden.</td></tr>'
+        return
+      }
+      tbody.innerHTML = providers.map(p => `
+        <tr class="provider-row border-b border-brand-50" onclick="showDetail('${p.id}')">
+          <td class="px-4 py-3">${statusBadge(p.status)}</td>
+          <td class="px-4 py-3 font-medium text-brand-800">${escapeHtml(p.display_name || '-')}</td>
+          <td class="px-4 py-3 text-brand-600">${escapeHtml(p.company_name || '-')}</td>
+          <td class="px-4 py-3 text-brand-400">${escapeHtml(p.legal_form || '-')}</td>
+          <td class="px-4 py-3 text-brand-600">${escapeHtml(p.contact_name || '-')}</td>
+          <td class="px-4 py-3 text-brand-400">${escapeHtml(p.email || '-')}</td>
+          <td class="px-4 py-3 text-brand-400">${escapeHtml(p.phone || '-')}</td>
+          <td class="px-4 py-3 text-brand-400">${escapeHtml(p.address_city || '-')}</td>
+          <td class="px-4 py-3 text-brand-400">${formatDate(p.created_at)}</td>
+        </tr>
+      `).join('')
+    }
+
+    // ---- Detail Modal ----
+    function showDetail(id) {
+      const p = providers.find(x => x.id === id)
+      if (!p) return
+
+      document.getElementById('modalTitle').textContent = (p.display_name || p.company_name || 'Anbieter').toUpperCase()
+
+      const fields = [
+        ['ID', p.id],
+        ['Status', statusBadge(p.status)],
+        ['Anzeigename', p.display_name],
+        ['Firmenname', p.company_name],
+        ['Rechtsform', p.legal_form],
+        ['Kontaktperson', p.contact_name],
+        ['E-Mail', p.email],
+        ['Telefon', p.phone],
+        ['Adresse', [p.address_street, p.address_zip, p.address_city].filter(Boolean).join(', ')],
+        ['Steuernummer', p.tax_id],
+        ['USt-IdNr.', p.vat_id],
+        ['Website', p.website],
+        ['Slug', p.slug],
+        ['Registriert am', formatDate(p.created_at)],
+        ['Zuletzt aktualisiert', formatDate(p.updated_at)],
+      ]
+
+      document.getElementById('modalBody').innerHTML = `
+        <div class="space-y-2">
+          ${fields.map(([label, value]) => `
+            <div class="flex items-start py-1.5 border-b border-brand-50">
+              <span class="w-40 text-xs font-semibold text-brand-400 uppercase tracking-wide flex-shrink-0">${label}</span>
+              <span class="text-sm text-brand-800">${value || '<span class="text-brand-200">-</span>'}</span>
+            </div>
+          `).join('')}
+        </div>
+      `
+
+      // Actions
+      const actionsEl = document.getElementById('modalActions')
+      let actions = ''
+      if (p.status === 'onboarding') {
+        actions += `<button onclick="setStatus('${p.id}','active')" class="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-green-600 hover:bg-green-700 transition-all">Freischalten</button>`
+      }
+      if (p.status === 'active') {
+        actions += `<button onclick="setStatus('${p.id}','suspended')" class="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-red-600 hover:bg-red-700 transition-all">Sperren</button>`
+      }
+      if (p.status === 'suspended') {
+        actions += `<button onclick="setStatus('${p.id}','active')" class="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-green-600 hover:bg-green-700 transition-all">Aktivieren</button>`
+      }
+      actions += `<button onclick="closeModal()" class="px-4 py-2 rounded-lg text-sm font-medium bg-brand-100 text-brand-700 hover:bg-brand-200 transition-all ml-auto">Schliessen</button>`
+      actionsEl.innerHTML = actions
+
+      document.getElementById('detailModal').style.display = 'flex'
+    }
+
+    function closeModal() {
+      document.getElementById('detailModal').style.display = 'none'
+    }
+
+    // ---- Status Update ----
+    async function setStatus(id, status) {
+      const labels = { active: 'aktivieren', suspended: 'sperren' }
+      if (!confirm('Anbieter wirklich ' + (labels[status] || status) + '?')) return
+
+      try {
+        await apiFetch('/admin/providers/' + id + '/status', {
+          method: 'POST',
+          body: { status }
+        })
+        await loadProviders()
+        // Refresh modal if still open
+        const modal = document.getElementById('detailModal')
+        if (modal.style.display === 'flex') {
+          showDetail(id)
+        }
+      } catch (e) {
+        alert('Fehler: ' + e.message)
+      }
+    }
+
+    // ---- Helpers ----
+    function statusBadge(status) {
+      const cls = status === 'active' ? 'badge-active' : status === 'suspended' ? 'badge-suspended' : 'badge-onboarding'
+      const label = status === 'active' ? 'Aktiv' : status === 'suspended' ? 'Gesperrt' : 'Onboarding'
+      return `<span class="inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold ${cls}">${label}</span>`
+    }
+
+    function formatDate(iso) {
+      if (!iso) return '-'
+      const d = new Date(iso)
+      return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    }
+
+    function escapeHtml(str) {
+      if (!str) return ''
+      return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
+    }
+
+    // ---- Auto-login from session ----
+    ;(async () => {
+      const { data: { session } } = await sb.auth.getSession()
+      if (session) {
+        accessToken = session.access_token
+        try {
+          const resp = await apiFetch('/admin/check')
+          if (resp.admin) {
+            document.getElementById('adminEmail').textContent = session.user.email
+            document.getElementById('loginScreen').style.display = 'none'
+            document.getElementById('mainContent').style.display = 'block'
+            loadProviders()
+          }
+        } catch (e) {
+          accessToken = null
+        }
+      }
+    })()
+  </script>
+</body>
+</html>

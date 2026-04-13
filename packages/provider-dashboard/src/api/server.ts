@@ -47,6 +47,14 @@ try {
   dashboardHtml = '<html><body><h1>Frontend not found</h1></body></html>'
 }
 
+// Admin HTML laden
+let adminHtml: string
+try {
+  adminHtml = readFileSync(resolve(__dirname, '../frontend/admin.html'), 'utf-8')
+} catch {
+  adminHtml = '<html><body><h1>Admin not found</h1></body></html>'
+}
+
 // Widget HTML laden
 let parentWidgetHtml: string
 try {
@@ -68,6 +76,13 @@ const server = createServer((req, res) => {
   if (path === '/' || path === '/index.html') {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
     res.end(dashboardHtml)
+    return
+  }
+
+  // Admin Dashboard
+  if (path === '/admin' || path === '/admin/') {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+    res.end(adminHtml)
     return
   }
 

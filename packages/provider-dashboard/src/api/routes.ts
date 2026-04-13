@@ -6,7 +6,7 @@ import { Router } from './router'
 import { validate, CreateProviderSchema, UpdateProviderSchema, CreateActivitySchema, CreateBookingSchema, CreateParentSchema, UpdateParentSchema, CreateTeamMemberSchema, CreateInvoiceSchema, CreatePaymentSchema, CreateSepaMandateSchema, CreateCouponSchema, CreateTrialSchema, AddToWaitlistSchema, CreateConsentSchema, SendMessageSchema, CreateReviewSchema, CreateLocationSchema, CreateSeasonSchema, CreateHolidaySchema, CreateContractSchema, CreateBuTVoucherSchema, CreateDocumentSchema, CheckInSchema, GenerateEInvoiceSchema, CreateExportSchema, CreateWidgetSchema } from '../lib/schemas'
 import { authenticate, authenticateProvider, authenticateAdmin } from '../lib/auth'
 import { requireAuth } from '../lib/auth-middleware'
-import { getServiceClient } from '../lib/supabase'
+import { supabase, getServiceClient } from '../lib/supabase'
 import {
   ProviderService,
   ActivityService,
@@ -1565,6 +1565,51 @@ export function registerRoutes(router: Router) {
 
     // Return slots without enrichment (labels can be resolved client-side)
     res.json({ data: slots, count: slots.length })
+  })
+
+  // ============================================================
+  // ADMIN ENDPOINTS
+  // ============================================================
+
+  const ADMIN_EMAILS = ['remy.dostal@gmail.com']
+
+  // Lightweight admin auth – validates JWT and checks admin email
+  // Does NOT require a provider record (unlike requireAuth)
+  async function requireAdmin(req: import('../api/router').ParsedRequest, res: import('../api/router').ApiResponse): Promise<{ userId: string; email: string } | null> {
+    const token = req.raw.headers.authorization?.replace('Bearer ', '')
+    if (!token) { res.error(401, 'Nicht authentifiziert'); return null }
+    const { data: { user }, error } = await supabase.auth.getUser(token)
+    if (error || !user || !user.email) { res.error(401, 'Token ungültig oder abgelaufen'); return null }
+    if (!ADMIN_EMAILS.includes(user.email)) { res.error(403, 'Kein Admin-Zugang'); return null }
+    return { userId: user.id, email: user.email }
+  }
+
+  router.get('/api/admin/check', async (req, res) => {
+    const admin = await requireAdmin(req, res)
+    if (!admin) return
+    res.json({ admin: true, email: admin.email })
+  })
+
+  router.get('/api/admin/providers', async (req, res) => {
+    const admin = await requireAdmin(req, res)
+    if (!admin) return
+    const db = getServiceClient()
+    const { data, error } = await db.from('providers').select('*').order('created_at', { ascending: false })
+    if (error) return res.error(500, error.message)
+    res.json({ data, count: data!.length })
+  })
+
+  router.post('/api/admin/providers/:id/status', async (req, res) => {
+    const admin = await requireAdmin(req, res)
+    if (!admin) return
+    const { status } = req.body as any
+    if (!['active', 'suspended', 'onboarding'].includes(status)) {
+      return res.error(400, 'Ungültiger Status')
+    }
+    const db = getServiceClient()
+    const { data, error } = await db.from('providers').update({ status, updated_at: new Date().toISOString() }).eq('id', req.params.id).select().single()
+    if (error) return res.error(500, error.message)
+    res.json({ data })
   })
 
   // ============================================================
