@@ -213,7 +213,13 @@
     // --- Supabase Auth ---
     const SUPABASE_URL = 'https://yuilhiqnrjuuqoqggihm.supabase.co'
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl1aWxoaXFucmp1dXFvcWdnaWhtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxNzUxMDAsImV4cCI6MjA5MDc1MTEwMH0.8dnGBOapmuTwEUy0VG-VnSgIAgRf10F4L1wi9gcE0iw'
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+    let sbClient = null
+    if (window.supabase && window.supabase.createClient) {
+      sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+    } else {
+      console.error('Supabase CDN not loaded')
+    }
+    const supabase = sbClient
 
     function showLoginScreen() {
       document.getElementById('loginScreen').style.display = 'flex'
@@ -248,6 +254,7 @@
     }
 
     async function checkAuth() {
+      if (!supabase) { showLoginScreen(); return }
       try {
         const { data: { session } } = await supabase.auth.getSession()
         if (session) {
@@ -266,6 +273,7 @@
 
     async function handleLogin(e) {
       e.preventDefault()
+      if (!supabase) { showLoginError('Verbindungsfehler — bitte Seite neu laden'); return }
       const email = document.getElementById('loginEmail').value.trim()
       const password = document.getElementById('loginPassword').value
       const btn = document.getElementById('loginBtn')
