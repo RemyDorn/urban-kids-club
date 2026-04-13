@@ -213,13 +213,7 @@
     // --- Supabase Auth ---
     const SUPABASE_URL = 'https://yuilhiqnrjuuqoqggihm.supabase.co'
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl1aWxoaXFucmp1dXFvcWdnaWhtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxNzUxMDAsImV4cCI6MjA5MDc1MTEwMH0.8dnGBOapmuTwEUy0VG-VnSgIAgRf10F4L1wi9gcE0iw'
-    let sbClient = null
-    if (window.supabase && window.supabase.createClient) {
-      sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
-    } else {
-      console.error('Supabase CDN not loaded')
-    }
-    const supabase = sbClient
+    const sb = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null
 
     function showLoginScreen() {
       document.getElementById('loginScreen').style.display = 'flex'
@@ -254,9 +248,9 @@
     }
 
     async function checkAuth() {
-      if (!supabase) { showLoginScreen(); return }
+      if (!sb) { showLoginScreen(); return }
       try {
-        const { data: { session } } = await supabase.auth.getSession()
+        const { data: { session } } = await sb.auth.getSession()
         if (session) {
           currentSession = session
           showDashboard()
@@ -272,7 +266,7 @@
     }
 
     async function handleLogin() {
-      if (!supabase) { showLoginError('Verbindungsfehler — bitte Seite neu laden'); return }
+      if (!sb) { showLoginError('Verbindungsfehler — bitte Seite neu laden'); return }
       const email = document.getElementById('loginEmail').value.trim()
       const password = document.getElementById('loginPassword').value
       const btn = document.getElementById('loginBtn')
@@ -281,7 +275,7 @@
       document.getElementById('loginError').style.display = 'none'
 
       try {
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+        const { data, error } = await sb.auth.signInWithPassword({ email, password })
         if (error) {
           showLoginError('Anmeldung fehlgeschlagen: ' + error.message)
         } else {
@@ -308,7 +302,7 @@
       btn.textContent = 'Wird gesendet...'
 
       try {
-        const { error } = await supabase.auth.signInWithOtp({ email })
+        const { error } = await sb.auth.signInWithOtp({ email })
         if (error) {
           showLoginError('Magic Link konnte nicht gesendet werden: ' + error.message)
         } else {
@@ -323,7 +317,7 @@
     }
 
     async function logout() {
-      await supabase.auth.signOut()
+      await sb.auth.signOut()
       currentSession = null
       currentProvider = null
       providers = []
@@ -331,7 +325,7 @@
     }
 
     // Listen for auth state changes
-    supabase.auth.onAuthStateChange((event, session) => {
+    sb.auth.onAuthStateChange((event, session) => {
       currentSession = session
       if (event === 'SIGNED_IN' && session) {
         showDashboard()
