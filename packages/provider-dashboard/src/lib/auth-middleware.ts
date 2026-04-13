@@ -1,5 +1,5 @@
 // src/lib/auth-middleware.ts
-import { supabase } from './supabase'
+import { supabase, getServiceClient } from './supabase'
 import type { ParsedRequest, ApiResponse } from '../api/router'
 
 export interface AuthContext {
@@ -28,7 +28,9 @@ export async function authenticateRequest(req: ParsedRequest): Promise<AuthConte
     return { userId: user.id, email: user.email, providerId: cached.providerId }
   }
 
-  const { data: provider, error: provErr } = await supabase
+  // Use service_role client to bypass RLS for provider lookup
+  const serviceClient = getServiceClient()
+  const { data: provider, error: provErr } = await serviceClient
     .from('providers')
     .select('id')
     .eq('login_email', user.email)

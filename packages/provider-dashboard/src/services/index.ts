@@ -91,6 +91,7 @@ export { DocumentService, ConsentService } from './document.service'
 export { EInvoiceService } from './einvoice.service'
 export { BuTVoucherService } from './but-voucher.service'
 export { ContractService } from './contract.service'
+export { MarketingService } from './marketing.service'
 
 // ============================================================
 // Shared Helpers & Validierung – always from in-memory
