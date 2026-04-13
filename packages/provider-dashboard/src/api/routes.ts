@@ -71,17 +71,17 @@ export function registerRoutes(router: Router) {
   router.get('/api/providers', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const providers = await ProviderService.list({
-      status: req.query.status as any,
-      category: req.query.category,
-    })
+    // Return only the authenticated provider's data — never list all providers
+    const provider = await ProviderService.getById(auth.providerId)
+    const providers = provider ? [provider] : []
     res.json({ data: providers, count: providers.length })
   })
 
   router.get('/api/providers/:id', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const provider = await ProviderService.getById(req.params.id)
+    if (req.params.id !== auth.providerId) return res.error(403, 'Zugriff verweigert')
+    const provider = await ProviderService.getById(auth.providerId)
     if (!provider) return res.error(404, 'Provider nicht gefunden')
     res.json({ data: provider })
   })
@@ -91,6 +91,7 @@ export function registerRoutes(router: Router) {
     if (!auth) return
     const provider = await ProviderService.getBySlug(req.params.slug)
     if (!provider) return res.error(404, 'Provider nicht gefunden')
+    if (provider.id !== auth.providerId) return res.error(403, 'Zugriff verweigert')
     res.json({ data: provider })
   })
 
@@ -106,9 +107,10 @@ export function registerRoutes(router: Router) {
   router.put('/api/providers/:id', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
+    if (req.params.id !== auth.providerId) return res.error(403, 'Zugriff verweigert')
     const parsed = validate(UpdateProviderSchema, req.body)
     if ('error' in parsed) return res.error(400, parsed.error)
-    const provider = await ProviderService.update(req.params.id, parsed.data as any)
+    const provider = await ProviderService.update(auth.providerId, parsed.data as any)
     if (!provider) return res.error(404, 'Provider nicht gefunden')
     res.json({ data: provider })
   })
@@ -116,7 +118,8 @@ export function registerRoutes(router: Router) {
   router.post('/api/providers/:id/activate', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const provider = await ProviderService.activate(req.params.id)
+    if (req.params.id !== auth.providerId) return res.error(403, 'Zugriff verweigert')
+    const provider = await ProviderService.activate(auth.providerId)
     if (!provider) return res.error(404, 'Provider nicht gefunden')
     res.json({ data: provider })
   })
@@ -124,8 +127,9 @@ export function registerRoutes(router: Router) {
   router.post('/api/providers/:id/change-plan', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
+    if (req.params.id !== auth.providerId) return res.error(403, 'Zugriff verweigert')
     const { plan } = req.body as { plan: string }
-    const provider = await ProviderService.changePlan(req.params.id, plan as any)
+    const provider = await ProviderService.changePlan(auth.providerId, plan as any)
     if (!provider) return res.error(404, 'Provider nicht gefunden')
     res.json({ data: provider })
   })
@@ -137,7 +141,7 @@ export function registerRoutes(router: Router) {
   router.get('/api/providers/:providerId/locations', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const locations = await LocationService.listByProvider(req.params.providerId)
+    const locations = await LocationService.listByProvider(auth.providerId)
     res.json({ data: locations })
   })
 
@@ -146,7 +150,7 @@ export function registerRoutes(router: Router) {
     if (!auth) return
     const parsed = validate(CreateLocationSchema, req.body)
     if ('error' in parsed) return res.error(400, parsed.error)
-    const location = await LocationService.create({ ...parsed.data as any, providerId: req.params.providerId })
+    const location = await LocationService.create({ ...parsed.data as any, providerId: auth.providerId })
     res.status(201).json({ data: location })
   })
 
@@ -165,7 +169,7 @@ export function registerRoutes(router: Router) {
   router.get('/api/providers/:providerId/team', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const members = await TeamService.listByProvider(req.params.providerId, {
+    const members = await TeamService.listByProvider(auth.providerId, {
       role: req.query.role as any,
       active: req.query.active ? req.query.active === 'true' : undefined,
     })
@@ -177,7 +181,7 @@ export function registerRoutes(router: Router) {
     if (!auth) return
     const parsed = validate(CreateTeamMemberSchema, req.body)
     if ('error' in parsed) return res.error(400, parsed.error)
-    const result = await TeamService.create({ ...parsed.data as any, providerId: req.params.providerId })
+    const result = await TeamService.create({ ...parsed.data as any, providerId: auth.providerId })
     if ('error' in result) return res.error(400, result.error)
     res.status(201).json({ data: result })
   })
@@ -204,7 +208,7 @@ export function registerRoutes(router: Router) {
   router.get('/api/providers/:providerId/activities', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const activities = await ActivityService.listByProvider(req.params.providerId)
+    const activities = await ActivityService.listByProvider(auth.providerId)
     res.json({ data: activities, count: activities.length })
   })
 
@@ -215,7 +219,7 @@ export function registerRoutes(router: Router) {
       category: req.query.category,
       ageMin: req.query.ageMin ? safeParseInt(req.query.ageMin, 0) : undefined,
       ageMax: req.query.ageMax ? safeParseInt(req.query.ageMax, 18) : undefined,
-      providerId: req.query.providerId,
+      providerId: auth.providerId,
       status: req.query.status as any,
       query: req.query.q,
     })
@@ -236,7 +240,7 @@ export function registerRoutes(router: Router) {
     if (!auth) return
     const parsed = validate(CreateActivitySchema, req.body)
     if ('error' in parsed) return res.error(400, parsed.error)
-    const activity = await ActivityService.create(parsed.data as any)
+    const activity = await ActivityService.create({ ...parsed.data as any, providerId: auth.providerId })
     res.status(201).json({ data: activity })
   })
 
@@ -280,7 +284,7 @@ export function registerRoutes(router: Router) {
   router.get('/api/providers/:providerId/bookings', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const bookings = await BookingService.listByProvider(req.params.providerId, {
+    const bookings = await BookingService.listByProvider(auth.providerId, {
       status: req.query.status as any,
       paymentStatus: req.query.paymentStatus as any,
     })
@@ -339,7 +343,7 @@ export function registerRoutes(router: Router) {
   router.get('/api/providers/:providerId/bookings/stats', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const stats = await BookingService.getStats(req.params.providerId)
+    const stats = await BookingService.getStats(auth.providerId)
     res.json({ data: stats })
   })
 
@@ -390,7 +394,7 @@ export function registerRoutes(router: Router) {
   router.get('/api/parents', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const parents = await ParentService.list({ query: req.query.q })
+    const parents = await ParentService.list({ query: req.query.q, providerId: auth.providerId })
     res.json({ data: parents, count: parents.length })
   })
 
@@ -445,9 +449,9 @@ export function registerRoutes(router: Router) {
   router.get('/api/providers/:providerId/reviews', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const reviews = await ReviewService.listByProvider(req.params.providerId)
-    const rating = await ReviewService.getProviderRating(req.params.providerId)
-    const distribution = await ReviewService.getRatingDistribution(req.params.providerId)
+    const reviews = await ReviewService.listByProvider(auth.providerId)
+    const rating = await ReviewService.getProviderRating(auth.providerId)
+    const distribution = await ReviewService.getRatingDistribution(auth.providerId)
     res.json({ data: reviews, rating, distribution })
   })
 
@@ -468,18 +472,18 @@ export function registerRoutes(router: Router) {
   router.get('/api/providers/:providerId/messages', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const messages = await MessageService.getInbox(req.params.providerId, {
+    const messages = await MessageService.getInbox(auth.providerId, {
       unreadOnly: req.query.unread === 'true',
       type: req.query.type as any,
     })
-    const unreadCount = await MessageService.getUnreadCount(req.params.providerId)
+    const unreadCount = await MessageService.getUnreadCount(auth.providerId)
     res.json({ data: messages, unreadCount })
   })
 
   router.get('/api/messages/conversation/:providerId/:parentId', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const messages = await MessageService.getConversation(req.params.providerId, req.params.parentId)
+    const messages = await MessageService.getConversation(auth.providerId, req.params.parentId)
     res.json({ data: messages })
   })
 
@@ -495,8 +499,8 @@ export function registerRoutes(router: Router) {
   router.post('/api/messages/broadcast', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const { providerId, activityId, subject, body } = req.body as any
-    const messages = await MessageService.broadcast(providerId, activityId, subject, body)
+    const { activityId, subject, body } = req.body as any
+    const messages = await MessageService.broadcast(auth.providerId, activityId, subject, body)
     res.status(201).json({ data: messages, count: messages.length })
   })
 
@@ -553,7 +557,7 @@ export function registerRoutes(router: Router) {
   router.get('/api/providers/:providerId/coupons', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const coupons = await CouponService.listByProvider(req.params.providerId, {
+    const coupons = await CouponService.listByProvider(auth.providerId, {
       active: req.query.active ? req.query.active === 'true' : undefined,
     })
     res.json({ data: coupons })
@@ -564,7 +568,7 @@ export function registerRoutes(router: Router) {
     if (!auth) return
     const parsed = validate(CreateCouponSchema, req.body)
     if ('error' in parsed) return res.error(400, parsed.error)
-    const result = await CouponService.create(parsed.data as any)
+    const result = await CouponService.create({ ...parsed.data as any, providerId: auth.providerId })
     if ('error' in result) return res.error(400, result.error)
     res.status(201).json({ data: result })
   })
@@ -586,8 +590,8 @@ export function registerRoutes(router: Router) {
     if (!auth) return
     const { start, end } = req.query
     if (!start || !end) return res.error(400, 'start und end Parameter erforderlich')
-    const events = await CalendarService.getByDateRange(req.params.providerId, start, end)
-    const conflicts = await CalendarService.detectConflictsInRange(req.params.providerId, start, end)
+    const events = await CalendarService.getByDateRange(auth.providerId, start, end)
+    const conflicts = await CalendarService.detectConflictsInRange(auth.providerId, start, end)
     res.json({ data: events, conflicts, count: events.length })
   })
 
@@ -596,14 +600,14 @@ export function registerRoutes(router: Router) {
     if (!auth) return
     const { start, end } = req.query
     if (!start || !end) return res.error(400, 'start und end Parameter erforderlich')
-    const ical = await CalendarService.generateICalFeed(req.params.providerId, start, end)
+    const ical = await CalendarService.generateICalFeed(auth.providerId, start, end)
     res.json({ data: ical, contentType: 'text/calendar' })
   })
 
   router.post('/api/providers/:providerId/calendar/sync', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const events = await CalendarService.syncActivitiesToCalendar(req.params.providerId)
+    const events = await CalendarService.syncActivitiesToCalendar(auth.providerId)
     res.json({ data: events, count: events.length })
   })
 
@@ -614,7 +618,7 @@ export function registerRoutes(router: Router) {
   router.get('/api/providers/:providerId/trials', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const trials = await TrialService.listByProvider(req.params.providerId, {
+    const trials = await TrialService.listByProvider(auth.providerId, {
       status: req.query.status as any,
     })
     res.json({ data: trials })
@@ -625,7 +629,7 @@ export function registerRoutes(router: Router) {
     if (!auth) return
     const parsed = validate(CreateTrialSchema, req.body)
     if ('error' in parsed) return res.error(400, parsed.error)
-    const result = await TrialService.create(parsed.data as any)
+    const result = await TrialService.create({ ...parsed.data as any, providerId: auth.providerId })
     if ('error' in result) return res.error(400, result.error)
     res.status(201).json({ data: result })
   })
@@ -651,7 +655,7 @@ export function registerRoutes(router: Router) {
   router.get('/api/providers/:providerId/trials/stats', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const stats = await TrialService.getConversionStats(req.params.providerId)
+    const stats = await TrialService.getConversionStats(auth.providerId)
     res.json({ data: stats })
   })
 
@@ -662,7 +666,7 @@ export function registerRoutes(router: Router) {
   router.get('/api/providers/:providerId/invoices', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const invoices = await InvoiceService.listByProvider(req.params.providerId, {
+    const invoices = await InvoiceService.listByProvider(auth.providerId, {
       status: req.query.status as any,
     })
     res.json({ data: invoices })
@@ -673,7 +677,7 @@ export function registerRoutes(router: Router) {
     if (!auth) return
     const parsed = validate(CreateInvoiceSchema, req.body)
     if ('error' in parsed) return res.error(400, parsed.error)
-    const result = await InvoiceService.create(parsed.data as any)
+    const result = await InvoiceService.create({ ...parsed.data as any, providerId: auth.providerId })
     if ('error' in result) return res.error(400, result.error)
     res.status(201).json({ data: result })
   })
@@ -706,7 +710,7 @@ export function registerRoutes(router: Router) {
   router.get('/api/providers/:providerId/invoices/outstanding', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const outstanding = await InvoiceService.getOutstandingTotal(req.params.providerId)
+    const outstanding = await InvoiceService.getOutstandingTotal(auth.providerId)
     res.json({ data: outstanding })
   })
 
@@ -714,7 +718,7 @@ export function registerRoutes(router: Router) {
     const auth = await requireAuth(req, res)
     if (!auth) return
     const year = safeParseInt(req.params.year, new Date().getFullYear())
-    const summary = await InvoiceService.getVatSummary(req.params.providerId, year)
+    const summary = await InvoiceService.getVatSummary(auth.providerId, year)
     res.json({ data: summary })
   })
 
@@ -747,7 +751,7 @@ export function registerRoutes(router: Router) {
   router.get('/api/providers/:providerId/payments', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const payments = await PaymentService.listByProvider(req.params.providerId, {
+    const payments = await PaymentService.listByProvider(auth.providerId, {
       method: req.query.method as any,
       status: req.query.status,
     })
@@ -759,7 +763,7 @@ export function registerRoutes(router: Router) {
     if (!auth) return
     const parsed = validate(CreatePaymentSchema, req.body)
     if ('error' in parsed) return res.error(400, parsed.error)
-    const result = await PaymentService.create(parsed.data as any)
+    const result = await PaymentService.create({ ...parsed.data as any, providerId: auth.providerId })
     if ('error' in result) return res.error(400, result.error)
     res.status(201).json({ data: result })
   })
@@ -775,21 +779,21 @@ export function registerRoutes(router: Router) {
   router.get('/api/providers/:providerId/payments/summary', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const summary = await PaymentService.getRevenueSummary(req.params.providerId)
+    const summary = await PaymentService.getRevenueSummary(auth.providerId)
     res.json({ data: summary })
   })
 
   router.post('/api/providers/:providerId/sepa/collect', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const payments = await PaymentService.runSepaCollection(req.params.providerId)
+    const payments = await PaymentService.runSepaCollection(auth.providerId)
     res.json({ data: payments, count: payments.length })
   })
 
   router.get('/api/providers/:providerId/sepa/mandates', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const mandates = await SepaMandateService.listByProvider(req.params.providerId)
+    const mandates = await SepaMandateService.listByProvider(auth.providerId)
     res.json({ data: mandates })
   })
 
@@ -798,7 +802,7 @@ export function registerRoutes(router: Router) {
     if (!auth) return
     const parsed = validate(CreateSepaMandateSchema, req.body)
     if ('error' in parsed) return res.error(400, parsed.error)
-    const mandate = await SepaMandateService.create(parsed.data as any)
+    const mandate = await SepaMandateService.create({ ...parsed.data as any, providerId: auth.providerId })
     res.status(201).json({ data: mandate })
   })
 
@@ -809,7 +813,7 @@ export function registerRoutes(router: Router) {
   router.get('/api/providers/:providerId/documents', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const docs = await DocumentService.listByProvider(req.params.providerId, {
+    const docs = await DocumentService.listByProvider(auth.providerId, {
       type: req.query.type as any,
       status: req.query.status as any,
     })
@@ -821,14 +825,14 @@ export function registerRoutes(router: Router) {
     if (!auth) return
     const parsed = validate(CreateDocumentSchema, req.body)
     if ('error' in parsed) return res.error(400, parsed.error)
-    const doc = await DocumentService.create(parsed.data as any)
+    const doc = await DocumentService.create({ ...parsed.data as any, providerId: auth.providerId })
     res.status(201).json({ data: doc })
   })
 
   router.get('/api/providers/:providerId/compliance', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const status = await DocumentService.getComplianceStatus(req.params.providerId)
+    const status = await DocumentService.getComplianceStatus(auth.providerId)
     res.json({ data: status })
   })
 
@@ -855,8 +859,8 @@ export function registerRoutes(router: Router) {
   router.get('/api/providers/:providerId/seasons', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const seasons = await SeasonService.listByProvider(req.params.providerId)
-    const current = await SeasonService.getCurrentSeason(req.params.providerId)
+    const seasons = await SeasonService.listByProvider(auth.providerId)
+    const current = await SeasonService.getCurrentSeason(auth.providerId)
     res.json({ data: seasons, currentSeason: current })
   })
 
@@ -865,14 +869,14 @@ export function registerRoutes(router: Router) {
     if (!auth) return
     const parsed = validate(CreateSeasonSchema, req.body)
     if ('error' in parsed) return res.error(400, parsed.error)
-    const season = await SeasonService.create(parsed.data as any)
+    const season = await SeasonService.create({ ...parsed.data as any, providerId: auth.providerId })
     res.status(201).json({ data: season })
   })
 
   router.get('/api/providers/:providerId/holidays', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const holidays = await HolidayService.listByProvider(req.params.providerId)
+    const holidays = await HolidayService.listByProvider(auth.providerId)
     res.json({ data: holidays })
   })
 
@@ -881,7 +885,7 @@ export function registerRoutes(router: Router) {
     if (!auth) return
     const parsed = validate(CreateHolidaySchema, req.body)
     if ('error' in parsed) return res.error(400, parsed.error)
-    const holiday = await HolidayService.create(parsed.data as any)
+    const holiday = await HolidayService.create({ ...parsed.data as any, providerId: auth.providerId })
     res.status(201).json({ data: holiday })
   })
 
@@ -889,7 +893,7 @@ export function registerRoutes(router: Router) {
     const auth = await requireAuth(req, res)
     if (!auth) return
     const { region } = req.body as { region?: string }
-    const holidays = await HolidayService.importGermanHolidays(req.params.providerId, region)
+    const holidays = await HolidayService.importGermanHolidays(auth.providerId, region)
     res.status(201).json({ data: holidays, count: holidays.length })
   })
 
@@ -905,7 +909,7 @@ export function registerRoutes(router: Router) {
   router.get('/api/providers/:providerId/contracts', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const contracts = await ContractService.listByProvider(req.params.providerId, {
+    const contracts = await ContractService.listByProvider(auth.providerId, {
       type: req.query.type as any,
       status: req.query.status as any,
     })
@@ -917,7 +921,7 @@ export function registerRoutes(router: Router) {
     if (!auth) return
     const parsed = validate(CreateContractSchema, req.body)
     if ('error' in parsed) return res.error(400, parsed.error)
-    const contract = await ContractService.create(parsed.data as any)
+    const contract = await ContractService.create({ ...parsed.data as any, providerId: auth.providerId })
     res.status(201).json({ data: contract })
   })
 
@@ -931,7 +935,7 @@ export function registerRoutes(router: Router) {
   router.get('/api/providers/:providerId/contracts/risk-overview', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const overview = await ContractService.getProviderRiskOverview(req.params.providerId)
+    const overview = await ContractService.getProviderRiskOverview(auth.providerId)
     const deadline = await ContractService.getTransitionDeadlineWarning()
     res.json({ data: overview, deadline })
   })
@@ -943,10 +947,10 @@ export function registerRoutes(router: Router) {
   router.get('/api/providers/:providerId/but-vouchers', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const vouchers = await BuTVoucherService.listByProvider(req.params.providerId, {
+    const vouchers = await BuTVoucherService.listByProvider(auth.providerId, {
       status: req.query.status as any,
     })
-    const stats = await BuTVoucherService.getStats(req.params.providerId)
+    const stats = await BuTVoucherService.getStats(auth.providerId)
     res.json({ data: vouchers, stats })
   })
 
@@ -955,7 +959,7 @@ export function registerRoutes(router: Router) {
     if (!auth) return
     const parsed = validate(CreateBuTVoucherSchema, req.body)
     if ('error' in parsed) return res.error(400, parsed.error)
-    const voucher = await BuTVoucherService.create(parsed.data as any)
+    const voucher = await BuTVoucherService.create({ ...parsed.data as any, providerId: auth.providerId })
     res.status(201).json({ data: voucher })
   })
 
@@ -966,7 +970,7 @@ export function registerRoutes(router: Router) {
   router.get('/api/providers/:providerId/widgets', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const widgets = await WidgetService.listByProvider(req.params.providerId)
+    const widgets = await WidgetService.listByProvider(auth.providerId)
     res.json({ data: widgets })
   })
 
@@ -975,7 +979,7 @@ export function registerRoutes(router: Router) {
     if (!auth) return
     const parsed = validate(CreateWidgetSchema, req.body)
     if ('error' in parsed) return res.error(400, parsed.error)
-    const widget = await WidgetService.create(parsed.data as any)
+    const widget = await WidgetService.create({ ...parsed.data as any, providerId: auth.providerId })
     res.status(201).json({ data: widget })
   })
 
@@ -986,19 +990,19 @@ export function registerRoutes(router: Router) {
   router.get('/api/providers/:providerId/customers', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const customers = await CrmService.listCustomers(req.params.providerId, {
+    const customers = await CrmService.listCustomers(auth.providerId, {
       tag: req.query.tag as any,
       minSpent: req.query.minSpent ? parseFloat(req.query.minSpent) : undefined,
       query: req.query.q,
     })
-    const segments = await CrmService.getSegments(req.params.providerId)
+    const segments = await CrmService.getSegments(auth.providerId)
     res.json({ data: customers, segments, count: customers.length })
   })
 
   router.get('/api/providers/:providerId/customers/:parentId', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const profile = await CrmService.getExtendedProfile(req.params.parentId, req.params.providerId)
+    const profile = await CrmService.getExtendedProfile(req.params.parentId, auth.providerId)
     if (!profile) return res.error(404, 'Kundenprofil nicht gefunden')
     res.json({ data: profile })
   })
@@ -1009,7 +1013,7 @@ export function registerRoutes(router: Router) {
     const { content, authorId } = req.body as { content: string; authorId: string }
     const note = await CrmService.addNote({
       parentId: req.params.parentId,
-      providerId: req.params.providerId,
+      providerId: auth.providerId,
       authorId,
       content,
     })
@@ -1023,11 +1027,11 @@ export function registerRoutes(router: Router) {
   router.get('/api/notifications/:recipientId', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const notifications = await NotificationService.getByRecipient(req.params.recipientId, {
+    const notifications = await NotificationService.getByRecipient(auth.providerId, {
       unread: req.query.unread === 'true',
       type: req.query.type as any,
     })
-    const unreadCount = await NotificationService.getUnreadCount(req.params.recipientId)
+    const unreadCount = await NotificationService.getUnreadCount(auth.providerId)
     res.json({ data: notifications, unreadCount })
   })
 
@@ -1042,7 +1046,7 @@ export function registerRoutes(router: Router) {
   router.post('/api/notifications/:recipientId/read-all', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const count = await NotificationService.markAllAsRead(req.params.recipientId)
+    const count = await NotificationService.markAllAsRead(auth.providerId)
     res.json({ data: { markedAsRead: count } })
   })
 
@@ -1057,7 +1061,7 @@ export function registerRoutes(router: Router) {
     if ('error' in parsed) return res.error(400, parsed.error)
     const { type, format, dateRange } = parsed.data as any
     const request = await ExportService.createExport({
-      providerId: req.params.providerId,
+      providerId: auth.providerId,
       type,
       format,
       dateRange,
@@ -1072,28 +1076,28 @@ export function registerRoutes(router: Router) {
   router.get('/api/providers/:providerId/dashboard', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const summary = await ReportingService.getDashboardSummary(req.params.providerId)
+    const summary = await ReportingService.getDashboardSummary(auth.providerId)
     res.json({ data: summary })
   })
 
   router.get('/api/providers/:providerId/reports/revenue/:period', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const report = await ReportingService.getRevenueReport(req.params.providerId, req.params.period)
+    const report = await ReportingService.getRevenueReport(auth.providerId, req.params.period)
     res.json({ data: report })
   })
 
   router.get('/api/providers/:providerId/reports/occupancy', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const occupancy = await ReportingService.getOccupancyByActivity(req.params.providerId)
+    const occupancy = await ReportingService.getOccupancyByActivity(auth.providerId)
     res.json({ data: occupancy })
   })
 
   router.get('/api/providers/:providerId/reports/clv', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const clv = await ReportingService.getCustomerLifetimeValue(req.params.providerId)
+    const clv = await ReportingService.getCustomerLifetimeValue(auth.providerId)
     res.json({ data: clv })
   })
 
@@ -1101,21 +1105,21 @@ export function registerRoutes(router: Router) {
     const auth = await requireAuth(req, res)
     if (!auth) return
     const months = safeParseInt(req.query.months, 3)
-    const churn = await ReportingService.getChurnRate(req.params.providerId, months)
+    const churn = await ReportingService.getChurnRate(auth.providerId, months)
     res.json({ data: churn })
   })
 
   router.get('/api/providers/:providerId/reports/trials', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const trials = await ReportingService.getTrialConversionByActivity(req.params.providerId)
+    const trials = await ReportingService.getTrialConversionByActivity(auth.providerId)
     res.json({ data: trials })
   })
 
   router.get('/api/providers/:providerId/reports/staff', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const staff = await ReportingService.getStaffUtilization(req.params.providerId)
+    const staff = await ReportingService.getStaffUtilization(auth.providerId)
     res.json({ data: staff })
   })
 
@@ -1126,7 +1130,7 @@ export function registerRoutes(router: Router) {
   router.get('/api/providers/:providerId/audit', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const entries = await AuditService.getByProvider(req.params.providerId, {
+    const entries = await AuditService.getByProvider(auth.providerId, {
       action: req.query.action,
       entityType: req.query.entityType,
     })
@@ -1137,7 +1141,7 @@ export function registerRoutes(router: Router) {
     const auth = await requireAuth(req, res)
     if (!auth) return
     const limit = safeParseInt(req.query.limit, 20)
-    const entries = await AuditService.getRecentActivity(req.params.providerId, limit)
+    const entries = await AuditService.getRecentActivity(auth.providerId, limit)
     res.json({ data: entries })
   })
 
@@ -1206,7 +1210,7 @@ export function registerRoutes(router: Router) {
   router.get('/api/providers/:id/course-blocks', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const blocks = await CourseBlockService.getBlocksByProvider(req.params.id)
+    const blocks = await CourseBlockService.getBlocksByProvider(auth.providerId)
     res.json({ data: blocks, count: blocks.length })
   })
 
