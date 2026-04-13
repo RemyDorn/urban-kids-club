@@ -1,0 +1,68 @@
+// src/lib/auth-middleware.ts
+import { supabase } from './supabase'
+import type { ParsedRequest, ApiResponse } from '../api/router'
+
+export interface AuthContext {
+  userId: string
+  email: string
+  providerId: string
+}
+
+// Cache provider lookups for 5 minutes
+const providerCache = new Map<string, { providerId: string; expiresAt: number }>()
+const CACHE_TTL = 5 * 60 * 1000
+
+export async function authenticateRequest(req: ParsedRequest): Promise<AuthContext> {
+  const token = req.raw.headers.authorization?.replace('Bearer ', '')
+  if (!token) {
+    throw new AuthError(401, 'Nicht authentifiziert')
+  }
+
+  const { data: { user }, error } = await supabase.auth.getUser(token)
+  if (error || !user || !user.email) {
+    throw new AuthError(401, 'Token ungültig oder abgelaufen')
+  }
+
+  const cached = providerCache.get(user.email)
+  if (cached && cached.expiresAt > Date.now()) {
+    return { userId: user.id, email: user.email, providerId: cached.providerId }
+  }
+
+  const { data: provider, error: provErr } = await supabase
+    .from('providers')
+    .select('id')
+    .eq('login_email', user.email)
+    .single()
+
+  if (provErr || !provider) {
+    throw new AuthError(403, 'Kein Anbieter-Konto für diese E-Mail')
+  }
+
+  providerCache.set(user.email, {
+    providerId: provider.id,
+    expiresAt: Date.now() + CACHE_TTL,
+  })
+
+  return { userId: user.id, email: user.email, providerId: provider.id }
+}
+
+export class AuthError extends Error {
+  constructor(public statusCode: number, message: string) {
+    super(message)
+    this.name = 'AuthError'
+  }
+}
+
+export async function requireAuth(req: ParsedRequest, res: ApiResponse): Promise<AuthContext | null> {
+  try {
+    const auth = await authenticateRequest(req)
+    return auth
+  } catch (err) {
+    if (err instanceof AuthError) {
+      res.error(err.statusCode, err.message)
+    } else {
+      res.error(500, 'Auth-Fehler')
+    }
+    return null
+  }
+}
