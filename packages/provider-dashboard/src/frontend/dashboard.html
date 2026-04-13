@@ -63,7 +63,7 @@
 </head>
 <body class="h-full">
   <!-- Login Screen Overlay -->
-  <div id="loginScreen" style="display:none" class="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-label="Anmeldung">
+  <div id="loginScreen" style="display:flex" class="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-label="Anmeldung">
     <div class="absolute inset-0" style="background:#1a0a00"></div>
     <div class="relative w-full max-w-md mx-4 rounded-2xl p-8 shadow-2xl" style="background:#2d1810;border:1px solid #5a3828">
       <div class="flex flex-col items-center mb-8">
@@ -97,7 +97,7 @@
     </div>
   </div>
 
-  <div id="dashboardApp" class="flex h-full">
+  <div id="dashboardApp" class="flex h-full" style="display:none">
 
     <!-- Sidebar -->
     <aside class="w-64 bg-brand-700 flex flex-col fixed h-full z-10">
