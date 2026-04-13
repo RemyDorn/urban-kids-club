@@ -6,6 +6,7 @@ import { Router } from './router'
 import { validate, CreateProviderSchema, UpdateProviderSchema, CreateActivitySchema, CreateBookingSchema, CreateParentSchema, UpdateParentSchema, CreateTeamMemberSchema, CreateInvoiceSchema, CreatePaymentSchema, CreateSepaMandateSchema, CreateCouponSchema, CreateTrialSchema, AddToWaitlistSchema, CreateConsentSchema, SendMessageSchema, CreateReviewSchema, CreateLocationSchema, CreateSeasonSchema, CreateHolidaySchema, CreateContractSchema, CreateBuTVoucherSchema, CreateDocumentSchema, CheckInSchema, GenerateEInvoiceSchema, CreateExportSchema, CreateWidgetSchema } from '../lib/schemas'
 import { authenticate, authenticateProvider, authenticateAdmin } from '../lib/auth'
 import { requireAuth } from '../lib/auth-middleware'
+import { getServiceClient } from '../lib/supabase'
 import {
   ProviderService,
   ActivityService,
@@ -1177,12 +1178,62 @@ export function registerRoutes(router: Router) {
   })
 
   router.post('/api/auth/register', async (req, res) => {
-    const { email, password, providerId } = req.body as { email: string; password: string; providerId: string }
-    if (!email || !password || !providerId) return res.error(400, 'E-Mail, Passwort und Provider-ID erforderlich')
-    const { registerProvider } = await import('../lib/auth')
-    const result = await registerProvider(email, password, providerId)
-    if ('error' in result) return res.error(400, result.error)
-    res.status(201).json({ data: result })
+    const { email, password, companyName, contactName, phone, street, zip, city } = req.body as any
+
+    if (!email || !password || !companyName || !contactName) {
+      return res.error(400, 'E-Mail, Passwort, Firmenname und Kontaktperson sind erforderlich')
+    }
+    if (password.length < 6) {
+      return res.error(400, 'Passwort muss mindestens 6 Zeichen lang sein')
+    }
+
+    const db = getServiceClient()
+
+    // 1. Create auth user
+    const { data: authData, error: authError } = await db.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+    })
+    if (authError) {
+      if (authError.message.includes('already been registered')) {
+        return res.error(409, 'Diese E-Mail-Adresse ist bereits registriert')
+      }
+      return res.error(500, 'Registrierung fehlgeschlagen: ' + authError.message)
+    }
+
+    // 2. Create provider record
+    const slug = companyName.toLowerCase()
+      .replace(/[äöüß]/g, (c: string) => ({ ä: 'ae', ö: 'oe', ü: 'ue', ß: 'ss' } as Record<string, string>)[c] ?? c)
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+
+    const { data: provider, error: provError } = await db
+      .from('providers')
+      .insert({
+        company_name: companyName,
+        contact_name: contactName,
+        email: email,
+        phone: phone || '',
+        address_street: street || '',
+        address_zip: zip || '',
+        address_city: city || '',
+        latitude: 0,
+        longitude: 0,
+        login_email: email,
+        slug: slug,
+        status: 'active',
+        subscription: 'free',
+      })
+      .select()
+      .single()
+
+    if (provError) {
+      // Rollback: delete auth user
+      await db.auth.admin.deleteUser(authData.user.id)
+      return res.error(500, 'Provider-Erstellung fehlgeschlagen: ' + provError.message)
+    }
+
+    res.json({ success: true, provider })
   })
 
   // ============================================================
