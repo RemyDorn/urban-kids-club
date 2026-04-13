@@ -99,27 +99,53 @@
       </p>
 
       <!-- Registration Form -->
-      <div id="registerForm" style="display:none" class="space-y-4">
+      <div id="registerForm" style="display:none" class="space-y-3">
+        <p class="text-xs mb-2" style="color:#8a6a50">Alle Felder mit * sind Pflichtfelder</p>
         <div>
-          <label class="block text-sm font-medium mb-1.5" style="color:#f5e6d3">Firmenname *</label>
-          <input id="regCompanyName" type="text" placeholder="z.B. Tanzschule Müller" class="w-full px-4 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2" style="background:#1a0a00;border:1px solid #5a3828;color:#f5e6d3" />
+          <label class="block text-sm font-medium mb-1.5" style="color:#f5e6d3">Anzeigename / Markenname *</label>
+          <input id="regDisplayName" type="text" placeholder="z.B. Tanzstudio Rhythmuskinder" class="w-full px-4 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2" style="background:#1a0a00;border:1px solid #5a3828;color:#f5e6d3" />
+          <p class="text-xs mt-1" style="color:#8a6a50">Der Name, unter dem Sie nach au&szlig;en auftreten</p>
+        </div>
+        <div class="grid grid-cols-3 gap-2">
+          <div class="col-span-2">
+            <label class="block text-sm font-medium mb-1.5" style="color:#f5e6d3">Offizieller Firmenname *</label>
+            <input id="regCompanyName" type="text" placeholder="z.B. Maria M&uuml;ller" class="w-full px-4 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2" style="background:#1a0a00;border:1px solid #5a3828;color:#f5e6d3" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1.5" style="color:#f5e6d3">Rechtsform *</label>
+            <select id="regLegalForm" class="w-full px-3 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2" style="background:#1a0a00;border:1px solid #5a3828;color:#f5e6d3">
+              <option value="">W&auml;hlen...</option>
+              <option value="einzelunternehmer">Einzelunternehmer/in</option>
+              <option value="freiberufler">Freiberufler/in</option>
+              <option value="gbr">GbR</option>
+              <option value="ug">UG (haftungsbeschr&auml;nkt)</option>
+              <option value="gmbh">GmbH</option>
+              <option value="ev">e.V. (eingetragener Verein)</option>
+              <option value="eg">eG (Genossenschaft)</option>
+              <option value="gag">gAG / gGmbH</option>
+              <option value="kg">KG / OHG</option>
+              <option value="sonstige">Sonstige</option>
+            </select>
+          </div>
         </div>
         <div>
           <label class="block text-sm font-medium mb-1.5" style="color:#f5e6d3">Kontaktperson *</label>
           <input id="regContactName" type="text" placeholder="Vor- und Nachname" class="w-full px-4 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2" style="background:#1a0a00;border:1px solid #5a3828;color:#f5e6d3" />
         </div>
-        <div>
-          <label class="block text-sm font-medium mb-1.5" style="color:#f5e6d3">E-Mail *</label>
-          <input id="regEmail" type="email" placeholder="email@beispiel.de" class="w-full px-4 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2" style="background:#1a0a00;border:1px solid #5a3828;color:#f5e6d3" />
-        </div>
-        <div>
-          <label class="block text-sm font-medium mb-1.5" style="color:#f5e6d3">Telefon *</label>
-          <input id="regPhone" type="tel" placeholder="z.B. 0211 1234567" class="w-full px-4 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2" style="background:#1a0a00;border:1px solid #5a3828;color:#f5e6d3" />
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-sm font-medium mb-1.5" style="color:#f5e6d3">E-Mail *</label>
+            <input id="regEmail" type="email" placeholder="email@beispiel.de" class="w-full px-4 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2" style="background:#1a0a00;border:1px solid #5a3828;color:#f5e6d3" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1.5" style="color:#f5e6d3">Telefon *</label>
+            <input id="regPhone" type="tel" placeholder="0211 1234567" class="w-full px-4 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2" style="background:#1a0a00;border:1px solid #5a3828;color:#f5e6d3" />
+          </div>
         </div>
         <div class="grid grid-cols-3 gap-2">
           <div class="col-span-2">
-            <label class="block text-sm font-medium mb-1.5" style="color:#f5e6d3">Stra&szlig;e *</label>
-            <input id="regStreet" type="text" placeholder="z.B. Venloer Str. 123" class="w-full px-4 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2" style="background:#1a0a00;border:1px solid #5a3828;color:#f5e6d3" />
+            <label class="block text-sm font-medium mb-1.5" style="color:#f5e6d3">Stra&szlig;e + Nr. *</label>
+            <input id="regStreet" type="text" placeholder="Venloer Str. 123" class="w-full px-4 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2" style="background:#1a0a00;border:1px solid #5a3828;color:#f5e6d3" />
           </div>
           <div>
             <label class="block text-sm font-medium mb-1.5" style="color:#f5e6d3">PLZ *</label>
@@ -128,7 +154,7 @@
         </div>
         <div>
           <label class="block text-sm font-medium mb-1.5" style="color:#f5e6d3">Stadt *</label>
-          <input id="regCity" type="text" placeholder="z.B. Köln" class="w-full px-4 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2" style="background:#1a0a00;border:1px solid #5a3828;color:#f5e6d3" />
+          <input id="regCity" type="text" placeholder="z.B. K&ouml;ln" class="w-full px-4 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2" style="background:#1a0a00;border:1px solid #5a3828;color:#f5e6d3" />
         </div>
         <div>
           <label class="block text-sm font-medium mb-1.5" style="color:#f5e6d3">Passwort * (min. 6 Zeichen)</label>
@@ -440,7 +466,9 @@
 
     async function handleRegister() {
       if (!sb) { showLoginError('Verbindungsfehler — bitte Seite neu laden'); return }
+      const displayName = document.getElementById('regDisplayName').value.trim()
       const companyName = document.getElementById('regCompanyName').value.trim()
+      const legalForm = document.getElementById('regLegalForm').value
       const contactName = document.getElementById('regContactName').value.trim()
       const email = document.getElementById('regEmail').value.trim()
       const phone = document.getElementById('regPhone').value.trim()
@@ -450,7 +478,7 @@
       const password = document.getElementById('regPassword').value
       const passwordConfirm = document.getElementById('regPasswordConfirm').value
 
-      if (!companyName || !contactName || !email || !phone || !street || !zip || !city || !password) {
+      if (!displayName || !companyName || !legalForm || !contactName || !email || !phone || !street || !zip || !city || !password) {
         showLoginError('Bitte alle Pflichtfelder ausfüllen.')
         return
       }
@@ -472,7 +500,7 @@
         const resp = await fetch(API + '/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password, companyName, contactName, phone, street, zip, city })
+          body: JSON.stringify({ email, password, displayName, companyName, legalForm, contactName, phone, street, zip, city })
         })
         const result = await resp.json()
         if (!resp.ok) {

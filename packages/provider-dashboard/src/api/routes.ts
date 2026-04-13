@@ -1178,10 +1178,10 @@ export function registerRoutes(router: Router) {
   })
 
   router.post('/api/auth/register', async (req, res) => {
-    const { email, password, companyName, contactName, phone, street, zip, city } = req.body as any
+    const { email, password, displayName, companyName, legalForm, contactName, phone, street, zip, city } = req.body as any
 
-    if (!email || !password || !companyName || !contactName || !phone || !street || !zip || !city) {
-      return res.error(400, 'Alle Felder sind erforderlich: Firmenname, Kontaktperson, E-Mail, Telefon, Adresse und Passwort')
+    if (!email || !password || !displayName || !companyName || !legalForm || !contactName || !phone || !street || !zip || !city) {
+      return res.error(400, 'Alle Felder sind erforderlich')
     }
     if (password.length < 6) {
       return res.error(400, 'Passwort muss mindestens 6 Zeichen lang sein')
@@ -1203,20 +1203,22 @@ export function registerRoutes(router: Router) {
     }
 
     // 2. Create provider record
-    const slug = companyName.toLowerCase()
+    const slug = displayName.toLowerCase()
       .replace(/[äöüß]/g, (c: string) => ({ ä: 'ae', ö: 'oe', ü: 'ue', ß: 'ss' } as Record<string, string>)[c] ?? c)
       .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 
     const { data: provider, error: provError } = await db
       .from('providers')
       .insert({
+        display_name: displayName,
         company_name: companyName,
+        legal_form: legalForm,
         contact_name: contactName,
         email: email,
-        phone: phone || '',
-        address_street: street || '',
-        address_zip: zip || '',
-        address_city: city || '',
+        phone: phone,
+        address_street: street,
+        address_zip: zip,
+        address_city: city,
         latitude: 0,
         longitude: 0,
         login_email: email,
