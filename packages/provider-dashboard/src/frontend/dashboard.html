@@ -96,6 +96,10 @@
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
           Buchungen
         </button>
+        <button onclick="navigate('courseblocks')" data-page="courseblocks" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-brand-300 transition-all">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+          Kursblöcke
+        </button>
         <button onclick="navigate('customers')" data-page="customers" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-brand-300 transition-all">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
           Kunden
@@ -240,7 +244,7 @@
       const activeBtn = document.querySelector(`[data-page="${page}"]`)
       if (activeBtn) { activeBtn.classList.add('active'); activeBtn.classList.remove('text-brand-300') }
 
-      const titles = { dashboard: 'Dashboard', activities: 'Kurse & Angebote', bookings: 'Buchungen', customers: 'Kunden (CRM)', trials: 'Probestunden', invoices: 'Rechnungen', team: 'Team', documents: 'Dokumente', reports: 'Berichte & Analysen', holidays: 'Ferien & Saisons', embed: 'Einbettung & Widgets', marketing: 'Marketing & Automation', settings: 'Einstellungen' }
+      const titles = { dashboard: 'Dashboard', activities: 'Kurse & Angebote', bookings: 'Buchungen', courseblocks: 'Kursblöcke & Guthaben', customers: 'Kunden (CRM)', trials: 'Probestunden', invoices: 'Rechnungen', team: 'Team', documents: 'Dokumente', reports: 'Berichte & Analysen', holidays: 'Ferien & Saisons', embed: 'Einbettung & Widgets', marketing: 'Marketing & Automation', settings: 'Einstellungen' }
       document.getElementById('pageTitle').textContent = titles[page] || page
 
       const content = document.getElementById('content')
@@ -249,7 +253,7 @@
       void content.offsetWidth
       content.classList.add('fade-in')
 
-      const renderers = { dashboard: renderDashboard, activities: renderActivities, bookings: renderBookings, customers: renderCustomers, trials: renderTrials, invoices: renderInvoices, team: renderTeam, documents: renderDocuments, reports: renderReports, holidays: renderHolidays, embed: renderEmbed, marketing: renderMarketing, settings: renderSettings }
+      const renderers = { dashboard: renderDashboard, activities: renderActivities, bookings: renderBookings, courseblocks: renderCourseBlocks, customers: renderCustomers, trials: renderTrials, invoices: renderInvoices, team: renderTeam, documents: renderDocuments, reports: renderReports, holidays: renderHolidays, embed: renderEmbed, marketing: renderMarketing, settings: renderSettings }
       if (renderers[page]) renderers[page]()
     }
 
@@ -2488,6 +2492,572 @@
       const docs = getStoredDocs().filter(d => d.id !== id)
       saveStoredDocs(docs)
       navigate('documents')
+    }
+
+    // --- Kursblöcke & Guthaben ---
+    async function renderCourseBlocks() {
+      const c = document.getElementById('content')
+
+      // Daten laden
+      let blocks = [], activities = []
+      try {
+        const [bRes, aRes] = await Promise.all([
+          api(`/providers/${currentProvider.id}/course-blocks`),
+          api(`/providers/${currentProvider.id}/activities`),
+        ])
+        blocks = bRes.data || bRes
+        activities = aRes.data || aRes
+      } catch (e) { console.error(e) }
+
+      const actMap = {}
+      ;(Array.isArray(activities) ? activities : []).forEach(a => actMap[a.id] = a)
+
+      const dayNames = { mon: 'Mo', tue: 'Di', wed: 'Mi', thu: 'Do', fri: 'Fr', sat: 'Sa', sun: 'So' }
+      const statusColors = { upcoming: 'bg-blue-100 text-blue-700', active: 'bg-green-100 text-green-700', completed: 'bg-gray-100 text-gray-600', cancelled: 'bg-red-100 text-red-700' }
+      const statusLabels = { upcoming: 'Demnächst', active: 'Laufend', completed: 'Abgeschlossen', cancelled: 'Storniert' }
+
+      // Tab-State
+      const tab = window._cbTab || 'blocks'
+
+      c.innerHTML = `
+        <!-- Tabs -->
+        <div class="flex gap-2 mb-6">
+          <button onclick="window._cbTab='blocks'; renderCourseBlocks()" class="px-4 py-2 rounded-lg text-sm font-semibold ${tab === 'blocks' ? 'bg-brand-500 text-white' : 'bg-white text-gray-600 hover:bg-brand-100'}">Kursblöcke</button>
+          <button onclick="window._cbTab='credits'; renderCourseBlocks()" class="px-4 py-2 rounded-lg text-sm font-semibold ${tab === 'credits' ? 'bg-brand-500 text-white' : 'bg-white text-gray-600 hover:bg-brand-100'}">Guthaben</button>
+          <button onclick="window._cbTab='attendance'; renderCourseBlocks()" class="px-4 py-2 rounded-lg text-sm font-semibold ${tab === 'attendance' ? 'bg-brand-500 text-white' : 'bg-white text-gray-600 hover:bg-brand-100'}">Anwesenheit</button>
+        </div>
+        <div id="cb-content"></div>
+      `
+
+      if (tab === 'blocks') renderCB_Blocks(blocks, actMap, dayNames, statusColors, statusLabels)
+      else if (tab === 'credits') renderCB_Credits()
+      else if (tab === 'attendance') renderCB_Attendance(blocks, actMap)
+    }
+
+    // --- Kursblöcke Tab ---
+    async function renderCB_Blocks(blocks, actMap, dayNames, statusColors, statusLabels) {
+      const cc = document.getElementById('cb-content')
+
+      // Stat-Cards
+      const active = blocks.filter(b => b.status === 'active').length
+      const upcoming = blocks.filter(b => b.status === 'upcoming').length
+      const total = blocks.length
+
+      cc.innerHTML = `
+        <!-- Stats -->
+        <div class="grid grid-cols-3 gap-4 mb-6">
+          <div class="stat-card bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+            <div class="text-3xl font-bold text-green-600">${active}</div>
+            <div class="text-sm text-gray-500 mt-1">Aktive Blöcke</div>
+          </div>
+          <div class="stat-card bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+            <div class="text-3xl font-bold text-blue-600">${upcoming}</div>
+            <div class="text-sm text-gray-500 mt-1">Kommende Blöcke</div>
+          </div>
+          <div class="stat-card bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+            <div class="text-3xl font-bold text-gray-600">${total}</div>
+            <div class="text-sm text-gray-500 mt-1">Gesamt</div>
+          </div>
+        </div>
+
+        <!-- Neuen Block erstellen -->
+        <div class="flex justify-between items-center mb-4">
+          <h3 class="text-lg font-bold text-gray-800">Alle Kursblöcke</h3>
+          <button onclick="showCreateBlockForm()" class="bg-brand-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-brand-600 transition">+ Neuer Block</button>
+        </div>
+
+        <!-- Block-Liste -->
+        <div class="space-y-3" id="block-list">
+          ${blocks.length === 0 ? '<div class="text-gray-400 text-center py-12">Noch keine Kursblöcke angelegt.</div>' : ''}
+          ${blocks.sort((a,b) => a.startDate > b.startDate ? -1 : 1).map(block => {
+            const act = actMap[block.activityId]
+            const title = act ? act.title : block.activityType
+            const day = dayNames[block.recurringDay] || block.recurringDay
+            const sc = statusColors[block.status] || 'bg-gray-100 text-gray-600'
+            const sl = statusLabels[block.status] || block.status
+            return `
+              <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition cursor-pointer" onclick="showBlockDetail('${block.id}')">
+                <div class="flex justify-between items-start">
+                  <div>
+                    <div class="font-bold text-gray-800">${escapeHtml(title)}</div>
+                    <div class="text-sm text-gray-500 mt-0.5">${escapeHtml(block.seasonLabel)}</div>
+                    <div class="flex gap-4 mt-2 text-xs text-gray-500">
+                      <span>${day} ${block.recurringTime} Uhr</span>
+                      <span>${block.totalSessions} Termine</span>
+                      <span>${block.pricePerBlock?.toFixed(2).replace('.',',')} €</span>
+                      <span>Kapazität: ${block.capacity}</span>
+                    </div>
+                  </div>
+                  <span class="px-3 py-1 rounded-full text-xs font-semibold ${sc}">${sl}</span>
+                </div>
+              </div>`
+          }).join('')}
+        </div>
+
+        <!-- Block-Detail Modal -->
+        <div id="block-detail-modal" class="hidden"></div>
+        <!-- Create Block Modal -->
+        <div id="create-block-modal" class="hidden"></div>
+      `
+    }
+
+    // --- Block Detail ---
+    async function showBlockDetail(blockId) {
+      const modal = document.getElementById('block-detail-modal')
+
+      let block, sessions = [], enrollments = []
+      try {
+        const [bRes, sRes, eRes] = await Promise.all([
+          api(`/course-blocks/${blockId}`),
+          api(`/course-blocks/${blockId}/sessions`),
+          api(`/course-blocks/${blockId}/enrollments`),
+        ])
+        block = bRes.data || bRes
+        sessions = sRes.data || sRes
+        enrollments = eRes.data || eRes
+      } catch (e) { console.error(e); return }
+
+      const dayNames = { mon: 'Montag', tue: 'Dienstag', wed: 'Mittwoch', thu: 'Donnerstag', fri: 'Freitag', sat: 'Samstag', sun: 'Sonntag' }
+      const sessStatusColors = { scheduled: 'text-blue-600', completed: 'text-green-600', cancelled_by_provider: 'text-red-600', cancelled_by_holiday: 'text-orange-600' }
+      const sessStatusLabels = { scheduled: 'Geplant', completed: 'Abgeschlossen', cancelled_by_provider: 'Ausgefallen (Provider)', cancelled_by_holiday: 'Feiertag' }
+
+      modal.className = 'fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4'
+      modal.innerHTML = `
+        <div class="bg-white rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto shadow-2xl">
+          <div class="p-6 border-b border-gray-100 flex justify-between items-start">
+            <div>
+              <h2 class="text-xl font-bold text-gray-800">${escapeHtml(block.activityType)}</h2>
+              <p class="text-sm text-gray-500">${escapeHtml(block.seasonLabel)} · ${dayNames[block.recurringDay] || ''} ${block.recurringTime} Uhr</p>
+            </div>
+            <button onclick="document.getElementById('block-detail-modal').className='hidden'" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+          </div>
+
+          <!-- Stats -->
+          <div class="grid grid-cols-4 gap-3 p-6 pb-3">
+            <div class="text-center p-3 bg-gray-50 rounded-lg">
+              <div class="text-xl font-bold">${enrollments.filter(e=>e.status==='active').length}</div>
+              <div class="text-xs text-gray-500">Teilnehmer</div>
+            </div>
+            <div class="text-center p-3 bg-gray-50 rounded-lg">
+              <div class="text-xl font-bold">${block.capacity}</div>
+              <div class="text-xs text-gray-500">Kapazität</div>
+            </div>
+            <div class="text-center p-3 bg-gray-50 rounded-lg">
+              <div class="text-xl font-bold">${sessions.filter(s=>s.status==='completed').length}/${sessions.length}</div>
+              <div class="text-xs text-gray-500">Termine</div>
+            </div>
+            <div class="text-center p-3 bg-gray-50 rounded-lg">
+              <div class="text-xl font-bold">${(enrollments.filter(e=>e.status==='active').length * block.pricePerBlock).toFixed(0)}€</div>
+              <div class="text-xs text-gray-500">Umsatz</div>
+            </div>
+          </div>
+
+          <!-- Enrollments -->
+          <div class="px-6 pt-3 pb-2">
+            <h3 class="font-bold text-sm text-gray-700 mb-2">Teilnehmer (${enrollments.length})</h3>
+            ${enrollments.length === 0 ? '<p class="text-gray-400 text-sm">Keine Anmeldungen.</p>' :
+              `<div class="space-y-1">
+                ${enrollments.map(enr => `
+                  <div class="flex justify-between items-center py-2 px-3 bg-gray-50 rounded-lg text-sm">
+                    <div>
+                      <span class="font-medium">${escapeHtml(enr.childName)}</span>
+                      <span class="text-gray-400 ml-2">${enr.childAge ? enr.childAge + ' J.' : ''}</span>
+                    </div>
+                    <div class="flex items-center gap-3 text-xs">
+                      <span class="text-gray-500">Credits: ${enr.creditsEarned - enr.creditsUsed} verfügbar</span>
+                      <span class="${enr.status === 'active' ? 'text-green-600' : 'text-gray-400'}">${enr.status === 'active' ? 'Aktiv' : enr.status}</span>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>`
+            }
+          </div>
+
+          <!-- Sessions -->
+          <div class="px-6 pt-4 pb-6">
+            <h3 class="font-bold text-sm text-gray-700 mb-2">Termine (${sessions.length})</h3>
+            <div class="space-y-1">
+              ${sessions.sort((a,b) => a.date > b.date ? 1 : -1).map(sess => {
+                const isPast = sess.date < new Date().toISOString().split('T')[0]
+                const canCancel = sess.status === 'scheduled' && !isPast
+                return `
+                  <div class="flex justify-between items-center py-2 px-3 ${isPast ? 'bg-gray-50' : 'bg-white border border-gray-100'} rounded-lg text-sm">
+                    <div class="flex items-center gap-3">
+                      <span class="font-mono text-xs text-gray-400">#${sess.sessionNumber}</span>
+                      <span class="font-medium">${fmtDate(sess.date)}</span>
+                      <span class="text-gray-400">${sess.startTime}–${sess.endTime}</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <span class="text-xs font-semibold ${sessStatusColors[sess.status] || ''}">${sessStatusLabels[sess.status] || sess.status}</span>
+                      ${canCancel ? `<button onclick="cancelBlockSession('${sess.id}', '${blockId}')" class="text-xs text-red-500 hover:text-red-700 font-medium">Absagen</button>` : ''}
+                      ${sess.status === 'scheduled' && !isPast ? `<button onclick="openAttendanceForSession('${sess.id}', '${blockId}')" class="text-xs text-brand-500 hover:text-brand-700 font-medium">Anwesenheit</button>` : ''}
+                    </div>
+                  </div>`
+              }).join('')}
+            </div>
+
+            <!-- Block-Aktionen -->
+            <div class="flex gap-2 mt-4 pt-4 border-t border-gray-100">
+              <button onclick="extendBlock('${blockId}')" class="text-sm px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 font-medium">+ Termin anhängen</button>
+              <button onclick="runBlockCronjobs()" class="text-sm px-3 py-1.5 bg-gray-50 text-gray-600 rounded-lg hover:bg-gray-100 font-medium">Status aktualisieren</button>
+            </div>
+          </div>
+        </div>
+      `
+    }
+
+    // --- Block erstellen ---
+    async function showCreateBlockForm() {
+      const modal = document.getElementById('create-block-modal')
+      let activities = []
+      try { const r = await api(`/providers/${currentProvider.id}/activities`); activities = r.data || r } catch(e) {}
+
+      modal.className = 'fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4'
+      modal.innerHTML = `
+        <div class="bg-white rounded-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto shadow-2xl p-6">
+          <div class="flex justify-between items-center mb-6">
+            <h2 class="text-xl font-bold">Neuer Kursblock</h2>
+            <button onclick="document.getElementById('create-block-modal').className='hidden'" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+          </div>
+          <form onsubmit="submitCreateBlock(event)" class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Kurs</label>
+              <select name="activityId" required class="w-full border rounded-lg px-3 py-2 text-sm">
+                <option value="">Kurs wählen…</option>
+                ${activities.map(a => `<option value="${a.id}" data-type="${a.category}">${escapeHtml(a.title)}</option>`).join('')}
+              </select>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Block-Label</label>
+              <input type="text" name="seasonLabel" placeholder="z.B. Block 1 – Mai/Juni 2026" required class="w-full border rounded-lg px-3 py-2 text-sm">
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Startdatum</label>
+                <input type="date" name="startDate" required class="w-full border rounded-lg px-3 py-2 text-sm">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Wochentag</label>
+                <select name="recurringDay" required class="w-full border rounded-lg px-3 py-2 text-sm">
+                  <option value="mon">Montag</option><option value="tue">Dienstag</option><option value="wed">Mittwoch</option>
+                  <option value="thu">Donnerstag</option><option value="fri">Freitag</option><option value="sat">Samstag</option>
+                </select>
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Uhrzeit</label>
+                <input type="time" name="recurringTime" value="09:00" required class="w-full border rounded-lg px-3 py-2 text-sm">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Dauer (Min)</label>
+                <input type="number" name="durationMinutes" value="60" required class="w-full border rounded-lg px-3 py-2 text-sm">
+              </div>
+            </div>
+            <div class="grid grid-cols-3 gap-3">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Termine</label>
+                <input type="number" name="totalSessions" value="8" required class="w-full border rounded-lg px-3 py-2 text-sm">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Preis (€)</label>
+                <input type="number" name="pricePerBlock" value="140" step="0.01" required class="w-full border rounded-lg px-3 py-2 text-sm">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Kapazität</label>
+                <input type="number" name="capacity" value="10" required class="w-full border rounded-lg px-3 py-2 text-sm">
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Nachhol-Plätze extra</label>
+                <input type="number" name="makeupCapacity" value="2" class="w-full border rounded-lg px-3 py-2 text-sm">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Max Credits/Kind</label>
+                <input type="number" name="maxCreditsPerEnrollment" value="2" class="w-full border rounded-lg px-3 py-2 text-sm">
+              </div>
+            </div>
+            <button type="submit" class="w-full bg-brand-500 text-white py-2.5 rounded-lg font-semibold hover:bg-brand-600 transition">Block erstellen</button>
+          </form>
+        </div>
+      `
+    }
+
+    async function submitCreateBlock(e) {
+      e.preventDefault()
+      const fd = new FormData(e.target)
+      const actSelect = e.target.querySelector('[name=activityId]')
+      const selOption = actSelect.options[actSelect.selectedIndex]
+
+      const body = {
+        providerId: currentProvider.id,
+        activityId: fd.get('activityId'),
+        activityType: selOption.dataset.type || fd.get('activityId'),
+        seasonLabel: fd.get('seasonLabel'),
+        totalSessions: parseInt(fd.get('totalSessions')),
+        startDate: fd.get('startDate'),
+        recurringDay: fd.get('recurringDay'),
+        recurringTime: fd.get('recurringTime'),
+        durationMinutes: parseInt(fd.get('durationMinutes')),
+        pricePerBlock: parseFloat(fd.get('pricePerBlock')),
+        currency: 'EUR',
+        capacity: parseInt(fd.get('capacity')),
+        makeupCapacity: parseInt(fd.get('makeupCapacity') || '2'),
+        maxCreditsPerEnrollment: parseInt(fd.get('maxCreditsPerEnrollment') || '2'),
+        cancellationDeadlineMinutes: 1440,
+      }
+
+      try {
+        await api('/course-blocks', 'POST', body)
+        document.getElementById('create-block-modal').className = 'hidden'
+        renderCourseBlocks()
+      } catch (err) {
+        alert('Fehler: ' + (err.message || 'Block konnte nicht erstellt werden'))
+      }
+    }
+
+    // --- Block-Aktionen ---
+    async function cancelBlockSession(sessionId, blockId) {
+      const reason = prompt('Grund für die Absage:')
+      if (!reason) return
+      const comp = confirm('Guthaben an alle Teilnehmer vergeben?\n\nOK = Guthaben\nAbbrechen = Block verlängern')
+      try {
+        await api(`/sessions/${sessionId}/cancel`, 'POST', { reason, compensation: comp ? 'credit' : 'extension', cancelledBy: 'provider' })
+        showBlockDetail(blockId)
+      } catch (err) { alert('Fehler: ' + err.message) }
+    }
+
+    async function extendBlock(blockId) {
+      try {
+        await api(`/course-blocks/${blockId}/extend`, 'POST', { additionalSessions: 1 })
+        showBlockDetail(blockId)
+      } catch (err) { alert('Fehler: ' + err.message) }
+    }
+
+    async function runBlockCronjobs() {
+      try {
+        await Promise.all([
+          api('/admin/blocks/update-statuses', 'POST'),
+          api('/admin/credits/expire', 'POST'),
+        ])
+        renderCourseBlocks()
+      } catch (err) { alert('Fehler: ' + err.message) }
+    }
+
+    // --- Guthaben Tab ---
+    async function renderCB_Credits() {
+      const cc = document.getElementById('cb-content')
+      cc.innerHTML = '<div class="text-gray-400 text-center py-8">Lade Guthaben...</div>'
+
+      // Alle Enrollments des Providers holen, daraus Credits ableiten
+      let blocks = []
+      try {
+        const bRes = await api(`/providers/${currentProvider.id}/course-blocks`)
+        blocks = bRes.data || bRes
+      } catch(e) {}
+
+      let allCredits = []
+      for (const block of blocks) {
+        try {
+          const enrollments = await api(`/course-blocks/${block.id}/enrollments`)
+          const enrs = enrollments.data || enrollments
+          for (const enr of enrs) {
+            try {
+              const credRes = await api(`/credits/parent/${enr.parentId}`)
+              const credits = credRes.data || credRes
+              // Nur Credits für diesen Provider filtern
+              const provCredits = credits.filter(c => c.providerId === currentProvider.id)
+              allCredits.push(...provCredits)
+            } catch(_) {}
+          }
+        } catch(_) {}
+      }
+
+      // Deduplizieren
+      const seen = new Set()
+      allCredits = allCredits.filter(c => { if (seen.has(c.id)) return false; seen.add(c.id); return true })
+
+      const available = allCredits.filter(c => c.status === 'available')
+      const used = allCredits.filter(c => c.status === 'used')
+      const expired = allCredits.filter(c => c.status === 'expired')
+
+      cc.innerHTML = `
+        <div class="grid grid-cols-3 gap-4 mb-6">
+          <div class="stat-card bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+            <div class="text-3xl font-bold text-green-600">${available.length}</div>
+            <div class="text-sm text-gray-500 mt-1">Offene Guthaben</div>
+          </div>
+          <div class="stat-card bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+            <div class="text-3xl font-bold text-orange-500">${used.length}</div>
+            <div class="text-sm text-gray-500 mt-1">Eingelöst</div>
+          </div>
+          <div class="stat-card bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+            <div class="text-3xl font-bold text-gray-400">${expired.length}</div>
+            <div class="text-sm text-gray-500 mt-1">Abgelaufen</div>
+          </div>
+        </div>
+
+        <div class="flex justify-between items-center mb-4">
+          <h3 class="text-lg font-bold text-gray-800">Offene Guthaben</h3>
+          <button onclick="showManualCreditForm()" class="bg-brand-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-brand-600 transition">+ Kulanz-Guthaben</button>
+        </div>
+
+        <div class="space-y-2">
+          ${available.length === 0 ? '<div class="text-gray-400 text-center py-8">Keine offenen Guthaben.</div>' : ''}
+          ${available.map(credit => `
+            <div class="bg-white rounded-xl p-4 shadow-sm border border-gray-100 flex justify-between items-center">
+              <div>
+                <div class="font-medium text-sm">${escapeHtml(credit.childId)} · ${escapeHtml(credit.activityType.replace(/_/g, ' '))}</div>
+                <div class="text-xs text-gray-500 mt-0.5">
+                  ${credit.isProviderCancellation ? 'Kurs ausgefallen' : 'Eltern-Absage'} am ${fmtDate(credit.originalSessionDate)}
+                  · Gültig bis ${fmtDate(credit.validUntil)}
+                </div>
+              </div>
+              <span class="px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">Verfügbar</span>
+            </div>
+          `).join('')}
+        </div>
+
+        <div id="manual-credit-modal" class="hidden"></div>
+      `
+    }
+
+    // --- Manuelles Credit-Formular ---
+    async function showManualCreditForm() {
+      const modal = document.getElementById('manual-credit-modal')
+      modal.className = 'fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4'
+      modal.innerHTML = `
+        <div class="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl">
+          <div class="flex justify-between items-center mb-4">
+            <h2 class="text-lg font-bold">Kulanz-Guthaben vergeben</h2>
+            <button onclick="document.getElementById('manual-credit-modal').className='hidden'" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+          </div>
+          <form onsubmit="submitManualCredit(event)" class="space-y-3">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Enrollment-ID</label>
+              <input type="text" name="enrollmentId" required placeholder="enrl_..." class="w-full border rounded-lg px-3 py-2 text-sm">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Grund</label>
+              <input type="text" name="reason" value="Kulanz" class="w-full border rounded-lg px-3 py-2 text-sm">
+            </div>
+            <button type="submit" class="w-full bg-brand-500 text-white py-2 rounded-lg font-semibold">Guthaben vergeben</button>
+          </form>
+        </div>
+      `
+    }
+
+    async function submitManualCredit(e) {
+      e.preventDefault()
+      const fd = new FormData(e.target)
+      try {
+        await api('/credits/manual', 'POST', { enrollmentId: fd.get('enrollmentId'), reason: fd.get('reason') || 'Kulanz' })
+        document.getElementById('manual-credit-modal').className = 'hidden'
+        window._cbTab = 'credits'
+        renderCourseBlocks()
+      } catch (err) { alert('Fehler: ' + err.message) }
+    }
+
+    // --- Anwesenheit Tab ---
+    async function renderCB_Attendance(blocks, actMap) {
+      const cc = document.getElementById('cb-content')
+
+      // Aktive Blöcke mit nächster Session finden
+      const activeBlocks = blocks.filter(b => b.status === 'active' || b.status === 'upcoming')
+      const today = new Date().toISOString().split('T')[0]
+
+      let sessionsWithBlock = []
+      for (const block of activeBlocks) {
+        try {
+          const sRes = await api(`/course-blocks/${block.id}/sessions`)
+          const sessions = sRes.data || sRes
+          const upcoming = sessions.filter(s => s.date >= today && s.status === 'scheduled')
+          upcoming.forEach(s => sessionsWithBlock.push({ session: s, block }))
+        } catch(_) {}
+      }
+
+      sessionsWithBlock.sort((a,b) => a.session.date > b.session.date ? 1 : -1)
+
+      cc.innerHTML = `
+        <h3 class="text-lg font-bold text-gray-800 mb-4">Kommende Termine – Anwesenheit erfassen</h3>
+        <div class="space-y-3">
+          ${sessionsWithBlock.length === 0 ? '<div class="text-gray-400 text-center py-8">Keine anstehenden Termine.</div>' : ''}
+          ${sessionsWithBlock.slice(0, 20).map(({ session, block }) => {
+            const act = actMap[block.activityId]
+            const title = act ? act.title : block.activityType
+            return `
+              <div class="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+                <div class="flex justify-between items-center">
+                  <div>
+                    <div class="font-medium text-sm">${escapeHtml(title)}</div>
+                    <div class="text-xs text-gray-500">${fmtDate(session.date)} · ${session.startTime}–${session.endTime} Uhr · Termin #${session.sessionNumber}</div>
+                  </div>
+                  <button onclick="openAttendanceForSession('${session.id}', '${block.id}')" class="bg-brand-500 text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-brand-600">Anwesenheit</button>
+                </div>
+              </div>`
+          }).join('')}
+        </div>
+      `
+    }
+
+    // --- Anwesenheit für eine Session ---
+    async function openAttendanceForSession(sessionId, blockId) {
+      let attendance = [], enrollments = []
+      try {
+        const [aRes, eRes] = await Promise.all([
+          api(`/sessions/${sessionId}/attendance`),
+          api(`/course-blocks/${blockId}/enrollments`),
+        ])
+        attendance = aRes.data || aRes
+        enrollments = eRes.data || eRes
+      } catch(e) { console.error(e); return }
+
+      const attMap = {}
+      attendance.forEach(a => attMap[a.childId] = a)
+
+      const modal = document.getElementById('block-detail-modal') || document.createElement('div')
+      modal.id = 'block-detail-modal'
+      if (!document.getElementById('block-detail-modal')) document.getElementById('cb-content').appendChild(modal)
+
+      modal.className = 'fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4'
+      modal.innerHTML = `
+        <div class="bg-white rounded-2xl w-full max-w-md max-h-[80vh] overflow-y-auto shadow-2xl p-6">
+          <div class="flex justify-between items-center mb-4">
+            <h2 class="text-lg font-bold">Anwesenheit erfassen</h2>
+            <button onclick="document.getElementById('block-detail-modal').className='hidden'" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+          </div>
+          <div class="space-y-2">
+            ${enrollments.filter(e => e.status === 'active').map(enr => {
+              const att = attMap[enr.childId]
+              const currentStatus = att ? att.status : 'expected'
+              return `
+                <div class="flex justify-between items-center py-2 px-3 bg-gray-50 rounded-lg">
+                  <span class="font-medium text-sm">${escapeHtml(enr.childName)}</span>
+                  <select onchange="markAttendance('${sessionId}', '${enr.childId}', this.value)" class="text-sm border rounded-lg px-2 py-1">
+                    <option value="attended" ${currentStatus==='attended'?'selected':''}>Anwesend</option>
+                    <option value="absent_excused" ${currentStatus==='absent_excused'?'selected':''}>Entschuldigt</option>
+                    <option value="absent_unexcused" ${currentStatus==='absent_unexcused'?'selected':''}>Nicht erschienen</option>
+                    <option value="expected" ${currentStatus==='expected'?'selected':''}>Erwartet</option>
+                  </select>
+                </div>`
+            }).join('')}
+          </div>
+        </div>
+      `
+    }
+
+    async function markAttendance(sessionId, childId, status) {
+      try {
+        await api(`/sessions/${sessionId}/mark-attendance`, 'POST', { childId, status })
+      } catch(e) { console.error('Anwesenheit speichern fehlgeschlagen:', e) }
+    }
+
+    // --- Helper ---
+    function fmtDate(d) {
+      if (!d) return '–'
+      const [y,m,dd] = d.split('-')
+      return `${dd}.${m}.${y}`
     }
 
     // --- Embed / Widgets ---

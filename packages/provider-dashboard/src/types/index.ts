@@ -565,7 +565,7 @@ export interface WaitlistEntry {
 export interface WidgetConfig {
   id: ID
   providerId: ID
-  type: 'booking_button' | 'course_list' | 'calendar' | 'review_badge'
+  type: 'booking_button' | 'course_list' | 'calendar' | 'review_badge' | 'course_blocks' | 'parent_dashboard'
   theme: 'light' | 'dark' | 'auto'
   primaryColor?: string
   activityIds?: ID[]        // Beschränkung auf bestimmte Kurse
@@ -836,6 +836,127 @@ export interface MarketingCampaign {
     clicked: number
   }
   createdAt: Date
+}
+
+// --- Kursblöcke & Guthaben-System ---
+
+export type CourseBlockStatus = 'upcoming' | 'active' | 'completed' | 'cancelled'
+
+export type BlockSessionStatus = 'scheduled' | 'completed' | 'cancelled_by_provider' | 'cancelled_by_holiday'
+
+export type CompensationType = 'credit' | 'extension'
+
+export type AttendanceStatus = 'expected' | 'attended' | 'absent_excused' | 'absent_unexcused' | 'makeup'
+
+export type SessionCreditStatus = 'available' | 'used' | 'expired'
+
+export type CreditReason = 'parent_cancellation' | 'provider_cancellation'
+
+export type MakeupBookingStatus = 'confirmed' | 'attended' | 'no_show' | 'cancelled'
+
+export interface CourseBlock {
+  id: ID
+  providerId: ID
+  activityId: ID              // Der Kurs (z.B. "Little Movers Circle A")
+  activityType: string        // Kurstyp für Credit-Kompatibilität (z.B. "little_movers_circle")
+  seasonLabel: string         // z.B. "Block 1 – Mai/Juni 2026"
+  totalSessions: number       // Standard: 8
+  startDate: string           // ISO Date – erster Termin
+  endDate: string             // ISO Date – letzter regulärer Termin
+  extendedEndDate?: string    // Falls Block durch Provider-Absage verlängert wurde
+  recurringDay: DayOfWeek     // Tag der Woche
+  recurringTime: string       // "HH:mm"
+  durationMinutes: number     // 60
+  pricePerBlock: number       // 140.00
+  currency: Currency
+  capacity: number            // Reguläre Kapazität (z.B. 10)
+  makeupCapacity: number      // Zusätzliche Nachhol-Plätze (z.B. 2)
+  maxCreditsPerEnrollment: number  // Max Credits pro Kind pro Block (z.B. 2)
+  cancellationDeadlineMinutes: number  // Min. Minuten vor Kurs für Credit (z.B. 1440 = 24h)
+  status: CourseBlockStatus
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface BlockSession {
+  id: ID
+  blockId: ID
+  sessionNumber: number       // 1–8 (ggf. 9/10 bei Verlängerung)
+  date: string                // "YYYY-MM-DD"
+  startTime: string           // "HH:mm"
+  endTime: string             // "HH:mm"
+  status: BlockSessionStatus
+  cancellationReason?: string
+  compensationType?: CompensationType
+  createdAt: Date
+}
+
+export interface BlockEnrollment {
+  id: ID
+  blockId: ID
+  activityType: string        // Kopie von CourseBlock.activityType für schnellen Lookup
+  providerId: ID
+  parentId: ID
+  childId: string             // Referenz zum Kind
+  childName: string
+  childAge: number
+  bookingId?: ID              // Referenz zur Zahlung/Buchung
+  status: 'active' | 'cancelled' | 'completed'
+  pricePaid: number
+  currency: Currency
+  creditsEarned: number       // Zähler eigene Absagen: 0–maxCreditsPerEnrollment
+  creditsUsed: number
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface SessionAttendanceRecord {
+  id: ID
+  sessionId: ID
+  blockId: ID
+  enrollmentId: ID
+  childId: string
+  status: AttendanceStatus
+  cancelledAt?: Date
+  cancelledMinutesBefore?: number
+  creditIssued: boolean
+  isMakeup: boolean
+  makeupCreditId?: ID
+  createdAt: Date
+}
+
+export interface SessionCredit {
+  id: ID
+  enrollmentId: ID
+  blockId: ID
+  providerId: ID
+  parentId: ID
+  childId: string
+  activityType: string        // Credit nur einlösbar in gleichem Kurstyp
+  reason: CreditReason
+  isProviderCancellation: boolean  // Provider-Credits zählen NICHT gegen Limit
+  originalSessionId: ID
+  originalSessionDate: string
+  status: SessionCreditStatus
+  validUntil: string          // = block.endDate (oder extendedEndDate)
+  usedInSessionId?: ID
+  usedAt?: Date
+  createdAt: Date
+}
+
+export interface MakeupBooking {
+  id: ID
+  creditId: ID
+  targetBlockId: ID
+  targetSessionId: ID
+  providerId: ID
+  parentId: ID
+  childId: string
+  childName: string
+  status: MakeupBookingStatus
+  bookedBy: 'parent' | 'provider'
+  createdAt: Date
+  updatedAt: Date
 }
 
 // --- Audit Log (Compliance) ---

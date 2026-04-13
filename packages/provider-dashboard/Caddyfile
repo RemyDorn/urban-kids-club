@@ -1,0 +1,39 @@
+# ============================================================
+# Caddy – Reverse Proxy für Urban Kids Club Dashboard
+# Automatisches HTTPS via Let's Encrypt
+# ============================================================
+# WICHTIG: Vor dem ersten Deploy die Domain anpassen!
+# Option 1: DOMAIN=app.socialy.club docker compose up -d
+# Option 2: Direkt hier unten die Domain ändern
+# ============================================================
+
+{$DOMAIN:app.socialy.club} {
+	# Widget-Pfad: Embedding erlauben (kein X-Frame-Options)
+	handle /widget/* {
+		reverse_proxy dashboard:3000
+		header -X-Frame-Options
+		header Access-Control-Allow-Origin "*"
+	}
+
+	# Alles andere: Dashboard + API
+	handle {
+		reverse_proxy dashboard:3000
+
+		# Security Headers
+		header {
+			Strict-Transport-Security "max-age=31536000; includeSubDomains"
+			X-Content-Type-Options "nosniff"
+			X-Frame-Options "SAMEORIGIN"
+			Referrer-Policy "strict-origin-when-cross-origin"
+			Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'"
+		}
+	}
+
+	# Logging
+	log {
+		output file /data/access.log {
+			roll_size 10mb
+			roll_keep 5
+		}
+	}
+}

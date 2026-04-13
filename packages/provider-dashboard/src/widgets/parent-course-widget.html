@@ -1,0 +1,1220 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Socialy – Kurse & Buchung</title>
+<style>
+  /* ============================================================
+     Parent Course Widget – Socialy / Urban Kids Club
+     Einbettbar via iframe auf Squarespace oder jeder Website.
+     3 Views: Kursblock-Übersicht | Meine Kurse & Credits | Nachhol-Buchung
+     ============================================================ */
+
+  :root {
+    --primary: #F5A623;
+    --primary-hover: #E09010;
+    --bg: #FFFAF5;
+    --card-bg: #FFFFFF;
+    --text: #2D2D2D;
+    --text-muted: #6B7280;
+    --border: #E5E7EB;
+    --success: #10B981;
+    --warning: #F59E0B;
+    --danger: #EF4444;
+    --info: #3B82F6;
+    --radius: 12px;
+    --shadow: 0 2px 8px rgba(0,0,0,0.06);
+    --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  }
+
+  [data-theme="dark"] {
+    --bg: #1A1A2E;
+    --card-bg: #16213E;
+    --text: #F0F0F0;
+    --text-muted: #9CA3AF;
+    --border: #374151;
+    --shadow: 0 2px 8px rgba(0,0,0,0.3);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .widget-container {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 16px;
+  }
+
+  /* === Navigation Tabs === */
+  .tab-nav {
+    display: flex;
+    gap: 4px;
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    padding: 4px;
+    box-shadow: var(--shadow);
+    margin-bottom: 20px;
+    overflow-x: auto;
+  }
+
+  .tab-btn {
+    flex: 1;
+    padding: 10px 12px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 14px;
+    font-weight: 500;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+    font-family: var(--font);
+  }
+
+  .tab-btn.active {
+    background: var(--primary);
+    color: #fff;
+    font-weight: 600;
+  }
+
+  .tab-btn:hover:not(.active) {
+    background: rgba(245, 166, 35, 0.1);
+    color: var(--text);
+  }
+
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* === Cards === */
+  .card {
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    border: 1px solid var(--border);
+    margin-bottom: 16px;
+    overflow: hidden;
+  }
+
+  .card-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .card-body { padding: 16px 20px; }
+
+  .card-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .card-subtitle {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  /* === Status Badges === */
+  .badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+
+  .badge-active { background: #D1FAE5; color: #065F46; }
+  .badge-upcoming { background: #DBEAFE; color: #1E40AF; }
+  .badge-completed { background: #E5E7EB; color: #374151; }
+  .badge-available { background: #D1FAE5; color: #065F46; }
+  .badge-used { background: #FEE2E2; color: #991B1B; }
+  .badge-expired { background: #E5E7EB; color: #6B7280; }
+
+  /* === Course Block Card === */
+  .block-meta {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 12px;
+    margin-top: 12px;
+  }
+
+  .meta-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .meta-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 600;
+  }
+
+  .meta-value {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  /* === Session List === */
+  .session-list {
+    list-style: none;
+    margin-top: 12px;
+  }
+
+  .session-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .session-item:last-child { border-bottom: none; }
+
+  .session-date {
+    font-weight: 600;
+    font-size: 14px;
+  }
+
+  .session-time {
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+
+  .session-status {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 6px;
+  }
+
+  .status-scheduled { background: #DBEAFE; color: #1E40AF; }
+  .status-completed { background: #D1FAE5; color: #065F46; }
+  .status-cancelled { background: #FEE2E2; color: #991B1B; }
+  .status-attended { background: #D1FAE5; color: #065F46; }
+  .status-absent { background: #FEE2E2; color: #991B1B; }
+  .status-expected { background: #FEF3C7; color: #92400E; }
+
+  /* === Credits Section === */
+  .credits-summary {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .credit-stat {
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    padding: 16px;
+    text-align: center;
+    box-shadow: var(--shadow);
+    border: 1px solid var(--border);
+  }
+
+  .credit-stat-number {
+    font-size: 28px;
+    font-weight: 800;
+    line-height: 1;
+  }
+
+  .credit-stat-number.green { color: var(--success); }
+  .credit-stat-number.orange { color: var(--warning); }
+  .credit-stat-number.gray { color: var(--text-muted); }
+
+  .credit-stat-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 4px;
+    font-weight: 500;
+  }
+
+  /* === Credit Card === */
+  .credit-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .credit-card:last-child { border-bottom: none; }
+
+  .credit-info { flex: 1; }
+
+  .credit-type {
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .credit-detail {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  .credit-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  /* === Buttons === */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: var(--font);
+  }
+
+  .btn-primary {
+    background: var(--primary);
+    color: #fff;
+  }
+
+  .btn-primary:hover { background: var(--primary-hover); }
+
+  .btn-secondary {
+    background: transparent;
+    color: var(--primary);
+    border: 1.5px solid var(--primary);
+  }
+
+  .btn-secondary:hover {
+    background: rgba(245, 166, 35, 0.08);
+  }
+
+  .btn-sm {
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+
+  .btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* === Makeup Booking Modal === */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+
+  .modal-overlay.active {
+    display: flex;
+  }
+
+  .modal {
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    max-width: 500px;
+    width: 100%;
+    max-height: 80vh;
+    overflow-y: auto;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.2);
+  }
+
+  .modal-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .modal-title {
+    font-size: 18px;
+    font-weight: 700;
+  }
+
+  .modal-close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: var(--text-muted);
+    line-height: 1;
+  }
+
+  .modal-body { padding: 20px; }
+
+  .modal-footer {
+    padding: 16px 20px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  /* === Slot Picker === */
+  .slot-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .slot-option {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .slot-option:hover {
+    border-color: var(--primary);
+    background: rgba(245, 166, 35, 0.04);
+  }
+
+  .slot-option.selected {
+    border-color: var(--primary);
+    background: rgba(245, 166, 35, 0.1);
+  }
+
+  .slot-date {
+    font-weight: 600;
+    font-size: 14px;
+  }
+
+  .slot-course {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  .slot-capacity {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--success);
+  }
+
+  /* === Empty State === */
+  .empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-muted);
+  }
+
+  .empty-state-icon {
+    font-size: 48px;
+    margin-bottom: 12px;
+    opacity: 0.5;
+  }
+
+  .empty-state-text {
+    font-size: 15px;
+    font-weight: 500;
+  }
+
+  /* === Login Prompt === */
+  .login-prompt {
+    text-align: center;
+    padding: 40px 20px;
+  }
+
+  .login-prompt p {
+    color: var(--text-muted);
+    margin-bottom: 16px;
+    font-size: 15px;
+  }
+
+  /* === Notification Toast === */
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    background: #1F2937;
+    color: #fff;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    z-index: 2000;
+    transition: transform 0.3s ease;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+  }
+
+  .toast.visible {
+    transform: translateX(-50%) translateY(0);
+  }
+
+  /* === Expandable Toggle === */
+  .expand-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: none;
+    color: var(--primary);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 8px 0;
+    font-family: var(--font);
+  }
+
+  .expand-toggle .arrow {
+    transition: transform 0.2s;
+  }
+
+  .expand-toggle.open .arrow {
+    transform: rotate(90deg);
+  }
+
+  .sessions-collapse {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+  }
+
+  .sessions-collapse.open {
+    max-height: 2000px;
+  }
+
+  /* === Cancel Link === */
+  .cancel-link {
+    background: none;
+    border: none;
+    color: var(--danger);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: underline;
+    font-family: var(--font);
+  }
+
+  /* === Responsive === */
+  @media (max-width: 480px) {
+    .widget-container { padding: 8px; }
+    .block-meta { grid-template-columns: repeat(2, 1fr); }
+    .credits-summary { grid-template-columns: 1fr; }
+    .tab-btn { font-size: 13px; padding: 8px 6px; }
+  }
+
+  /* === Loading Spinner === */
+  .loading {
+    display: flex;
+    justify-content: center;
+    padding: 40px;
+  }
+
+  .spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid var(--border);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div class="widget-container" id="app">
+
+  <!-- Tab Navigation -->
+  <nav class="tab-nav">
+    <button class="tab-btn active" data-tab="courses" onclick="switchTab('courses')">Kursblöcke</button>
+    <button class="tab-btn" data-tab="my-courses" onclick="switchTab('my-courses')">Meine Kurse</button>
+    <button class="tab-btn" data-tab="credits" onclick="switchTab('credits')">Guthaben</button>
+  </nav>
+
+  <!-- ============================================================ -->
+  <!-- TAB 1: Kursblock-Übersicht (öffentlich) -->
+  <!-- ============================================================ -->
+  <div class="tab-panel active" id="tab-courses">
+    <div id="courses-loading" class="loading"><div class="spinner"></div></div>
+    <div id="courses-content"></div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- TAB 2: Meine Kurse (eingeloggt) -->
+  <!-- ============================================================ -->
+  <div class="tab-panel" id="tab-my-courses">
+    <div id="my-courses-content"></div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- TAB 3: Guthaben & Nachhol-Buchung -->
+  <!-- ============================================================ -->
+  <div class="tab-panel" id="tab-credits">
+    <div id="credits-content"></div>
+  </div>
+</div>
+
+<!-- Makeup Booking Modal -->
+<div class="modal-overlay" id="makeup-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Nachholtermin buchen</span>
+      <button class="modal-close" onclick="closeMakeupModal()">&times;</button>
+    </div>
+    <div class="modal-body" id="makeup-modal-body">
+      <div class="loading"><div class="spinner"></div></div>
+    </div>
+    <div class="modal-footer" id="makeup-modal-footer" style="display:none">
+      <button class="btn btn-secondary btn-sm" onclick="closeMakeupModal()">Abbrechen</button>
+      <button class="btn btn-primary btn-sm" id="btn-confirm-makeup" disabled onclick="confirmMakeupBooking()">
+        Nachholtermin buchen
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ============================================================
+// Urban Kids Club – Parent Course Widget
+// Kommuniziert mit dem Backend via REST API
+// ============================================================
+
+const API_BASE = window.UKC_API_BASE || '/api'
+const PROVIDER_SLUG = window.UKC_PROVIDER_SLUG || ''
+
+// State
+let currentParentId = window.UKC_PARENT_ID || null
+let currentTab = 'courses'
+let selectedSlotId = null
+let selectedCreditId = null
+
+// ============================================================
+// Tab Switching
+// ============================================================
+function switchTab(tab) {
+  currentTab = tab
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab))
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === `tab-${tab}`))
+
+  if (tab === 'courses') loadCourseBlocks()
+  if (tab === 'my-courses') loadMyCourses()
+  if (tab === 'credits') loadCredits()
+}
+
+// ============================================================
+// API Helper
+// ============================================================
+async function api(path, opts = {}) {
+  try {
+    const res = await fetch(`${API_BASE}${path}`, {
+      headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
+      ...opts,
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.error || `Fehler ${res.status}`)
+    }
+    return res.json()
+  } catch (e) {
+    console.error(`API Error [${path}]:`, e)
+    throw e
+  }
+}
+
+// ============================================================
+// TAB 1: Kursblock-Übersicht
+// ============================================================
+async function loadCourseBlocks() {
+  const container = document.getElementById('courses-content')
+  const loading = document.getElementById('courses-loading')
+  loading.style.display = 'flex'
+  container.innerHTML = ''
+
+  try {
+    // Öffentlicher Endpoint: alle aktiven/upcoming Blöcke des Providers
+    const blocks = await api(`/providers/${PROVIDER_SLUG}/course-blocks`)
+    loading.style.display = 'none'
+
+    const visible = blocks.filter(b => b.status === 'active' || b.status === 'upcoming')
+    if (visible.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-state-icon">📅</div>
+          <div class="empty-state-text">Aktuell sind keine Kursblöcke verfügbar.</div>
+        </div>`
+      return
+    }
+
+    container.innerHTML = visible.map(block => renderBlockCard(block)).join('')
+  } catch (e) {
+    loading.style.display = 'none'
+    container.innerHTML = `<div class="empty-state"><div class="empty-state-text">Kurse konnten nicht geladen werden.</div></div>`
+  }
+}
+
+function renderBlockCard(block) {
+  const statusBadge = {
+    active: '<span class="badge badge-active">Laufend</span>',
+    upcoming: '<span class="badge badge-upcoming">Demnächst</span>',
+  }[block.status] || ''
+
+  const dayNames = { mon: 'Montag', tue: 'Dienstag', wed: 'Mittwoch', thu: 'Donnerstag', fri: 'Freitag', sat: 'Samstag', sun: 'Sonntag' }
+  const day = dayNames[block.recurringDay] || block.recurringDay
+
+  const startFormatted = formatDate(block.startDate)
+  const endFormatted = formatDate(block.extendedEndDate || block.endDate)
+
+  const spotsLeft = block.capacity - (block._enrollmentCount || 0)
+  const spotsText = spotsLeft <= 0
+    ? '<span style="color:var(--danger);font-weight:700">Ausgebucht</span>'
+    : spotsLeft <= 3
+      ? `<span style="color:var(--warning);font-weight:700">Noch ${spotsLeft} Plätze</span>`
+      : `<span style="color:var(--success);font-weight:700">${spotsLeft} Plätze frei</span>`
+
+  return `
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">${esc(block._activityTitle || block.activityType)}</div>
+          <div class="card-subtitle">${esc(block.seasonLabel)}</div>
+        </div>
+        ${statusBadge}
+      </div>
+      <div class="card-body">
+        <div class="block-meta">
+          <div class="meta-item">
+            <span class="meta-label">Tag & Uhrzeit</span>
+            <span class="meta-value">${day}, ${block.recurringTime} Uhr</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label">Zeitraum</span>
+            <span class="meta-value">${startFormatted} – ${endFormatted}</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label">Termine</span>
+            <span class="meta-value">${block.totalSessions} Termine à ${block.durationMinutes} Min</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label">Preis</span>
+            <span class="meta-value">${block.pricePerBlock.toFixed(2).replace('.', ',')} €</span>
+          </div>
+        </div>
+
+        <div style="margin-top:16px; display:flex; justify-content:space-between; align-items:center;">
+          <div>${spotsText}</div>
+          ${spotsLeft > 0 && block.status !== 'completed'
+            ? `<button class="btn btn-primary btn-sm" onclick="startBooking('${block.id}')">Jetzt buchen</button>`
+            : spotsLeft <= 0
+              ? `<button class="btn btn-secondary btn-sm" onclick="joinWaitlist('${block.id}')">Auf Warteliste</button>`
+              : ''
+          }
+        </div>
+      </div>
+    </div>`
+}
+
+// ============================================================
+// TAB 2: Meine Kurse
+// ============================================================
+async function loadMyCourses() {
+  const container = document.getElementById('my-courses-content')
+
+  if (!currentParentId) {
+    container.innerHTML = `
+      <div class="login-prompt">
+        <div class="empty-state-icon" style="font-size:48px;opacity:0.5;margin-bottom:12px">🔐</div>
+        <p>Melde dich an, um deine gebuchten Kurse und Termine zu sehen.</p>
+        <button class="btn btn-primary" onclick="openLogin()">Anmelden</button>
+      </div>`
+    return
+  }
+
+  container.innerHTML = '<div class="loading"><div class="spinner"></div></div>'
+
+  try {
+    const enrollments = await api(`/enrollments/parent/${currentParentId}`)
+
+    if (enrollments.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-state-icon">📋</div>
+          <div class="empty-state-text">Du hast noch keine Kurse gebucht.</div>
+        </div>`
+      return
+    }
+
+    // Für jede Enrollment: Block-Infos und Sessions laden
+    const enriched = await Promise.all(enrollments.map(async (enr) => {
+      const [block, sessions] = await Promise.all([
+        api(`/course-blocks/${enr.blockId}`).catch(() => null),
+        api(`/course-blocks/${enr.blockId}/sessions`).catch(() => []),
+      ])
+      // Attendance für dieses Kind
+      const attendances = []
+      for (const sess of sessions) {
+        try {
+          const attList = await api(`/sessions/${sess.id}/attendance`)
+          const childAtt = attList.find(a => a.childId === enr.childId)
+          if (childAtt) attendances.push({ ...childAtt, sessionDate: sess.date, sessionTime: sess.startTime, sessionStatus: sess.status })
+        } catch (_) {}
+      }
+      return { enrollment: enr, block, sessions, attendances }
+    }))
+
+    container.innerHTML = enriched.map(({ enrollment, block, sessions, attendances }) => {
+      if (!block) return ''
+
+      const statusBadge = {
+        active: '<span class="badge badge-active">Aktiv</span>',
+        cancelled: '<span class="badge" style="background:#FEE2E2;color:#991B1B">Storniert</span>',
+        completed: '<span class="badge badge-completed">Abgeschlossen</span>',
+      }[enrollment.status] || ''
+
+      const creditsAvail = enrollment.creditsEarned - enrollment.creditsUsed
+      const creditsInfo = creditsAvail > 0
+        ? `<span class="badge badge-available">${creditsAvail} Guthaben verfügbar</span>`
+        : ''
+
+      const sessionsHtml = sessions.map(sess => {
+        const att = attendances.find(a => a.sessionId === sess.id)
+        let statusLabel = ''
+        let statusClass = ''
+
+        if (sess.status === 'cancelled_by_provider' || sess.status === 'cancelled_by_holiday') {
+          statusLabel = 'Ausgefallen'
+          statusClass = 'status-cancelled'
+        } else if (att) {
+          const map = {
+            attended: ['Teilgenommen', 'status-attended'],
+            absent_excused: ['Entschuldigt', 'status-cancelled'],
+            absent_unexcused: ['Nicht erschienen', 'status-absent'],
+            expected: ['Geplant', 'status-expected'],
+          }
+          ;[statusLabel, statusClass] = map[att.status] || ['', '']
+          if (att.isMakeup) statusLabel = '↩ Nachhol: ' + statusLabel
+        } else if (sess.status === 'scheduled') {
+          statusLabel = 'Geplant'
+          statusClass = 'status-scheduled'
+        } else if (sess.status === 'completed') {
+          statusLabel = 'Abgeschlossen'
+          statusClass = 'status-completed'
+        }
+
+        const canCancel = att && att.status === 'expected' && sess.status === 'scheduled' && !att.isMakeup && isFutureDate(sess.date)
+
+        return `
+          <li class="session-item">
+            <div>
+              <div class="session-date">${formatDate(sess.date)}</div>
+              <div class="session-time">${sess.startTime} – ${sess.endTime} Uhr</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="session-status ${statusClass}">${statusLabel}</span>
+              ${canCancel ? `<button class="cancel-link" onclick="cancelAttendance('${att.id}', '${enrollment.childName}', '${sess.date}')">Absagen</button>` : ''}
+            </div>
+          </li>`
+      }).join('')
+
+      const blockId = `sessions-${enrollment.id}`
+
+      return `
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">${esc(enrollment.childName)} – ${esc(block._activityTitle || block.activityType)}</div>
+              <div class="card-subtitle">${esc(block.seasonLabel)}</div>
+            </div>
+            <div style="display:flex;gap:6px;align-items:center">
+              ${creditsInfo}
+              ${statusBadge}
+            </div>
+          </div>
+          <div class="card-body">
+            <button class="expand-toggle" onclick="toggleSessions('${blockId}', this)">
+              <span class="arrow">▶</span> ${sessions.length} Termine anzeigen
+            </button>
+            <div class="sessions-collapse" id="${blockId}">
+              <ul class="session-list">${sessionsHtml}</ul>
+            </div>
+          </div>
+        </div>`
+    }).join('')
+  } catch (e) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-state-text">Fehler beim Laden deiner Kurse.</div></div>`
+  }
+}
+
+// ============================================================
+// TAB 3: Guthaben & Nachhol-Buchung
+// ============================================================
+async function loadCredits() {
+  const container = document.getElementById('credits-content')
+
+  if (!currentParentId) {
+    container.innerHTML = `
+      <div class="login-prompt">
+        <div class="empty-state-icon" style="font-size:48px;opacity:0.5;margin-bottom:12px">🎟️</div>
+        <p>Melde dich an, um dein Guthaben und Nachholtermine zu sehen.</p>
+        <button class="btn btn-primary" onclick="openLogin()">Anmelden</button>
+      </div>`
+    return
+  }
+
+  container.innerHTML = '<div class="loading"><div class="spinner"></div></div>'
+
+  try {
+    const [credits, makeups] = await Promise.all([
+      api(`/credits/parent/${currentParentId}`),
+      api(`/makeup-bookings/parent/${currentParentId}`),
+    ])
+
+    const available = credits.filter(c => c.status === 'available')
+    const used = credits.filter(c => c.status === 'used')
+    const expired = credits.filter(c => c.status === 'expired')
+
+    const upcomingMakeups = makeups.filter(m => m.status === 'confirmed')
+
+    let html = `
+      <div class="credits-summary">
+        <div class="credit-stat">
+          <div class="credit-stat-number green">${available.length}</div>
+          <div class="credit-stat-label">Verfügbar</div>
+        </div>
+        <div class="credit-stat">
+          <div class="credit-stat-number orange">${used.length}</div>
+          <div class="credit-stat-label">Eingelöst</div>
+        </div>
+        <div class="credit-stat">
+          <div class="credit-stat-number gray">${expired.length}</div>
+          <div class="credit-stat-label">Abgelaufen</div>
+        </div>
+      </div>`
+
+    // Verfügbare Credits
+    if (available.length > 0) {
+      html += `
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Verfügbare Guthaben</div>
+          </div>
+          ${available.map(credit => `
+            <div class="credit-card">
+              <div class="credit-info">
+                <div class="credit-type">${esc(credit.activityType.replace(/_/g, ' '))}</div>
+                <div class="credit-detail">
+                  ${credit.isProviderCancellation ? 'Kurs ausgefallen' : 'Eigene Absage'}
+                  am ${formatDate(credit.originalSessionDate)}
+                  · Gültig bis ${formatDate(credit.validUntil)}
+                </div>
+              </div>
+              <div class="credit-actions">
+                <span class="badge badge-available">Verfügbar</span>
+                <button class="btn btn-primary btn-sm" onclick="openMakeupModal('${credit.id}')">
+                  Nachholen
+                </button>
+              </div>
+            </div>
+          `).join('')}
+        </div>`
+    }
+
+    // Gebuchte Nachholtermine
+    if (upcomingMakeups.length > 0) {
+      html += `
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Gebuchte Nachholtermine</div>
+          </div>
+          ${upcomingMakeups.map(m => `
+            <div class="credit-card">
+              <div class="credit-info">
+                <div class="credit-type">${esc(m.childName)}</div>
+                <div class="credit-detail">
+                  Nachholtermin am ${formatDate(m._targetDate || '')} um ${m._targetTime || ''} Uhr
+                </div>
+              </div>
+              <div class="credit-actions">
+                <span class="badge badge-upcoming">Gebucht</span>
+                <button class="cancel-link" onclick="cancelMakeup('${m.id}')">Stornieren</button>
+              </div>
+            </div>
+          `).join('')}
+        </div>`
+    }
+
+    // Vergangene Credits
+    if (used.length > 0 || expired.length > 0) {
+      const past = [...used, ...expired].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      html += `
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Vergangene Guthaben</div>
+          </div>
+          ${past.slice(0, 10).map(credit => `
+            <div class="credit-card">
+              <div class="credit-info">
+                <div class="credit-type">${esc(credit.activityType.replace(/_/g, ' '))}</div>
+                <div class="credit-detail">
+                  ${credit.isProviderCancellation ? 'Kurs ausgefallen' : 'Eigene Absage'}
+                  am ${formatDate(credit.originalSessionDate)}
+                </div>
+              </div>
+              <span class="badge ${credit.status === 'used' ? 'badge-used' : 'badge-expired'}">
+                ${credit.status === 'used' ? 'Eingelöst' : 'Abgelaufen'}
+              </span>
+            </div>
+          `).join('')}
+        </div>`
+    }
+
+    if (credits.length === 0 && makeups.length === 0) {
+      html += `
+        <div class="empty-state">
+          <div class="empty-state-icon">🎟️</div>
+          <div class="empty-state-text">Du hast aktuell kein Guthaben. Guthaben erhältst du bei rechtzeitiger Absage (24h vorher) oder wenn ein Kurs ausfällt.</div>
+        </div>`
+    }
+
+    container.innerHTML = html
+  } catch (e) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-state-text">Fehler beim Laden deiner Guthaben.</div></div>`
+  }
+}
+
+// ============================================================
+// Makeup Modal – Verfügbare Slots laden
+// ============================================================
+async function openMakeupModal(creditId) {
+  selectedCreditId = creditId
+  selectedSlotId = null
+  const modal = document.getElementById('makeup-modal')
+  const body = document.getElementById('makeup-modal-body')
+  const footer = document.getElementById('makeup-modal-footer')
+  const confirmBtn = document.getElementById('btn-confirm-makeup')
+
+  modal.classList.add('active')
+  footer.style.display = 'none'
+  confirmBtn.disabled = true
+  body.innerHTML = '<div class="loading"><div class="spinner"></div></div>'
+
+  try {
+    const slots = await api(`/credits/${creditId}/available-slots`)
+
+    if (slots.length === 0) {
+      body.innerHTML = `
+        <div class="empty-state" style="padding:20px 0">
+          <div class="empty-state-icon" style="font-size:36px">😔</div>
+          <div class="empty-state-text">Aktuell keine verfügbaren Nachholtermine für diesen Kurstyp.</div>
+        </div>`
+      return
+    }
+
+    footer.style.display = 'flex'
+
+    body.innerHTML = `
+      <p style="margin-bottom:12px;font-size:14px;color:var(--text-muted)">
+        Wähle einen freien Termin zum Nachholen:
+      </p>
+      <div class="slot-grid">
+        ${slots.map(slot => `
+          <div class="slot-option" data-slot="${slot.sessionId}" onclick="selectSlot('${slot.sessionId}', this)">
+            <div>
+              <div class="slot-date">${formatDate(slot.date)} um ${slot.startTime} Uhr</div>
+              <div class="slot-course">${esc(slot.blockLabel || slot.activityType)}</div>
+            </div>
+            <div class="slot-capacity">${slot.spotsLeft} Plätze frei</div>
+          </div>
+        `).join('')}
+      </div>`
+  } catch (e) {
+    body.innerHTML = `<div class="empty-state"><div class="empty-state-text">Fehler beim Laden der Termine.</div></div>`
+  }
+}
+
+function selectSlot(slotId, el) {
+  selectedSlotId = slotId
+  document.querySelectorAll('.slot-option').forEach(s => s.classList.remove('selected'))
+  el.classList.add('selected')
+  document.getElementById('btn-confirm-makeup').disabled = false
+}
+
+async function confirmMakeupBooking() {
+  if (!selectedCreditId || !selectedSlotId) return
+
+  const btn = document.getElementById('btn-confirm-makeup')
+  btn.disabled = true
+  btn.textContent = 'Wird gebucht...'
+
+  try {
+    await api(`/credits/${selectedCreditId}/book-makeup`, {
+      method: 'POST',
+      body: JSON.stringify({ targetSessionId: selectedSlotId, bookedBy: 'parent' }),
+    })
+
+    closeMakeupModal()
+    showToast('Nachholtermin erfolgreich gebucht!')
+    loadCredits()
+  } catch (e) {
+    showToast(e.message || 'Fehler bei der Buchung', true)
+    btn.disabled = false
+    btn.textContent = 'Nachholtermin buchen'
+  }
+}
+
+function closeMakeupModal() {
+  document.getElementById('makeup-modal').classList.remove('active')
+  selectedSlotId = null
+  selectedCreditId = null
+}
+
+// ============================================================
+// Cancel Actions
+// ============================================================
+async function cancelAttendance(attendanceId, childName, date) {
+  if (!confirm(`${childName} für den ${formatDate(date)} absagen?\n\nBei Absage mehr als 24h vorher erhältst du ein Guthaben zum Nachholen.`)) return
+
+  try {
+    await api(`/attendance/${attendanceId}/cancel`, { method: 'POST' })
+    showToast('Termin wurde abgesagt.')
+    loadMyCourses()
+  } catch (e) {
+    showToast(e.message || 'Fehler bei der Absage', true)
+  }
+}
+
+async function cancelMakeup(makeupId) {
+  if (!confirm('Nachholtermin wirklich stornieren?\n\nDein Guthaben wird wiederhergestellt.')) return
+
+  try {
+    await api(`/makeup-bookings/${makeupId}`, { method: 'DELETE' })
+    showToast('Nachholtermin storniert. Guthaben wiederhergestellt.')
+    loadCredits()
+  } catch (e) {
+    showToast(e.message || 'Fehler beim Stornieren', true)
+  }
+}
+
+// ============================================================
+// Booking & Waitlist Placeholder
+// ============================================================
+function startBooking(blockId) {
+  // In Phase 1: Redirect zu Acuity oder direkte Buchung
+  // In Phase 2: Urban Kids Club Checkout
+  if (window.UKC_BOOKING_URL) {
+    window.open(`${window.UKC_BOOKING_URL}?block=${blockId}`, '_blank')
+  } else {
+    showToast('Buchung wird vorbereitet...')
+    // TODO: Inline Checkout oder Redirect
+  }
+}
+
+function joinWaitlist(blockId) {
+  if (!currentParentId) {
+    openLogin()
+    return
+  }
+  showToast('Du wurdest auf die Warteliste gesetzt!')
+  // TODO: API call
+}
+
+function openLogin() {
+  // Parent-Login Flow – wird vom Host konfiguriert
+  if (window.UKC_LOGIN_URL) {
+    window.location.href = window.UKC_LOGIN_URL
+  } else {
+    showToast('Login wird eingerichtet...')
+  }
+}
+
+// ============================================================
+// Helpers
+// ============================================================
+function toggleSessions(id, btn) {
+  const el = document.getElementById(id)
+  el.classList.toggle('open')
+  btn.classList.toggle('open')
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return '–'
+  const [y, m, d] = dateStr.split('-')
+  return `${d}.${m}.${y}`
+}
+
+function isFutureDate(dateStr) {
+  return dateStr > new Date().toISOString().split('T')[0]
+}
+
+function esc(str) {
+  const div = document.createElement('div')
+  div.textContent = str || ''
+  return div.innerHTML
+}
+
+function showToast(msg, isError = false) {
+  const toast = document.getElementById('toast')
+  toast.textContent = msg
+  toast.style.background = isError ? 'var(--danger)' : '#1F2937'
+  toast.classList.add('visible')
+  setTimeout(() => toast.classList.remove('visible'), 3000)
+}
+
+// ============================================================
+// Init
+// ============================================================
+document.addEventListener('DOMContentLoaded', () => {
+  // Theme von URL lesen
+  const params = new URLSearchParams(window.location.search)
+  if (params.get('theme') === 'dark') document.documentElement.dataset.theme = 'dark'
+  if (params.get('color')) document.documentElement.style.setProperty('--primary', params.get('color'))
+  if (params.get('parentId')) currentParentId = params.get('parentId')
+  if (params.get('provider')) window.UKC_PROVIDER_SLUG = params.get('provider')
+
+  // Tab von URL
+  const tab = params.get('tab')
+  if (tab && ['courses', 'my-courses', 'credits'].includes(tab)) {
+    switchTab(tab)
+  } else {
+    loadCourseBlocks()
+  }
+})
+
+// PostMessage API für Host-Kommunikation (Squarespace etc.)
+window.addEventListener('message', (e) => {
+  if (e.data?.type === 'ukc-auth') {
+    currentParentId = e.data.parentId
+    if (currentTab === 'my-courses') loadMyCourses()
+    if (currentTab === 'credits') loadCredits()
+  }
+})
+</script>
+
+</body>
+</html>

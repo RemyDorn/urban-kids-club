@@ -32,6 +32,11 @@ export { EInvoiceService } from './einvoice.service'
 export { BuTVoucherService } from './but-voucher.service'
 export { ContractService } from './contract.service'
 
+// Kursblöcke & Guthaben-System
+export { CourseBlockService } from './course-block.service'
+export { SessionCreditService } from './session-credit.service'
+export { MakeupBookingService } from './makeup-booking.service'
+
 // Shared Helpers & Validierung
 export { createNotification, createAuditEntry, calcDocumentStatus, getEntitiesFromIndex } from './helpers'
 export { Validators, WAITLIST_SIGNAL } from './validators'

@@ -95,14 +95,27 @@ export const WidgetService = {
       course_list: { width: '100%', height: '600' },
       calendar: { width: '100%', height: '500' },
       review_badge: { width: '200', height: '80' },
+      course_blocks: { width: '100%', height: '700' },
+      parent_dashboard: { width: '100%', height: '800' },
     }
 
     const size = widgetTypes[widget.type] ?? { width: '100%', height: '400' }
 
+    // course_blocks und parent_dashboard nutzen das Parent-Widget mit Tab-Parameter
+    const isParentWidget = widget.type === 'course_blocks' || widget.type === 'parent_dashboard'
+    const embedPath = isParentWidget ? 'widget' : 'embed'
+
+    // Tab-Default: course_blocks → "courses", parent_dashboard → "my-courses"
+    if (isParentWidget) {
+      const defaultTab = widget.type === 'course_blocks' ? 'courses' : 'my-courses'
+      params.set('tab', defaultTab)
+      params.set('provider', slug)
+    }
+
     return [
       `<!-- Urban Kids Club Widget – ${widget.type} -->`,
       `<iframe`,
-      `  src="https://urbankidsclub.de/embed/${slug}?${params.toString()}"`,
+      `  src="https://urbankidsclub.de/${embedPath}/${slug}?${params.toString()}"`,
       `  width="${size.width}"`,
       `  height="${size.height}"`,
       `  frameborder="0"`,

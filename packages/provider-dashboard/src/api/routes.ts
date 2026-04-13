@@ -35,6 +35,9 @@ import {
   EInvoiceService,
   BuTVoucherService,
   ContractService,
+  CourseBlockService,
+  SessionCreditService,
+  MakeupBookingService,
 } from '../services'
 import { TrialConversionWorkflow, WaitlistConversionWorkflow, BackgroundJobs } from '../services/workflows'
 
@@ -957,6 +960,319 @@ export function registerRoutes(router: Router) {
   // ============================================================
   // HEALTH CHECK
   // ============================================================
+
+  // ============================================================
+  // COURSE BLOCKS & GUTHABEN-SYSTEM
+  // ============================================================
+
+  // --- Course Blocks ---
+
+  router.post('/api/course-blocks', async (req, res) => {
+    if (!requireAuth(req, res)) return
+    const result = CourseBlockService.createBlock(req.body)
+    if ('error' in result) return res.error(400, result.error)
+    res.status(201).json({ data: result })
+  })
+
+  router.get('/api/course-blocks/:id', (req, res) => {
+    const block = CourseBlockService.getBlock(req.params.id)
+    if (!block) return res.error(404, 'Block nicht gefunden')
+    res.json({ data: block })
+  })
+
+  router.get('/api/providers/:id/course-blocks', (req, res) => {
+    const blocks = CourseBlockService.getBlocksByProvider(req.params.id)
+    res.json({ data: blocks, count: blocks.length })
+  })
+
+  router.get('/api/course-blocks/by-type/:activityType', (req, res) => {
+    const activeOnly = req.query.activeOnly === 'true'
+    const blocks = CourseBlockService.getBlocksByActivityType(req.params.activityType, activeOnly)
+    res.json({ data: blocks, count: blocks.length })
+  })
+
+  // --- Block Sessions ---
+
+  router.get('/api/course-blocks/:id/sessions', (req, res) => {
+    const sessions = CourseBlockService.getSessionsByBlock(req.params.id)
+    res.json({ data: sessions, count: sessions.length })
+  })
+
+  router.get('/api/sessions/:id', (req, res) => {
+    const session = CourseBlockService.getSession(req.params.id)
+    if (!session) return res.error(404, 'Session nicht gefunden')
+    res.json({ data: session })
+  })
+
+  router.post('/api/sessions/:id/cancel', async (req, res) => {
+    if (!requireAuth(req, res)) return
+    const result = CourseBlockService.cancelSession({
+      sessionId: req.params.id,
+      reason: req.body.reason,
+      compensation: req.body.compensation,
+      cancelledBy: req.body.cancelledBy ?? 'provider',
+    })
+    if ('error' in result) return res.error(400, result.error)
+    res.json({ data: result })
+  })
+
+  // --- Block Enrollments ---
+
+  router.post('/api/course-blocks/:id/enroll', async (req, res) => {
+    if (!requireAuth(req, res)) return
+    const result = CourseBlockService.enrollChild({
+      blockId: req.params.id,
+      ...req.body,
+    })
+    if ('error' in result) return res.error(400, result.error)
+    res.status(201).json({ data: result })
+  })
+
+  router.get('/api/course-blocks/:id/enrollments', (req, res) => {
+    const enrollments = CourseBlockService.getEnrollmentsByBlock(req.params.id)
+    res.json({ data: enrollments, count: enrollments.length })
+  })
+
+  router.get('/api/parents/:id/enrollments', (req, res) => {
+    const enrollments = CourseBlockService.getEnrollmentsByParent(req.params.id)
+    res.json({ data: enrollments, count: enrollments.length })
+  })
+
+  router.get('/api/children/:id/enrollments', (req, res) => {
+    const enrollments = CourseBlockService.getEnrollmentsByChild(req.params.id)
+    res.json({ data: enrollments, count: enrollments.length })
+  })
+
+  // --- Session Attendance ---
+
+  router.get('/api/sessions/:id/attendance', (req, res) => {
+    const attendance = CourseBlockService.getAttendanceBySession(req.params.id)
+    res.json({ data: attendance, count: attendance.length })
+  })
+
+  router.post('/api/sessions/:id/mark-attendance', async (req, res) => {
+    if (!requireAuth(req, res)) return
+    const result = CourseBlockService.markAttendance(req.body.attendanceId, req.body.status)
+    if ('error' in result) return res.error(400, result.error)
+    res.json({ data: result })
+  })
+
+  // --- Eltern-Absage (triggert Credit-Prüfung) ---
+
+  router.post('/api/attendance/:id/cancel', async (req, res) => {
+    if (!requireAuth(req, res)) return
+    const result = SessionCreditService.handleParentCancellation(req.params.id)
+    if ('error' in result) return res.error(400, result.error)
+    res.json({ data: result })
+  })
+
+  // --- Session Credits ---
+
+  router.get('/api/children/:id/credits', (req, res) => {
+    const status = req.query.status as any
+    const credits = SessionCreditService.getCreditsByChild(req.params.id, status)
+    res.json({ data: credits, count: credits.length })
+  })
+
+  router.get('/api/parents/:id/credits', (req, res) => {
+    const status = req.query.status as any
+    const credits = SessionCreditService.getCreditsByParent(req.params.id, status)
+    res.json({ data: credits, count: credits.length })
+  })
+
+  router.get('/api/credits/:id', (req, res) => {
+    const credit = SessionCreditService.getCredit(req.params.id)
+    if (!credit) return res.error(404, 'Guthaben nicht gefunden')
+    res.json({ data: credit })
+  })
+
+  // Verfügbare Nachhol-Slots für ein Guthaben
+  router.get('/api/credits/:id/available-slots', (req, res) => {
+    const credit = SessionCreditService.getCredit(req.params.id)
+    if (!credit) return res.error(404, 'Guthaben nicht gefunden')
+    if (credit.status !== 'available') return res.error(400, 'Guthaben ist nicht verfügbar')
+    const slots = CourseBlockService.getAvailableMakeupSlots(
+      credit.activityType,
+      credit.validUntil,
+      credit.blockId
+    )
+    res.json({ data: slots, count: slots.length })
+  })
+
+  // Manuell Credit ausstellen (Admin / Kulanz)
+  router.post('/api/credits/manual', async (req, res) => {
+    if (!requireAuth(req, res)) return
+    const result = SessionCreditService.issueManualCredit(req.body)
+    if ('error' in result) return res.error(400, result.error)
+    res.status(201).json({ data: result })
+  })
+
+  // --- Makeup Bookings ---
+
+  router.post('/api/credits/:id/book-makeup', async (req, res) => {
+    if (!requireAuth(req, res)) return
+    const result = MakeupBookingService.bookMakeup({
+      creditId: req.params.id,
+      targetSessionId: req.body.targetSessionId,
+      bookedBy: req.body.bookedBy ?? 'parent',
+      overrideCapacity: req.body.overrideCapacity,
+    })
+    if ('error' in result) return res.error(400, result.error)
+    res.status(201).json({ data: result })
+  })
+
+  router.delete('/api/makeup-bookings/:id', async (req, res) => {
+    if (!requireAuth(req, res)) return
+    const cancelledBy = (req.query.cancelledBy as 'parent' | 'provider') ?? 'parent'
+    const result = MakeupBookingService.cancelMakeup(req.params.id, cancelledBy)
+    if ('error' in result) return res.error(400, result.error)
+    res.json({ data: result })
+  })
+
+  router.post('/api/makeup-bookings/:id/attendance', async (req, res) => {
+    if (!requireAuth(req, res)) return
+    const result = MakeupBookingService.markMakeupAttendance(req.params.id, req.body.status)
+    if ('error' in result) return res.error(400, result.error)
+    res.json({ data: result })
+  })
+
+  router.get('/api/children/:id/makeup-bookings', (req, res) => {
+    const makeups = MakeupBookingService.getMakeupsByChild(req.params.id)
+    res.json({ data: makeups, count: makeups.length })
+  })
+
+  router.get('/api/parents/:id/makeup-bookings', (req, res) => {
+    const makeups = MakeupBookingService.getMakeupsByParent(req.params.id)
+    res.json({ data: makeups, count: makeups.length })
+  })
+
+  router.get('/api/makeup-bookings/:id', (req, res) => {
+    const makeup = MakeupBookingService.getMakeup(req.params.id)
+    if (!makeup) return res.error(404, 'Nachholtermin nicht gefunden')
+    res.json({ data: makeup })
+  })
+
+  // --- Background Jobs (Cronjobs) ---
+
+  router.post('/api/admin/blocks/update-statuses', async (req, res) => {
+    if (!requireAuth(req, res)) return
+    const result = CourseBlockService.updateBlockStatuses()
+    res.json({ data: result })
+  })
+
+  router.post('/api/admin/credits/expire', async (req, res) => {
+    if (!requireAuth(req, res)) return
+    const expired = SessionCreditService.expireCredits()
+    res.json({ data: { expired } })
+  })
+
+  router.post('/api/admin/credits/send-reminders', async (req, res) => {
+    if (!requireAuth(req, res)) return
+    const sent = SessionCreditService.sendExpiryReminders()
+    res.json({ data: { sent } })
+  })
+
+  // --- Block Extension (Provider verlängert Block manuell) ---
+
+  router.post('/api/course-blocks/:id/extend', async (req, res) => {
+    if (!requireAuth(req, res)) return
+    const additionalSessions = req.body.additionalSessions ?? 1
+    const result = CourseBlockService.extendBlock(req.params.id, additionalSessions)
+    if ('error' in result) return res.error(400, result.error)
+    res.json({ data: result, count: result.length })
+  })
+
+  // ============================================================
+  // PUBLIC WIDGET ENDPOINTS (kein Auth – für Eltern-Widget auf Squarespace)
+  // ============================================================
+  // Diese Endpoints liefern angereicherte Daten für das eingebettete Widget.
+  // Keine sensiblen Provider-Daten – nur öffentliche Kursinfos + elternbezogene Daten.
+
+  // Öffentlich: Kursblöcke eines Providers mit Enrollment-Count + Activity-Titel
+  router.get('/api/widget/providers/:slug/course-blocks', (req, res) => {
+    const slug = req.params.slug
+    // Provider by slug oder ID
+    const { store: storeRef } = require('../domain/store')
+    let providerId = slug
+    for (const [id, provider] of storeRef.state.providers.entries()) {
+      if (provider.slug === slug) { providerId = id; break }
+    }
+
+    const blocks = CourseBlockService.getBlocksByProvider(providerId)
+    const enriched = blocks.map((block: any) => {
+      // Activity-Titel holen
+      const activity = storeRef.state.activities.get(block.activityId)
+      // Enrollment-Count berechnen
+      const enrollmentIds = storeRef.getFromIndex(storeRef.indexes.enrollmentsByBlock, block.id)
+      const enrollmentCount = Array.from(enrollmentIds as Set<string>).filter(eId => {
+        const enr = storeRef.state.blockEnrollments.get(eId)
+        return enr && enr.status === 'active'
+      }).length
+
+      return {
+        ...block,
+        _activityTitle: activity?.title ?? block.activityType,
+        _enrollmentCount: enrollmentCount,
+      }
+    })
+
+    res.json({ data: enriched, count: enriched.length })
+  })
+
+  // Eltern: Enrollments mit Block-Info
+  router.get('/api/widget/enrollments/parent/:parentId', (req, res) => {
+    const enrollments = CourseBlockService.getEnrollmentsByParent(req.params.parentId)
+    res.json({ data: enrollments, count: enrollments.length })
+  })
+
+  // Eltern: Credits
+  router.get('/api/widget/credits/parent/:parentId', (req, res) => {
+    const credits = SessionCreditService.getCreditsByParent(req.params.parentId)
+    res.json({ data: credits, count: credits.length })
+  })
+
+  // Eltern: Makeup-Bookings mit Session-Infos angereichert
+  router.get('/api/widget/makeup-bookings/parent/:parentId', (req, res) => {
+    const makeups = MakeupBookingService.getMakeupsByParent(req.params.parentId)
+    const { store: storeRef } = require('../domain/store')
+
+    const enriched = makeups.map((m: any) => {
+      const session = storeRef.state.blockSessions.get(m.targetSessionId)
+      return {
+        ...m,
+        _targetDate: session?.date ?? '',
+        _targetTime: session?.startTime ?? '',
+      }
+    })
+
+    res.json({ data: enriched, count: enriched.length })
+  })
+
+  // Eltern: Verfügbare Makeup-Slots (mit Block-Label angereichert)
+  router.get('/api/widget/credits/:id/available-slots', (req, res) => {
+    const credit = SessionCreditService.getCredit(req.params.id)
+    if (!credit) return res.error(404, 'Guthaben nicht gefunden')
+    if (credit.status !== 'available') return res.error(400, 'Guthaben ist nicht verfügbar')
+
+    const slots = CourseBlockService.getAvailableMakeupSlots(
+      credit.activityType,
+      credit.validUntil,
+      credit.blockId
+    )
+
+    // Block-Label anreichern
+    const { store: storeRef } = require('../domain/store')
+    const enriched = slots.map((slot: any) => {
+      const block = storeRef.state.courseBlocks.get(slot.blockId)
+      const activity = block ? storeRef.state.activities.get(block.activityId) : null
+      return {
+        ...slot,
+        blockLabel: `${activity?.title ?? block?.activityType ?? ''} – ${block?.seasonLabel ?? ''}`,
+      }
+    })
+
+    res.json({ data: enriched, count: enriched.length })
+  })
 
   // ============================================================
   // OPENAPI SPEC

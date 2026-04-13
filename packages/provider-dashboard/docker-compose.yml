@@ -1,0 +1,58 @@
+# ============================================================
+# Urban Kids Club – Docker Compose
+# Provider Dashboard + Caddy Reverse Proxy
+# ============================================================
+# Deployment: docker compose up -d
+# Logs:       docker compose logs -f dashboard
+# Update:     docker compose pull && docker compose up -d
+# ============================================================
+
+services:
+  # ---- Provider Dashboard (Node.js + TypeScript) ----
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ukc-dashboard
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DATA_DIR=/app/data
+      - SAVE_INTERVAL=30000
+    volumes:
+      # Persistente Daten auf dem Host
+      - dashboard-data:/app/data
+    networks:
+      - ukc-network
+    # Kein Port-Expose nach außen – nur über Caddy erreichbar
+
+  # ---- Caddy Reverse Proxy (automatisches HTTPS) ----
+  caddy:
+    image: caddy:2-alpine
+    container_name: ukc-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"  # HTTP/3
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - ukc-network
+    depends_on:
+      - dashboard
+
+volumes:
+  dashboard-data:
+    driver: local
+  caddy-data:
+    driver: local
+  caddy-config:
+    driver: local
+
+networks:
+  ukc-network:
+    driver: bridge

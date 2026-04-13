@@ -37,6 +37,12 @@ import type {
   EInvoice,
   BuTVoucher,
   InstructorContract,
+  CourseBlock,
+  BlockSession,
+  BlockEnrollment,
+  SessionAttendanceRecord,
+  SessionCredit,
+  MakeupBooking,
 } from '../types'
 
 export interface StoreState {
@@ -73,6 +79,14 @@ export interface StoreState {
   eInvoices: Map<ID, EInvoice>
   butVouchers: Map<ID, BuTVoucher>
   instructorContracts: Map<ID, InstructorContract>
+
+  // Kursblöcke & Guthaben-System
+  courseBlocks: Map<ID, CourseBlock>
+  blockSessions: Map<ID, BlockSession>
+  blockEnrollments: Map<ID, BlockEnrollment>
+  sessionAttendances: Map<ID, SessionAttendanceRecord>
+  sessionCredits: Map<ID, SessionCredit>
+  makeupBookings: Map<ID, MakeupBooking>
 }
 
 // --- Sekundärindizes für schnelle Lookups ---
@@ -137,6 +151,28 @@ export interface StoreIndexes {
   butVouchersByParent: Map<ID, Set<ID>>
   contractsByProvider: Map<ID, Set<ID>>
   contractsByTeamMember: Map<ID, Set<ID>>
+
+  // Kursblöcke & Guthaben-System
+  blocksByProvider: Map<ID, Set<ID>>
+  blocksByActivity: Map<ID, Set<ID>>
+  blocksByActivityType: Map<string, Set<ID>>
+  sessionsByBlock: Map<ID, Set<ID>>
+  sessionsByDate: Map<string, Set<ID>>
+  enrollmentsByBlock: Map<ID, Set<ID>>
+  enrollmentsByChild: Map<string, Set<ID>>
+  enrollmentsByParent: Map<ID, Set<ID>>
+  enrollmentsByProvider: Map<ID, Set<ID>>
+  sessionAttendancesBySession: Map<ID, Set<ID>>
+  sessionAttendancesByChild: Map<string, Set<ID>>
+  sessionAttendancesByEnrollment: Map<ID, Set<ID>>
+  creditsByChild: Map<string, Set<ID>>
+  creditsByBlock: Map<ID, Set<ID>>
+  creditsByEnrollment: Map<ID, Set<ID>>
+  creditsByProvider: Map<ID, Set<ID>>
+  creditsByActivityType: Map<string, Set<ID>>
+  makeupsByCredit: Map<ID, Set<ID>>
+  makeupsBySession: Map<ID, Set<ID>>
+  makeupsByChild: Map<string, Set<ID>>
 }
 
 class Store {
@@ -177,6 +213,14 @@ class Store {
       eInvoices: new Map(),
       butVouchers: new Map(),
       instructorContracts: new Map(),
+
+      // Kursblöcke & Guthaben-System
+      courseBlocks: new Map(),
+      blockSessions: new Map(),
+      blockEnrollments: new Map(),
+      sessionAttendances: new Map(),
+      sessionCredits: new Map(),
+      makeupBookings: new Map(),
     }
 
     this.indexes = {
@@ -236,6 +280,28 @@ class Store {
       butVouchersByParent: new Map(),
       contractsByProvider: new Map(),
       contractsByTeamMember: new Map(),
+
+      // Kursblöcke & Guthaben-System
+      blocksByProvider: new Map(),
+      blocksByActivity: new Map(),
+      blocksByActivityType: new Map(),
+      sessionsByBlock: new Map(),
+      sessionsByDate: new Map(),
+      enrollmentsByBlock: new Map(),
+      enrollmentsByChild: new Map(),
+      enrollmentsByParent: new Map(),
+      enrollmentsByProvider: new Map(),
+      sessionAttendancesBySession: new Map(),
+      sessionAttendancesByChild: new Map(),
+      sessionAttendancesByEnrollment: new Map(),
+      creditsByChild: new Map(),
+      creditsByBlock: new Map(),
+      creditsByEnrollment: new Map(),
+      creditsByProvider: new Map(),
+      creditsByActivityType: new Map(),
+      makeupsByCredit: new Map(),
+      makeupsBySession: new Map(),
+      makeupsByChild: new Map(),
     }
   }
 
