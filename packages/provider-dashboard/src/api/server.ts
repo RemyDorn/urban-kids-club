@@ -64,7 +64,8 @@ const server = createServer((req, res) => {
   const url = req.url ?? '/'
 
   // Frontend: Root-URL → Dashboard HTML ausliefern
-  if (url === '/' || url === '/index.html') {
+  const path = url.split('?')[0]
+  if (path === '/' || path === '/index.html') {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
     res.end(dashboardHtml)
     return
