@@ -44,6 +44,8 @@
     .badge-onboarding { background: #FEF3C7; color: #92400E; }
     .badge-active { background: #D1FAE5; color: #065F46; }
     .badge-suspended { background: #FEE2E2; color: #991B1B; }
+    .badge-archived { background: #E5E7EB; color: #6B7280; }
+    .row-archived { opacity: 0.5; text-decoration: line-through; }
     .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 50; display: flex; align-items: center; justify-content: center; }
     .modal-content { background: white; border-radius: 16px; padding: 24px; width: 600px; max-width: 95vw; max-height: 85vh; overflow-y: auto; box-shadow: 0 25px 50px rgba(0,0,0,0.25); }
   </style>
@@ -87,6 +89,7 @@
           </div>
         </div>
         <div class="flex items-center gap-4">
+          <button onclick="openCreateModal()" class="px-4 py-2 rounded-lg text-sm font-semibold text-white transition-all" style="background:linear-gradient(135deg,#CC895E,#B5533A)">+ Neuen Provider anlegen</button>
           <button onclick="loadProviders()" class="px-4 py-2 rounded-lg text-sm font-medium bg-brand-100 text-brand-700 hover:bg-brand-200 transition-all">Aktualisieren</button>
           <button onclick="doLogout()" class="px-4 py-2 rounded-lg text-sm font-medium bg-red-50 text-red-700 hover:bg-red-100 transition-all">Abmelden</button>
         </div>
@@ -95,7 +98,7 @@
 
     <!-- Stats Bar -->
     <div class="max-w-7xl mx-auto px-6 py-6">
-      <div class="grid grid-cols-4 gap-4 mb-6">
+      <div class="grid grid-cols-5 gap-4 mb-6">
         <div class="bg-white rounded-xl p-4 border border-brand-200 shadow-sm">
           <p class="text-xs text-brand-300 font-medium uppercase tracking-wide">Gesamt</p>
           <p class="text-2xl font-bold text-brand-800 mt-1" id="statTotal">0</p>
@@ -112,6 +115,19 @@
           <p class="text-xs text-brand-300 font-medium uppercase tracking-wide">Gesperrt</p>
           <p class="text-2xl font-bold text-red-700 mt-1" id="statSuspended">0</p>
         </div>
+        <div class="bg-white rounded-xl p-4 border border-brand-200 shadow-sm">
+          <p class="text-xs text-brand-300 font-medium uppercase tracking-wide">Archiviert</p>
+          <p class="text-2xl font-bold text-gray-500 mt-1" id="statArchived">0</p>
+        </div>
+      </div>
+
+      <!-- Filter Tabs -->
+      <div class="flex gap-2 mb-4" id="filterTabs">
+        <button onclick="setFilter('all')" class="filter-tab px-4 py-2 rounded-lg text-sm font-semibold transition-all" data-filter="all">Alle</button>
+        <button onclick="setFilter('active')" class="filter-tab px-4 py-2 rounded-lg text-sm font-semibold transition-all" data-filter="active">Aktiv</button>
+        <button onclick="setFilter('onboarding')" class="filter-tab px-4 py-2 rounded-lg text-sm font-semibold transition-all" data-filter="onboarding">Onboarding</button>
+        <button onclick="setFilter('suspended')" class="filter-tab px-4 py-2 rounded-lg text-sm font-semibold transition-all" data-filter="suspended">Gesperrt</button>
+        <button onclick="setFilter('archived')" class="filter-tab px-4 py-2 rounded-lg text-sm font-semibold transition-all" data-filter="archived">Archiviert</button>
       </div>
 
       <!-- Provider Table -->
@@ -155,6 +171,89 @@
     </div>
   </div>
 
+  <!-- Create Provider Modal -->
+  <div id="createModal" style="display:none" class="modal-backdrop" onclick="if(event.target===this)closeCreateModal()">
+    <div class="modal-content fade-in">
+      <div class="flex items-center justify-between mb-6">
+        <h2 class="text-xl font-bold font-heading text-brand-800">NEUEN PROVIDER ANLEGEN</h2>
+        <button onclick="closeCreateModal()" class="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-brand-100 text-brand-400 text-xl">&times;</button>
+      </div>
+      <div id="createError" style="display:none" class="mb-4 p-3 rounded-lg text-sm bg-red-50 text-red-700 border border-red-200"></div>
+      <div class="space-y-4">
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-semibold text-brand-400 uppercase tracking-wide mb-1">Anzeigename *</label>
+            <input id="cDisplayName" type="text" class="w-full px-3 py-2 rounded-lg border border-brand-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400" placeholder="z.B. Tanzstudio Berlin" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-brand-400 uppercase tracking-wide mb-1">Firmenname *</label>
+            <input id="cCompanyName" type="text" class="w-full px-3 py-2 rounded-lg border border-brand-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400" placeholder="z.B. Tanzstudio Berlin GmbH" />
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-semibold text-brand-400 uppercase tracking-wide mb-1">Rechtsform</label>
+            <select id="cLegalForm" class="w-full px-3 py-2 rounded-lg border border-brand-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400">
+              <option value="">-- Auswahl --</option>
+              <option value="Einzelunternehmen">Einzelunternehmen</option>
+              <option value="GbR">GbR</option>
+              <option value="GmbH">GmbH</option>
+              <option value="UG">UG (haftungsbeschraenkt)</option>
+              <option value="e.V.">e.V.</option>
+              <option value="gGmbH">gGmbH</option>
+              <option value="Freiberufler">Freiberufler</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-brand-400 uppercase tracking-wide mb-1">Kontaktperson *</label>
+            <input id="cContactName" type="text" class="w-full px-3 py-2 rounded-lg border border-brand-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400" placeholder="Vor- und Nachname" />
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-semibold text-brand-400 uppercase tracking-wide mb-1">E-Mail *</label>
+            <input id="cEmail" type="email" class="w-full px-3 py-2 rounded-lg border border-brand-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400" placeholder="email@beispiel.de" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-brand-400 uppercase tracking-wide mb-1">Passwort *</label>
+            <input id="cPassword" type="password" class="w-full px-3 py-2 rounded-lg border border-brand-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400" placeholder="Min. 8 Zeichen" />
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-brand-400 uppercase tracking-wide mb-1">Telefon</label>
+          <input id="cPhone" type="text" class="w-full px-3 py-2 rounded-lg border border-brand-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400" placeholder="+49 30 1234567" />
+        </div>
+        <div class="grid grid-cols-3 gap-4">
+          <div class="col-span-2">
+            <label class="block text-xs font-semibold text-brand-400 uppercase tracking-wide mb-1">Strasse</label>
+            <input id="cStreet" type="text" class="w-full px-3 py-2 rounded-lg border border-brand-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400" placeholder="Musterstr. 1" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-brand-400 uppercase tracking-wide mb-1">PLZ</label>
+            <input id="cZip" type="text" class="w-full px-3 py-2 rounded-lg border border-brand-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400" placeholder="10115" />
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-semibold text-brand-400 uppercase tracking-wide mb-1">Stadt</label>
+            <input id="cCity" type="text" class="w-full px-3 py-2 rounded-lg border border-brand-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400" placeholder="Berlin" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-brand-400 uppercase tracking-wide mb-1">Status</label>
+            <select id="cStatus" class="w-full px-3 py-2 rounded-lg border border-brand-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400">
+              <option value="active">Aktiv</option>
+              <option value="onboarding">Onboarding</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="mt-6 flex gap-3 border-t border-brand-100 pt-4">
+        <button onclick="createProvider()" class="px-6 py-2 rounded-lg text-sm font-semibold text-white transition-all" style="background:linear-gradient(135deg,#CC895E,#B5533A)">Provider anlegen</button>
+        <button onclick="closeCreateModal()" class="px-4 py-2 rounded-lg text-sm font-medium bg-brand-100 text-brand-700 hover:bg-brand-200 transition-all ml-auto">Abbrechen</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     const SUPABASE_URL = 'https://yuilhiqnrjuuqoqggihm.supabase.co'
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl1aWxoaXFucmp1dXFvcWdnaWhtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxNzUxMDAsImV4cCI6MjA5MDc1MTEwMH0.8dnGBOapmuTwEUy0VG-VnSgIAgRf10F4L1wi9gcE0iw'
@@ -163,6 +262,7 @@
 
     let providers = []
     let accessToken = null
+    let activeFilter = 'all'
 
     // ---- Auth ----
     async function doLogin() {
@@ -210,6 +310,7 @@
       document.getElementById('adminEmail').textContent = email
       document.getElementById('loginScreen').style.display = 'none'
       document.getElementById('mainContent').style.display = 'block'
+      initFilterTabs()
       loadProviders()
     }
 
@@ -255,17 +356,35 @@
       document.getElementById('statActive').textContent = providers.filter(p => p.status === 'active').length
       document.getElementById('statOnboarding').textContent = providers.filter(p => p.status === 'onboarding').length
       document.getElementById('statSuspended').textContent = providers.filter(p => p.status === 'suspended').length
+      document.getElementById('statArchived').textContent = providers.filter(p => p.status === 'archived').length
+    }
+
+    // ---- Filter ----
+    function setFilter(filter) {
+      activeFilter = filter
+      // Update tab styling
+      document.querySelectorAll('.filter-tab').forEach(btn => {
+        if (btn.dataset.filter === filter) {
+          btn.style.background = '#B5533A'
+          btn.style.color = 'white'
+        } else {
+          btn.style.background = '#FFEFE1'
+          btn.style.color = '#3C2124'
+        }
+      })
+      renderTable()
     }
 
     // ---- Render Table ----
     function renderTable() {
       const tbody = document.getElementById('providerTableBody')
-      if (providers.length === 0) {
+      const filtered = activeFilter === 'all' ? providers : providers.filter(p => p.status === activeFilter)
+      if (filtered.length === 0) {
         tbody.innerHTML = '<tr><td colspan="9" class="px-4 py-8 text-center text-brand-300">Keine Anbieter gefunden.</td></tr>'
         return
       }
-      tbody.innerHTML = providers.map(p => `
-        <tr class="provider-row border-b border-brand-50" onclick="showDetail('${p.id}')">
+      tbody.innerHTML = filtered.map(p => `
+        <tr class="provider-row border-b border-brand-50 ${p.status === 'archived' ? 'row-archived' : ''}" onclick="showDetail('${p.id}')">
           <td class="px-4 py-3">${statusBadge(p.status)}</td>
           <td class="px-4 py-3 font-medium text-brand-800">${escapeHtml(p.display_name || '-')}</td>
           <td class="px-4 py-3 text-brand-600">${escapeHtml(p.company_name || '-')}</td>
@@ -327,6 +446,9 @@
       if (p.status === 'suspended') {
         actions += `<button onclick="setStatus('${p.id}','active')" class="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-green-600 hover:bg-green-700 transition-all">Aktivieren</button>`
       }
+      if (p.status !== 'archived') {
+        actions += `<button onclick="archiveProvider('${p.id}')" class="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-gray-600 hover:bg-gray-700 transition-all">Archivieren</button>`
+      }
       actions += `<button onclick="closeModal()" class="px-4 py-2 rounded-lg text-sm font-medium bg-brand-100 text-brand-700 hover:bg-brand-200 transition-all ml-auto">Schliessen</button>`
       actionsEl.innerHTML = actions
 
@@ -360,8 +482,8 @@
 
     // ---- Helpers ----
     function statusBadge(status) {
-      const cls = status === 'active' ? 'badge-active' : status === 'suspended' ? 'badge-suspended' : 'badge-onboarding'
-      const label = status === 'active' ? 'Aktiv' : status === 'suspended' ? 'Gesperrt' : 'Onboarding'
+      const map = { active: ['badge-active','Aktiv'], suspended: ['badge-suspended','Gesperrt'], archived: ['badge-archived','Archiviert'], onboarding: ['badge-onboarding','Onboarding'] }
+      const [cls, label] = map[status] || ['badge-onboarding', status]
       return `<span class="inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold ${cls}">${label}</span>`
     }
 
@@ -376,6 +498,72 @@
       return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
     }
 
+    // ---- Archive Provider ----
+    async function archiveProvider(id) {
+      if (!confirm('Provider archivieren? Die Daten bleiben erhalten, aber der Zugang wird deaktiviert.')) return
+      try {
+        await apiFetch('/admin/providers/' + id + '/archive', { method: 'POST' })
+        await apiFetch('/admin/providers/' + id + '/delete-auth', { method: 'POST' })
+        closeModal()
+        await loadProviders()
+      } catch (e) {
+        alert('Fehler: ' + e.message)
+      }
+    }
+
+    // ---- Create Provider Modal ----
+    function openCreateModal() {
+      document.getElementById('createError').style.display = 'none'
+      ;['cDisplayName','cCompanyName','cLegalForm','cContactName','cEmail','cPassword','cPhone','cStreet','cZip','cCity'].forEach(id => {
+        document.getElementById(id).value = ''
+      })
+      document.getElementById('cStatus').value = 'active'
+      document.getElementById('createModal').style.display = 'flex'
+    }
+
+    function closeCreateModal() {
+      document.getElementById('createModal').style.display = 'none'
+    }
+
+    async function createProvider() {
+      const errEl = document.getElementById('createError')
+      errEl.style.display = 'none'
+
+      const body = {
+        displayName: document.getElementById('cDisplayName').value.trim(),
+        companyName: document.getElementById('cCompanyName').value.trim(),
+        legalForm: document.getElementById('cLegalForm').value,
+        contactName: document.getElementById('cContactName').value.trim(),
+        email: document.getElementById('cEmail').value.trim(),
+        password: document.getElementById('cPassword').value,
+        phone: document.getElementById('cPhone').value.trim(),
+        street: document.getElementById('cStreet').value.trim(),
+        zip: document.getElementById('cZip').value.trim(),
+        city: document.getElementById('cCity').value.trim(),
+        status: document.getElementById('cStatus').value,
+      }
+
+      if (!body.displayName || !body.companyName || !body.contactName || !body.email || !body.password) {
+        errEl.textContent = 'Bitte alle Pflichtfelder (*) ausfuellen.'
+        errEl.style.display = 'block'
+        return
+      }
+
+      try {
+        await apiFetch('/admin/providers', { method: 'POST', body })
+        closeCreateModal()
+        await loadProviders()
+      } catch (e) {
+        errEl.textContent = 'Fehler: ' + e.message
+        errEl.style.display = 'block'
+      }
+    }
+
+    // ---- Init filter tabs ----
+    function initFilterTabs() {
+      setFilter('all')
+    }
+
     // ---- Auto-login from session ----
     ;(async () => {
       const { data: { session } } = await sb.auth.getSession()
@@ -387,6 +575,7 @@
             document.getElementById('adminEmail').textContent = session.user.email
             document.getElementById('loginScreen').style.display = 'none'
             document.getElementById('mainContent').style.display = 'block'
+            initFilterTabs()
             loadProviders()
           }
         } catch (e) {

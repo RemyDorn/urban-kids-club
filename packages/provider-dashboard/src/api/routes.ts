@@ -1612,6 +1612,78 @@ export function registerRoutes(router: Router) {
     res.json({ data })
   })
 
+  // Archive provider (soft delete — sets status to 'archived', keeps all data)
+  router.post('/api/admin/providers/:id/archive', async (req, res) => {
+    const admin = await requireAdmin(req, res)
+    if (!admin) return
+    const db = getServiceClient()
+    const { data, error } = await db.from('providers')
+      .update({ status: 'archived', updated_at: new Date().toISOString() })
+      .eq('id', req.params.id).select().single()
+    if (error) return res.error(500, error.message)
+    res.json({ data })
+  })
+
+  // Create provider (admin creates account directly, skipping self-registration)
+  router.post('/api/admin/providers', async (req, res) => {
+    const admin = await requireAdmin(req, res)
+    if (!admin) return
+    const { email, password, displayName, companyName, legalForm, contactName, phone, street, zip, city, status } = req.body as any
+
+    if (!email || !password || !displayName || !companyName || !contactName) {
+      return res.error(400, 'Pflichtfelder: E-Mail, Passwort, Anzeigename, Firmenname, Kontaktperson')
+    }
+
+    const db = getServiceClient()
+
+    // Create auth user
+    const { data: authData, error: authError } = await db.auth.admin.createUser({
+      email, password, email_confirm: true,
+    })
+    if (authError) return res.error(500, authError.message)
+
+    // Create provider
+    const slug = (displayName || companyName).toLowerCase()
+      .replace(/[äöüß]/g, (c: string) => ({ä:'ae',ö:'oe',ü:'ue',ß:'ss'} as any)[c] ?? c)
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+
+    const { data: provider, error: provError } = await db.from('providers').insert({
+      display_name: displayName || '',
+      company_name: companyName,
+      legal_form: legalForm || '',
+      contact_name: contactName,
+      email, phone: phone || '',
+      address_street: street || '', address_zip: zip || '', address_city: city || '',
+      latitude: 0, longitude: 0,
+      login_email: email, slug,
+      status: status || 'active',
+      subscription: 'free',
+    }).select().single()
+
+    if (provError) {
+      await db.auth.admin.deleteUser(authData.user.id)
+      return res.error(500, provError.message)
+    }
+    res.json({ data: provider })
+  })
+
+  // Delete provider auth user (disable login when archiving)
+  router.post('/api/admin/providers/:id/delete-auth', async (req, res) => {
+    const admin = await requireAdmin(req, res)
+    if (!admin) return
+    const db = getServiceClient()
+    // Get provider email
+    const { data: provider } = await db.from('providers').select('login_email').eq('id', req.params.id).single()
+    if (!provider?.login_email) return res.error(404, 'Provider nicht gefunden')
+    // Find and disable auth user
+    const { data: { users } } = await db.auth.admin.listUsers()
+    const authUser = users.find((u: any) => u.email === provider.login_email)
+    if (authUser) {
+      await db.auth.admin.updateUserById(authUser.id, { ban_duration: '876000h' }) // ban for 100 years
+    }
+    res.json({ success: true })
+  })
+
   // ============================================================
   // OPENAPI SPEC
   // ============================================================
