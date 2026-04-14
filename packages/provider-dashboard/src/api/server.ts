@@ -131,6 +131,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:transparent;color:#1f29
 <script>
 (async()=>{
 const slug='${slug}',app=document.getElementById('app'),BC='${brandColor}'
+function esc(s){if(!s)return'';const d=document.createElement('div');d.textContent=s;return d.innerHTML}
 const DN={MO:1,TU:2,WE:3,TH:4,FR:5,SA:6,SU:0,DI:2,MI:3,DO:4,SO:0}
 const ML=['Januar','Februar','M\\u00e4rz','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember']
 const DL=['Mo','Di','Mi','Do','Fr','Sa','So']
@@ -191,7 +192,7 @@ function render(){
     const evts=getCoursesForDate(sd)
     slotsHtml='<div class="slots-panel"><div class="slots-date">'+dayName+', '+sd.getDate()+'. '+ML[sd.getMonth()]+'</div>'
     if(evts.length){
-      slotsHtml+=evts.map(e=>'<div class="slot-card"><div class="slot-time">'+e.start+' Uhr</div><div class="slot-info"><div class="slot-title">'+e.title+'</div><div class="slot-meta">'+e.start+' \\u2013 '+e.end+' Uhr \\u00b7 <span class="slot-badge">'+e.cat+'</span> \\u00b7 '+e.age+(e.price?' \\u00b7 '+e.price:'')+'</div></div><button class="book-btn" onclick="window._bookCourse(\\''+e.title+'\\',\\''+selDate+'\\',\\''+e.start+'\\')">Buchen</button></div>').join('')
+      slotsHtml+=evts.map(e=>'<div class="slot-card"><div class="slot-time">'+esc(e.start)+' Uhr</div><div class="slot-info"><div class="slot-title">'+esc(e.title)+'</div><div class="slot-meta">'+esc(e.start)+' \\u2013 '+esc(e.end)+' Uhr \\u00b7 <span class="slot-badge">'+esc(e.cat)+'</span> \\u00b7 '+esc(e.age)+(e.price?' \\u00b7 '+esc(e.price):'')+'</div></div><button class="book-btn" data-title="'+esc(e.title)+'" data-date="'+selDate+'" data-time="'+esc(e.start)+'" onclick="window._bookCourse(this.dataset.title,this.dataset.date,this.dataset.time)">Buchen</button></div>').join('')
     }else{slotsHtml+='<div class="empty-state">Keine Kurse an diesem Tag.</div>'}
     slotsHtml+='</div>'
   }

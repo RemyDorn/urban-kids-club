@@ -1343,13 +1343,20 @@ export function registerRoutes(router: Router) {
   router.patch('/api/sessions/:id', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const session = await CourseBlockService.getSession(req.params.id)
-    if (!session) return res.error(404, 'Session nicht gefunden')
-    // Update the session date
-    if (req.body.date) {
-      ;(session as any).date = req.body.date
-    }
-    res.json({ data: session })
+    const db = getServiceClient()
+    // Verify session exists and belongs to this provider's block
+    const { data: session, error: sessErr } = await db.from('block_sessions').select('*, block:course_blocks!inner(provider_id)').eq('id', req.params.id).single()
+    if (sessErr || !session) return res.error(404, 'Session nicht gefunden')
+    if ((session as any).block?.provider_id !== auth.providerId) return res.error(403, 'Zugriff verweigert')
+    // Validate date
+    const newDate = req.body.date
+    if (!newDate || !/^\d{4}-\d{2}-\d{2}$/.test(newDate)) return res.error(400, 'Ungültiges Datum')
+    const today = new Date().toISOString().slice(0, 10)
+    if (newDate < today) return res.error(400, 'Datum darf nicht in der Vergangenheit liegen')
+    // Update in DB
+    const { data: updated, error } = await db.from('block_sessions').update({ date: newDate, updated_at: new Date().toISOString() }).eq('id', req.params.id).select().single()
+    if (error) return res.error(500, error.message)
+    res.json({ data: updated })
   })
 
   // --- Block Cancel / Update Status (PATCH) ---
@@ -1357,22 +1364,21 @@ export function registerRoutes(router: Router) {
   router.patch('/api/course-blocks/:id', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const block = await CourseBlockService.getBlock(req.params.id)
-    if (!block) return res.error(404, 'Block nicht gefunden')
-    if (req.body.status) {
-      ;(block as any).status = req.body.status
-      // If cancelling, also cancel all future scheduled sessions
-      if (req.body.status === 'cancelled') {
-        const sessions = await CourseBlockService.getSessionsByBlock(req.params.id)
-        const today = new Date().toISOString().slice(0, 10)
-        for (const sess of sessions) {
-          if (sess.status === 'scheduled' && sess.date >= today) {
-            ;(sess as any).status = 'cancelled_by_provider'
-          }
-        }
-      }
+    const db = getServiceClient()
+    // Verify block belongs to this provider
+    const { data: block, error: blkErr } = await db.from('course_blocks').select('*').eq('id', req.params.id).eq('provider_id', auth.providerId).single()
+    if (blkErr || !block) return res.error(404, 'Block nicht gefunden')
+    const newStatus = req.body.status
+    if (!newStatus || !['active', 'cancelled', 'completed', 'upcoming'].includes(newStatus)) return res.error(400, 'Ungültiger Status')
+    // Update block status in DB
+    const { data: updated, error } = await db.from('course_blocks').update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', req.params.id).select().single()
+    if (error) return res.error(500, error.message)
+    // If cancelling, cancel all future scheduled sessions
+    if (newStatus === 'cancelled') {
+      const today = new Date().toISOString().slice(0, 10)
+      await db.from('block_sessions').update({ status: 'cancelled_by_provider', updated_at: new Date().toISOString() }).eq('block_id', req.params.id).eq('status', 'scheduled').gte('date', today)
     }
-    res.json({ data: block })
+    res.json({ data: updated })
   })
 
   // --- Block Enrollments ---
@@ -1600,7 +1606,7 @@ export function registerRoutes(router: Router) {
     const provider = await ProviderService.getBySlug(slug)
     if (!provider) return res.error(404, 'Provider nicht gefunden')
     const db = getServiceClient()
-    await db.from('booking_inquiries').insert({
+    const { error } = await db.from('booking_inquiries').insert({
       provider_id: provider.id,
       course_name: course || '',
       preferred_date: date || '',
@@ -1610,7 +1616,8 @@ export function registerRoutes(router: Router) {
       parent_phone: phone || '',
       message: message || '',
       status: 'new',
-    }).then(() => {}).catch(() => {})
+    })
+    if (error) return res.error(500, 'Anfrage konnte nicht gespeichert werden')
     res.json({ success: true })
   })
 
