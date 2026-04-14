@@ -1315,6 +1315,10 @@
                         <input name="startDate" type="date" value="${a.schedule.startDate || fmtDate(new Date())}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
                       `}
                     </div>
+                    ${idx === 0 ? `<div>
+                      <label class="block text-xs text-gray-500 mb-1">Bis Datum <span class="text-gray-400">(optional)</span></label>
+                      <input name="endDate" type="date" value="${a.schedule.endDate || ''}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                    </div>` : ''}
                   </div>
                 `).join('')}
               </div>
@@ -1590,6 +1594,7 @@
           type: 'recurring',
           slots: slots.length > 0 ? slots : [{ day: 'MO', startTime: '15:00', endTime: '16:00' }],
           startDate: f.get('startDate'),
+          ...(f.get('endDate') ? { endDate: f.get('endDate') } : {}),
         },
         pricing,
         platformListing: f.get('platformEnabled') ? {
