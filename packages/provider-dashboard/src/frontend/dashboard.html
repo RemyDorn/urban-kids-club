@@ -1390,6 +1390,21 @@
               </div>
             </fieldset>
 
+            <!-- Zahlungsoptionen -->
+            <div class="border-t pt-4 mt-4">
+              <label class="block text-sm font-medium text-gray-900 mb-3">Zahlungsoptionen</label>
+              <div class="space-y-2">
+                <label class="flex items-center gap-2">
+                  <input type="checkbox" name="paymentOnline" ${a.paymentOnline ? 'checked' : ''} class="rounded border-gray-300 text-brand-500">
+                  <span class="text-sm">Online bezahlen (Stripe/PayPal)</span>
+                </label>
+                <label class="flex items-center gap-2">
+                  <input type="checkbox" name="paymentOnsite" ${a.paymentOnsite !== false ? 'checked' : ''} class="rounded border-gray-300 text-brand-500">
+                  <span class="text-sm">Vor Ort bezahlen</span>
+                </label>
+              </div>
+            </div>
+
             <!-- Kids Club Plattform -->
             <fieldset class="border-2 border-brand-200 rounded-lg p-4 bg-brand-50/30">
               <legend class="text-sm font-medium text-brand-700 px-2 flex items-center gap-2">
@@ -1597,6 +1612,8 @@
           ...(f.get('endDate') ? { endDate: f.get('endDate') } : {}),
         },
         pricing,
+        paymentOnline: !!f.get('paymentOnline'),
+        paymentOnsite: !!f.get('paymentOnsite'),
         platformListing: f.get('platformEnabled') ? {
           enabled: true,
           platformCapacity: parseInt(f.get('platformCapacity') || '0'),
@@ -1607,6 +1624,20 @@
         tags: [],
         color: f.get('color') || undefined,
         images: [f.get('imgData_0'), f.get('imgData_1'), f.get('imgData_2')].filter(Boolean),
+      }
+
+      if (!body.paymentOnline && !body.paymentOnsite) {
+        alert('Mindestens eine Zahlungsoption muss aktiv sein.')
+        return
+      }
+      if (body.paymentOnline) {
+        try {
+          const cfg = await api(`/providers/${currentProvider.id}/payment-config`)
+          if (!cfg.data?.stripe_connected && !cfg.data?.paypal_connected) {
+            alert('Bitte erst Stripe oder PayPal in den Einstellungen verbinden, um Online-Zahlung zu aktivieren.')
+            return
+          }
+        } catch(e) {}
       }
 
       if (editId) {
@@ -4217,7 +4248,7 @@
 
       const sc = document.getElementById('settingsContent')
       if (settingsTab === 'company') sc.innerHTML = renderCompanyTab(p, s)
-      else if (settingsTab === 'finance') sc.innerHTML = renderFinanceTab(p, s)
+      else if (settingsTab === 'finance') { sc.innerHTML = renderFinanceTab(p, s); loadPaymentConfig() }
       else if (settingsTab === 'loyalty') sc.innerHTML = renderLoyaltyTab()
       else if (settingsTab === 'legal') sc.innerHTML = renderLegalTab(s)
     }
@@ -4453,6 +4484,82 @@
           </div>
 
           <button onclick="saveFinanceSettings()" class="bg-brand-500 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-brand-600">Finanzdaten speichern</button>
+
+          <div class="bg-white rounded-xl border border-brand-200 p-6 mt-6">
+            <h3 class="font-semibold text-gray-900 mb-4">Zahlungsanbieter</h3>
+            <div class="space-y-4">
+              <div class="flex items-center justify-between py-3 border-b border-gray-100">
+                <div class="flex items-center gap-3">
+                  <div class="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
+                    <svg class="w-6 h-6 text-indigo-600" fill="currentColor" viewBox="0 0 24 24"><path d="M13.976 9.15c-2.172-.806-3.356-1.426-3.356-2.409 0-.831.683-1.305 1.901-1.305 2.227 0 4.515.858 6.09 1.631l.89-5.494C18.252.975 15.697 0 12.165 0 9.667 0 7.589.654 6.104 1.872 4.56 3.147 3.757 4.992 3.757 7.218c0 4.039 2.467 5.76 6.476 7.219 2.585.92 3.445 1.574 3.445 2.583 0 .98-.84 1.545-2.354 1.545-1.875 0-4.965-.921-6.99-2.109l-.9 5.555C5.175 22.99 8.385 24 11.714 24c2.641 0 4.843-.624 6.328-1.813 1.664-1.305 2.525-3.236 2.525-5.732 0-4.128-2.524-5.851-6.591-7.305z"/></svg>
+                  </div>
+                  <div>
+                    <div class="text-sm font-medium text-gray-900">Stripe</div>
+                    <div class="text-xs text-gray-500">Kreditkarten, Apple Pay, Google Pay</div>
+                  </div>
+                </div>
+                <div id="stripeStatus">
+                  <button onclick="connectStripe()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700">Verbinden</button>
+                </div>
+              </div>
+
+              <div class="flex items-center justify-between py-3">
+                <div class="flex items-center gap-3">
+                  <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                    <svg class="w-6 h-6 text-blue-600" fill="currentColor" viewBox="0 0 24 24"><path d="M7.076 21.337H2.47a.641.641 0 0 1-.633-.74L4.944.901C5.026.382 5.474 0 5.998 0h7.46c2.57 0 4.578.543 5.69 1.81 1.01 1.15 1.304 2.42 1.012 4.287-.023.143-.047.288-.077.437-.983 5.05-4.349 6.797-8.647 6.797h-2.19c-.524 0-.968.382-1.05.9l-1.12 7.106zm14.146-14.42a3.35 3.35 0 0 0-.607-.541c-.013.076-.026.175-.041.254-.93 4.778-4.005 7.201-9.138 7.201h-2.19a.563.563 0 0 0-.556.479l-1.187 7.527h-.506l-.24 1.516a.56.56 0 0 0 .554.647h3.882c.46 0 .85-.334.922-.788l.038-.2.73-4.627.047-.256a.925.925 0 0 1 .922-.788h.58c3.76 0 6.705-1.528 7.565-5.946.36-1.847.174-3.388-.777-4.478z"/></svg>
+                  </div>
+                  <div>
+                    <div class="text-sm font-medium text-gray-900">PayPal</div>
+                    <div class="text-xs text-gray-500">PayPal-Konto, Lastschrift via PayPal</div>
+                  </div>
+                </div>
+                <div id="paypalStatus">
+                  <button onclick="document.getElementById('paypalForm').classList.toggle('hidden')" class="border border-blue-600 text-blue-600 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-50">Einrichten</button>
+                </div>
+              </div>
+
+              <div id="paypalForm" class="hidden border border-gray-200 rounded-lg p-4 space-y-3 bg-gray-50">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">PayPal Client ID</label>
+                  <input id="ppClientId" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Client ID aus dem PayPal Developer Portal">
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">PayPal Secret</label>
+                  <input id="ppSecret" type="password" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Secret aus dem PayPal Developer Portal">
+                </div>
+                <button onclick="savePayPalConfig()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-700">PayPal verbinden</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-xl border border-brand-200 p-6 mt-6">
+            <h3 class="font-semibold text-gray-900 mb-4">Stornierungsbedingungen</h3>
+            <div class="space-y-4">
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Stornogebühr-Art</label>
+                  <select id="cancelFeeType" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                    <option value="fixed">Fester Betrag</option>
+                    <option value="percent">Prozentual</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Gebühr (EUR / %)</label>
+                  <input id="cancelFeeValue" type="number" step="0.01" min="0" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="z.B. 10">
+                </div>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Stornofrist (Stunden vor Kursbeginn)</label>
+                <input id="cancelDeadline" type="number" min="0" value="48" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                <div class="text-xs text-gray-400 mt-1">Stornierungen innerhalb dieser Frist werden mit Gebühr berechnet</div>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Stornierungshinweis (optional)</label>
+                <textarea id="cancelText" rows="3" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="z.B. Stornierungen sind bis 48 Stunden vor Kursbeginn kostenlos möglich..."></textarea>
+              </div>
+              <button onclick="saveCancellationPolicy()" class="bg-brand-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-brand-600">Stornierungsbedingungen speichern</button>
+            </div>
+          </div>
         </div>
       `
     }
@@ -4633,6 +4740,59 @@
       s.eInvoiceFormat = document.getElementById('sEInvoiceFormat')?.value
       saveProviderSettings(s)
       alert('Finanzdaten gespeichert!')
+    }
+
+    async function loadPaymentConfig() {
+      try {
+        const cfg = await api(`/providers/${currentProvider.id}/payment-config`)
+        const d = cfg.data || {}
+        const stripeEl = document.getElementById('stripeStatus')
+        const paypalEl = document.getElementById('paypalStatus')
+        if (stripeEl) stripeEl.innerHTML = d.stripe_connected
+          ? '<span class="text-green-600 text-sm font-semibold">Verbunden</span>'
+          : '<button onclick="connectStripe()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700">Verbinden</button>'
+        if (paypalEl) paypalEl.innerHTML = d.paypal_connected
+          ? '<span class="text-green-600 text-sm font-semibold">Verbunden</span>'
+          : `<button onclick="document.getElementById('paypalForm').classList.toggle('hidden')" class="border border-blue-600 text-blue-600 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-50">Einrichten</button>`
+      } catch(e) { console.warn('Payment config not available:', e) }
+      try {
+        const pol = await api(`/providers/${currentProvider.id}/cancellation-policy`)
+        const p = pol.data || {}
+        const feeType = document.getElementById('cancelFeeType')
+        const feeValue = document.getElementById('cancelFeeValue')
+        const deadline = document.getElementById('cancelDeadline')
+        const text = document.getElementById('cancelText')
+        if (feeType) feeType.value = p.fee_type || 'fixed'
+        if (feeValue) feeValue.value = p.fee_value || ''
+        if (deadline) deadline.value = p.deadline_hours || 48
+        if (text) text.value = p.custom_text || ''
+      } catch(e) { console.warn('Cancellation policy not available:', e) }
+    }
+
+    async function connectStripe() {
+      try {
+        const r = await api(`/providers/${currentProvider.id}/stripe-connect`, 'POST')
+        if (r.url) window.location.href = r.url
+      } catch(e) { alert('Stripe-Verbindung konnte nicht gestartet werden.') }
+    }
+
+    async function savePayPalConfig() {
+      const clientId = document.getElementById('ppClientId').value.trim()
+      const secret = document.getElementById('ppSecret').value.trim()
+      if (!clientId || !secret) { alert('Bitte Client ID und Secret eingeben.'); return }
+      await api(`/providers/${currentProvider.id}/paypal-config`, 'PUT', { clientId, secret })
+      alert('PayPal verbunden!')
+      loadPaymentConfig()
+    }
+
+    async function saveCancellationPolicy() {
+      await api(`/providers/${currentProvider.id}/cancellation-policy`, 'PUT', {
+        feeType: document.getElementById('cancelFeeType').value,
+        feeValue: document.getElementById('cancelFeeValue').value,
+        deadlineHours: document.getElementById('cancelDeadline').value,
+        customText: document.getElementById('cancelText').value,
+      })
+      alert('Stornierungsbedingungen gespeichert!')
     }
 
     function saveLegalSettings() {

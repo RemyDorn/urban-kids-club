@@ -112,6 +112,8 @@ export function activityFromDb(r: Row): Activity {
     images: r.images ?? [],
     media: r.images ?? [],
     tags: r.tags ?? [],
+    paymentOnline: r.payment_online ?? false,
+    paymentOnsite: r.payment_onsite ?? true,
     status: r.status ?? 'draft',
     slug: r.slug,
     createdAt: toDate(r.created_at),
@@ -142,6 +144,8 @@ export function activityToDb(a: Partial<Activity> & { id?: ID; providerId?: ID }
   if ((a as Record<string, unknown>).instructorId !== undefined) row.instructor_id = (a as Record<string, unknown>).instructorId ?? null
   if (a.waitlistEnabled !== undefined) row.waitlist_enabled = a.waitlistEnabled
   if (a.trialEnabled !== undefined) row.trial_enabled = a.trialEnabled
+  if ((a as Record<string, unknown>).paymentOnline !== undefined) row.payment_online = (a as Record<string, unknown>).paymentOnline ?? false
+  if ((a as Record<string, unknown>).paymentOnsite !== undefined) row.payment_onsite = (a as Record<string, unknown>).paymentOnsite ?? true
   // Calculate duration from schedule if available, default 60
   if (a.schedule && (a.schedule as any).slots?.[0]) {
     const slot = (a.schedule as any).slots[0]
