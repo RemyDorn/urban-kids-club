@@ -1806,6 +1806,104 @@ export function registerRoutes(router: Router) {
   })
 
   // ============================================================
+  // STRIPE CONNECT
+  // ============================================================
+
+  router.post('/api/providers/:id/stripe-connect', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    if (auth.providerId !== req.params.id) return res.error(403, 'Zugriff verweigert')
+    const { getConnectAuthUrl } = await import('../lib/stripe')
+    const returnUrl = `${req.raw.headers.origin || 'https://app.urbankids.club'}/api/stripe/callback`
+    const url = getConnectAuthUrl(req.params.id, returnUrl)
+    res.json({ url })
+  })
+
+  router.get('/api/stripe/callback', async (req, res) => {
+    const code = req.query.code as string
+    const state = req.query.state as string
+    if (!code || !state) { res.error(400, 'Missing code or state'); return }
+    try {
+      const { providerId } = JSON.parse(Buffer.from(state, 'base64').toString())
+      const { completeConnect } = await import('../lib/stripe')
+      const accountId = await completeConnect(code)
+      const db = getServiceClient()
+      await db.from('providers').update({
+        stripe_account_id: accountId,
+        stripe_connected: true,
+        updated_at: new Date().toISOString()
+      }).eq('id', providerId)
+      res.raw.writeHead(302, { Location: '/?page=settings&tab=finance&stripe=connected' })
+      res.raw.end()
+    } catch (err: any) {
+      res.error(500, 'Stripe-Verbindung fehlgeschlagen: ' + err.message)
+    }
+  })
+
+  // ============================================================
+  // PAYPAL CONNECT
+  // ============================================================
+
+  router.put('/api/providers/:id/paypal-config', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    if (auth.providerId !== req.params.id) return res.error(403, 'Zugriff verweigert')
+    const { clientId, secret } = req.body as any
+    if (!clientId || !secret) return res.error(400, 'Client ID und Secret erforderlich')
+    const db = getServiceClient()
+    const { error } = await db.from('providers').update({
+      paypal_client_id: clientId,
+      paypal_secret: secret,
+      paypal_connected: true,
+      updated_at: new Date().toISOString()
+    }).eq('id', auth.providerId)
+    if (error) return res.error(500, error.message)
+    res.json({ success: true })
+  })
+
+  // ============================================================
+  // PAYMENT CONFIG
+  // ============================================================
+
+  router.get('/api/providers/:id/payment-config', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    if (auth.providerId !== req.params.id) return res.error(403, 'Zugriff verweigert')
+    const db = getServiceClient()
+    const { data } = await db.from('providers').select('stripe_account_id, stripe_connected, paypal_client_id, paypal_connected').eq('id', auth.providerId).single()
+    res.json({ data: { ...data, paypal_client_id: data?.paypal_client_id ? '***' + data.paypal_client_id.slice(-4) : null } })
+  })
+
+  // ============================================================
+  // CANCELLATION POLICY
+  // ============================================================
+
+  router.get('/api/providers/:id/cancellation-policy', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    const db = getServiceClient()
+    const { data } = await db.from('cancellation_policies').select('*').eq('provider_id', auth.providerId).single()
+    res.json({ data: data || { fee_type: 'fixed', fee_value: 0, deadline_hours: 48, custom_text: '' } })
+  })
+
+  router.put('/api/providers/:id/cancellation-policy', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    const { feeType, feeValue, deadlineHours, customText } = req.body as any
+    const db = getServiceClient()
+    const { error } = await db.from('cancellation_policies').upsert({
+      provider_id: auth.providerId,
+      fee_type: feeType || 'fixed',
+      fee_value: parseFloat(feeValue) || 0,
+      deadline_hours: parseInt(deadlineHours) || 48,
+      custom_text: customText || '',
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'provider_id' })
+    if (error) return res.error(500, error.message)
+    res.json({ success: true })
+  })
+
+  // ============================================================
   // OPENAPI SPEC
   // ============================================================
 
