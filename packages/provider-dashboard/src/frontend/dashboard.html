@@ -3133,7 +3133,7 @@
           <div id="blockFormFields" class="space-y-4">
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">Kurs</label>
-              <select name="activityId" required class="w-full border rounded-lg px-3 py-2 text-sm" onchange="autoFillBlock(this.value)">
+              <select name="activityId" id="blockActivitySelect" required class="w-full border rounded-lg px-3 py-2 text-sm">
                 <option value="">Kurs wählen…</option>
                 ${activities.map(a => `<option value="${a.id}" data-type="${a.category}">${escapeHtml(a.title)}</option>`).join('')}
               </select>
@@ -3157,10 +3157,13 @@
             <input type="hidden" name="capacity" value="10">
             <input type="hidden" name="makeupCapacity" value="2">
             <input type="hidden" name="maxCreditsPerEnrollment" value="2">
-            <button type="button" onclick="submitCreateBlock()" class="w-full bg-brand-500 text-white py-2.5 rounded-lg font-semibold hover:bg-brand-600 transition">Block erstellen</button>
+            <button type="button" id="btnCreateBlock" class="w-full bg-brand-500 text-white py-2.5 rounded-lg font-semibold hover:bg-brand-600 transition">Block erstellen</button>
           </div>
         </div>
       `
+      // Attach event handlers after innerHTML (inline onclick doesn't work with CSP)
+      document.getElementById('btnCreateBlock').addEventListener('click', submitCreateBlock)
+      document.getElementById('blockActivitySelect').addEventListener('change', function() { autoFillBlock(this.value) })
     }
 
     function autoFillBlock(activityId) {
