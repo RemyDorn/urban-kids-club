@@ -3130,7 +3130,7 @@
             <h2 class="text-xl font-bold">Neuer Kursblock</h2>
             <button onclick="document.getElementById('create-block-modal').className='hidden'" class="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
           </div>
-          <form onsubmit="submitCreateBlock(event)" class="space-y-4">
+          <div id="blockFormFields" class="space-y-4">
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">Kurs</label>
               <select name="activityId" required class="w-full border rounded-lg px-3 py-2 text-sm" onchange="autoFillBlock(this.value)">
@@ -3157,8 +3157,8 @@
             <input type="hidden" name="capacity" value="10">
             <input type="hidden" name="makeupCapacity" value="2">
             <input type="hidden" name="maxCreditsPerEnrollment" value="2">
-            <button type="submit" class="w-full bg-brand-500 text-white py-2.5 rounded-lg font-semibold hover:bg-brand-600 transition">Block erstellen</button>
-          </form>
+            <button type="button" onclick="submitCreateBlock()" class="w-full bg-brand-500 text-white py-2.5 rounded-lg font-semibold hover:bg-brand-600 transition">Block erstellen</button>
+          </div>
         </div>
       `
     }
@@ -3188,28 +3188,33 @@
       `
     }
 
-    async function submitCreateBlock(e) {
-      e.preventDefault()
-      const fd = new FormData(e.target)
-      const actSelect = e.target.querySelector('[name=activityId]')
+    async function submitCreateBlock() {
+      const container = document.getElementById('blockFormFields')
+      const getValue = (name) => container.querySelector(`[name=${name}]`)?.value || ''
+      const actSelect = container.querySelector('[name=activityId]')
       const selOption = actSelect.options[actSelect.selectedIndex]
 
       const body = {
         providerId: currentProvider.id,
-        activityId: fd.get('activityId'),
-        activityType: selOption.dataset.type || fd.get('activityId'),
-        seasonLabel: fd.get('seasonLabel'),
-        totalSessions: parseInt(fd.get('totalSessions')),
-        startDate: fd.get('startDate'),
-        recurringDay: fd.get('recurringDay'),
-        recurringTime: fd.get('recurringTime'),
-        durationMinutes: parseInt(fd.get('durationMinutes')),
-        pricePerBlock: parseFloat(fd.get('pricePerBlock')),
+        activityId: getValue('activityId'),
+        activityType: selOption.dataset.type || getValue('activityId'),
+        seasonLabel: getValue('seasonLabel'),
+        totalSessions: parseInt(getValue('totalSessions')) || 8,
+        startDate: getValue('startDate'),
+        recurringDay: getValue('recurringDay'),
+        recurringTime: getValue('recurringTime'),
+        durationMinutes: parseInt(getValue('durationMinutes')) || 60,
+        pricePerBlock: parseFloat(getValue('pricePerBlock')) || 140,
         currency: 'EUR',
-        capacity: parseInt(fd.get('capacity')),
-        makeupCapacity: parseInt(fd.get('makeupCapacity') || '2'),
-        maxCreditsPerEnrollment: parseInt(fd.get('maxCreditsPerEnrollment') || '2'),
+        capacity: parseInt(getValue('capacity')) || 10,
+        makeupCapacity: parseInt(getValue('makeupCapacity')) || 2,
+        maxCreditsPerEnrollment: parseInt(getValue('maxCreditsPerEnrollment')) || 2,
         cancellationDeadlineMinutes: 1440,
+      }
+
+      if (!body.activityId || !body.seasonLabel || !body.startDate) {
+        alert('Bitte Kurs, Block-Label und Startdatum ausfüllen.')
+        return
       }
 
       try {
