@@ -149,4 +149,66 @@ export const SupabaseReportingService = {
       instructorId: a.instructor_id,
     }))
   },
+
+  // Routes compatibility aliases
+
+  async getDashboardSummary(providerId: ID): Promise<Record<string, unknown>> {
+    return this.getOverview(providerId)
+  },
+
+  async getRevenueReport(providerId: ID, period: string): Promise<Record<string, unknown>> {
+    const [year, month] = period.split('-')
+    const dateRange = year && month
+      ? { from: `${year}-${month}-01`, to: `${year}-${month}-31` }
+      : undefined
+    return this.getRevenueStats(providerId, dateRange)
+  },
+
+  async getOccupancyByActivity(providerId: ID): Promise<Record<string, unknown>[]> {
+    return this.getCourseStats(providerId)
+  },
+
+  async getCustomerLifetimeValue(providerId: ID): Promise<Record<string, unknown>[]> {
+    const sb = getServiceClient()
+    const { data: bookings } = await sb.from('provider_bookings')
+      .select('parent_id, amount_paid, payment_status').eq('provider_id', providerId)
+    const parentMap = new Map<string, { spent: number; bookings: number }>()
+    for (const b of bookings ?? []) {
+      const entry = parentMap.get(b.parent_id) ?? { spent: 0, bookings: 0 }
+      entry.bookings++
+      if (b.payment_status === 'paid') entry.spent += b.amount_paid ?? 0
+      parentMap.set(b.parent_id, entry)
+    }
+    return Array.from(parentMap.entries()).map(([parentId, data]) => ({
+      parentId,
+      totalSpent: Math.round(data.spent * 100) / 100,
+      bookingCount: data.bookings,
+    }))
+  },
+
+  async getChurnRate(providerId: ID, months: number = 3): Promise<Record<string, unknown>> {
+    const sb = getServiceClient()
+    const cutoff = new Date()
+    cutoff.setMonth(cutoff.getMonth() - months)
+    const cutoffStr = cutoff.toISOString()
+    const { data: allBookings } = await sb.from('provider_bookings').select('parent_id, created_at').eq('provider_id', providerId).neq('status', 'cancelled')
+    const parentIds = new Set<string>((allBookings ?? []).map((b: any) => b.parent_id))
+    const { data: recentBookings } = await sb.from('provider_bookings').select('parent_id').eq('provider_id', providerId).gte('created_at', cutoffStr).neq('status', 'cancelled')
+    const activeIds = new Set<string>((recentBookings ?? []).map((b: any) => b.parent_id))
+    const churned = [...parentIds].filter((id) => !activeIds.has(id)).length
+    return {
+      totalCustomers: parentIds.size,
+      activeCustomers: activeIds.size,
+      churnedCustomers: churned,
+      churnRate: parentIds.size > 0 ? Math.round((churned / parentIds.size) * 100) / 100 : 0,
+    }
+  },
+
+  async getTrialConversionByActivity(providerId: ID): Promise<Record<string, unknown>[]> {
+    return this.getCourseStats(providerId)
+  },
+
+  async getStaffUtilization(providerId: ID): Promise<Record<string, unknown>[]> {
+    return this.getTeamStats(providerId)
+  },
 }

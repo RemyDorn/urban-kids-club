@@ -54,9 +54,11 @@ export const SupabaseCourseBlockService = {
     return (data ?? []).map(courseBlockFromDb)
   },
 
-  async getById(id: ID): Promise<CourseBlock | undefined> {
+  async getById(id: ID, providerId?: ID): Promise<CourseBlock | undefined> {
     const sb = getServiceClient()
-    const { data, error } = await sb.from(BLOCK_TABLE).select('*').eq('id', id).maybeSingle()
+    let query = sb.from(BLOCK_TABLE).select('*').eq('id', id)
+    if (providerId) query = query.eq('provider_id', providerId)
+    const { data, error } = await query.maybeSingle()
     if (error) throw error
     return data ? courseBlockFromDb(data) : undefined
   },
@@ -184,8 +186,8 @@ export const SupabaseCourseBlockService = {
     return this.create(input)
   },
 
-  async getBlock(id: ID): Promise<CourseBlock | undefined> {
-    return this.getById(id)
+  async getBlock(id: ID, providerId?: ID): Promise<CourseBlock | undefined> {
+    return this.getById(id, providerId)
   },
 
   async getBlocksByProvider(providerId: ID): Promise<CourseBlock[]> {
@@ -307,8 +309,8 @@ export const SupabaseCourseBlockService = {
     return { activated: activated?.length ?? 0, completed: completed?.length ?? 0 }
   },
 
-  async extendBlock(blockId: ID, additionalSessions: number): Promise<BlockSession[] | { error: string }> {
-    const block = await this.getById(blockId)
+  async extendBlock(blockId: ID, additionalSessions: number, providerId?: ID): Promise<BlockSession[] | { error: string }> {
+    const block = await this.getById(blockId, providerId)
     if (!block) return { error: 'Block nicht gefunden' }
     const sb = getServiceClient()
     const { data: lastSession } = await sb.from(SESSION_TABLE)

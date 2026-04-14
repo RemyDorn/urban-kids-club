@@ -529,12 +529,24 @@
     }
 
     // Listen for auth state changes
-    sb.auth.onAuthStateChange((event, session) => {
+    sb.auth.onAuthStateChange(async (event, session) => {
       currentSession = session
       if (event === 'SIGNED_IN' && session) {
+        // Check provider status before showing dashboard
+        const email = session.user?.email
+        if (email) {
+          const { data: prov } = await sb.from('providers').select('status').eq('login_email', email).single()
+          if (prov && prov.status !== 'active') {
+            document.getElementById('pendingScreen').style.display = 'flex'
+            document.getElementById('loginScreen').style.display = 'none'
+            document.getElementById('mainContent').style.display = 'none'
+            return
+          }
+        }
         showDashboard()
         init()
       } else if (event === 'SIGNED_OUT') {
+        document.getElementById('pendingScreen').style.display = 'none'
         showLoginScreen()
       }
     })
@@ -1223,7 +1235,7 @@
     function showActivityForm(editId) {
       let a = editId ? allActivitiesCache.find(x => x.id === editId) : null
       const isEdit = !!a
-      if (!a) a = { title: '', description: '', category: 'Tanz', ageRange: { min: 3, max: 10 }, capacity: 12, schedule: { type: 'recurring', slots: [{ day: 'MO', startTime: '15:00', endTime: '16:00' }], startDate: new Date().toISOString().split('T')[0] }, pricing: [], platformListing: { enabled: false, platformCapacity: 3, featured: false, trialAvailable: true }, tags: [], waitlistEnabled: true }
+      if (!a) a = { title: '', description: '', category: 'Tanz', ageRange: { min: 3, max: 10 }, capacity: 12, schedule: { type: 'recurring', slots: [{ day: 'MO', startTime: '15:00', endTime: '16:00' }], startDate: fmtDate(new Date()) }, pricing: [], platformListing: { enabled: false, platformCapacity: 3, featured: false, trialAvailable: true }, tags: [], waitlistEnabled: true }
 
       const pl = a.platformListing || { enabled: false, platformCapacity: 3, featured: false, trialAvailable: true }
       const p1 = a.pricing[0] || { label: '', type: 'package', amount: 0, packageSize: 8 }
@@ -1312,7 +1324,7 @@
                     <div>
                       ${idx > 0 ? `<button type="button" onclick="removeSlot(${idx})" class="px-3 py-2 text-xs text-red-500 hover:bg-red-50 rounded-lg border border-red-200">Entfernen</button>` : `
                         <label class="block text-xs text-gray-500 mb-1">Ab Datum</label>
-                        <input name="startDate" type="date" value="${a.schedule.startDate || new Date().toISOString().split('T')[0]}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                        <input name="startDate" type="date" value="${a.schedule.startDate || fmtDate(new Date())}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
                       `}
                     </div>
                   </div>
@@ -3077,13 +3089,13 @@
             <h3 class="font-bold text-sm text-gray-700 mb-2">Termine (${sessions.length})</h3>
             <div class="space-y-1">
               ${sessions.sort((a,b) => a.date > b.date ? 1 : -1).map(sess => {
-                const isPast = sess.date < new Date().toISOString().split('T')[0]
+                const isPast = sess.date < fmtDate(new Date())
                 const canCancel = sess.status === 'scheduled' && !isPast
                 return `
                   <div class="flex justify-between items-center py-2 px-3 ${isPast ? 'bg-gray-50' : 'bg-white border border-gray-100'} rounded-lg text-sm">
                     <div class="flex items-center gap-3">
                       <span class="font-mono text-xs text-gray-400">#${sess.sessionNumber}</span>
-                      <span class="font-medium">${fmtDate(sess.date)}</span>
+                      <span class="font-medium">${fmtDateDE(sess.date)}</span>
                       <span class="text-gray-400">${sess.startTime}–${sess.endTime}</span>
                     </div>
                     <div class="flex items-center gap-2">
@@ -3335,8 +3347,8 @@
               <div>
                 <div class="font-medium text-sm">${escapeHtml(credit.childId)} · ${escapeHtml(credit.activityType.replace(/_/g, ' '))}</div>
                 <div class="text-xs text-gray-500 mt-0.5">
-                  ${credit.isProviderCancellation ? 'Kurs ausgefallen' : 'Eltern-Absage'} am ${fmtDate(credit.originalSessionDate)}
-                  · Gültig bis ${fmtDate(credit.validUntil)}
+                  ${credit.isProviderCancellation ? 'Kurs ausgefallen' : 'Eltern-Absage'} am ${fmtDateDE(credit.originalSessionDate)}
+                  · Gültig bis ${fmtDateDE(credit.validUntil)}
                 </div>
               </div>
               <span class="px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">Verfügbar</span>
@@ -3390,7 +3402,7 @@
 
       // Aktive Blöcke mit nächster Session finden
       const activeBlocks = blocks.filter(b => b.status === 'active' || b.status === 'upcoming')
-      const today = new Date().toISOString().split('T')[0]
+      const today = fmtDate(new Date())
 
       let sessionsWithBlock = []
       for (const block of activeBlocks) {
@@ -3416,7 +3428,7 @@
                 <div class="flex justify-between items-center">
                   <div>
                     <div class="font-medium text-sm">${escapeHtml(title)}</div>
-                    <div class="text-xs text-gray-500">${fmtDate(session.date)} · ${session.startTime}–${session.endTime} Uhr · Termin #${session.sessionNumber}</div>
+                    <div class="text-xs text-gray-500">${fmtDateDE(session.date)} · ${session.startTime}–${session.endTime} Uhr · Termin #${session.sessionNumber}</div>
                   </div>
                   <button onclick="openAttendanceForSession('${session.id}', '${block.id}')" class="bg-brand-500 text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-brand-600">Anwesenheit</button>
                 </div>
@@ -3479,9 +3491,9 @@
     }
 
     // --- Helper ---
-    function fmtDate(d) {
+    function fmtDateDE(d) {
       if (!d) return '–'
-      const s = typeof d === 'string' ? d : (d instanceof Date ? d.toISOString().split('T')[0] : String(d))
+      const s = typeof d === 'string' ? d : (d instanceof Date ? fmtDate(d) : String(d))
       const parts = s.split('-')
       if (parts.length !== 3) return s
       return `${parts[2]}.${parts[1]}.${parts[0]}`
@@ -3579,7 +3591,7 @@
       if (result.data?.fileUrl) {
         const a = document.createElement('a')
         a.href = result.data.fileUrl
-        a.download = `${type}_${new Date().toISOString().split('T')[0]}.${format === 'datev' ? 'csv' : format}`
+        a.download = `${type}_${fmtDate(new Date())}.${format === 'datev' ? 'csv' : format}`
         a.click()
       } else {
         alert('Export konnte nicht erstellt werden.')

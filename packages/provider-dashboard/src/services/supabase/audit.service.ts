@@ -42,4 +42,16 @@ export const SupabaseAuditService = {
     if (error) throw error
     return (data ?? []).map(auditLogFromDb)
   },
+
+  // Routes compatibility aliases
+  async getByProvider(providerId: ID, filters?: { action?: string; entityType?: string; since?: Date }): Promise<AuditLogEntry[]> {
+    return this.list(providerId, {
+      action: filters?.action,
+      entityType: filters?.entityType,
+    })
+  },
+
+  async getRecentActivity(providerId: ID, limit: number = 20): Promise<AuditLogEntry[]> {
+    return this.list(providerId, { limit })
+  },
 }

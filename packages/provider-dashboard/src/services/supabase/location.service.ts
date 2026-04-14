@@ -17,9 +17,11 @@ export const SupabaseLocationService = {
     return (data ?? []).map(locationFromDb)
   },
 
-  async getById(id: ID): Promise<Location | undefined> {
+  async getById(id: ID, providerId?: ID): Promise<Location | undefined> {
     const sb = getServiceClient()
-    const { data, error } = await sb.from(TABLE).select('*').eq('id', id).maybeSingle()
+    let query = sb.from(TABLE).select('*').eq('id', id)
+    if (providerId) query = query.eq('provider_id', providerId)
+    const { data, error } = await query.maybeSingle()
     if (error) throw error
     return data ? locationFromDb(data) : undefined
   },
@@ -32,18 +34,27 @@ export const SupabaseLocationService = {
     return locationFromDb(data)
   },
 
-  async update(id: ID, input: Partial<Location>): Promise<Location | undefined> {
+  async update(id: ID, input: Partial<Location>, providerId?: ID): Promise<Location | undefined> {
     const sb = getServiceClient()
     const row = locationToDb(input)
-    const { data, error } = await sb.from(TABLE).update(row).eq('id', id).select().maybeSingle()
+    let query = sb.from(TABLE).update(row).eq('id', id)
+    if (providerId) query = query.eq('provider_id', providerId)
+    const { data, error } = await query.select().maybeSingle()
     if (error) throw error
     return data ? locationFromDb(data) : undefined
   },
 
-  async delete(id: ID): Promise<boolean> {
+  async delete(id: ID, providerId?: ID): Promise<boolean> {
     const sb = getServiceClient()
-    const { error } = await sb.from(TABLE).delete().eq('id', id)
+    let query = sb.from(TABLE).delete().eq('id', id)
+    if (providerId) query = query.eq('provider_id', providerId)
+    const { error } = await query
     if (error) throw error
     return true
+  },
+
+  // Alias for routes compatibility
+  async listByProvider(providerId: ID): Promise<Location[]> {
+    return this.list(providerId)
   },
 }

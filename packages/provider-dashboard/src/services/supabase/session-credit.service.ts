@@ -80,4 +80,72 @@ export const SupabaseSessionCreditService = {
     if (error) throw error
     return data?.length ?? 0
   },
+
+  // Routes compatibility methods
+
+  async handleParentCancellation(enrollmentId: ID): Promise<SessionCredit | { error: string }> {
+    const sb = getServiceClient()
+    // Find the enrollment to get session context
+    const { data: enrollment } = await sb.from('block_enrollments').select('*').eq('id', enrollmentId).single()
+    if (!enrollment) return { error: 'Einschreibung nicht gefunden' }
+    // Find the next upcoming session for this block
+    const today = new Date().toISOString().split('T')[0]
+    const { data: session } = await sb.from('block_sessions')
+      .select('*').eq('block_id', enrollment.block_id).eq('status', 'scheduled')
+      .gte('date', today).order('date', { ascending: true }).limit(1).single()
+    if (!session) return { error: 'Keine kommende Session gefunden' }
+    return this.issue(enrollmentId, session.id, 'parent_cancellation')
+  },
+
+  async getCreditsByChild(childId: string, statusFilter?: SessionCreditStatus): Promise<SessionCredit[]> {
+    const sb = getServiceClient()
+    let query = sb.from(TABLE).select('*').eq('child_id', childId).order('created_at', { ascending: false })
+    if (statusFilter) query = query.eq('status', statusFilter)
+    const { data, error } = await query
+    if (error) throw error
+    return (data ?? []).map(sessionCreditFromDb)
+  },
+
+  async getCreditsByParent(parentId: ID, statusFilter?: SessionCreditStatus): Promise<SessionCredit[]> {
+    const sb = getServiceClient()
+    let query = sb.from(TABLE).select('*').eq('parent_id', parentId).order('created_at', { ascending: false })
+    if (statusFilter) query = query.eq('status', statusFilter)
+    const { data, error } = await query
+    if (error) throw error
+    return (data ?? []).map(sessionCreditFromDb)
+  },
+
+  async getCredit(creditId: ID, providerId?: ID): Promise<SessionCredit | undefined> {
+    const sb = getServiceClient()
+    let query = sb.from(TABLE).select('*').eq('id', creditId)
+    if (providerId) query = query.eq('provider_id', providerId)
+    const { data, error } = await query.maybeSingle()
+    if (error) throw error
+    return data ? sessionCreditFromDb(data) : undefined
+  },
+
+  async issueManualCredit(input: {
+    enrollmentId: ID; sessionId: ID; reason?: string;
+  }): Promise<SessionCredit> {
+    return this.issue(input.enrollmentId, input.sessionId, 'provider_cancellation')
+  },
+
+  async expireCredits(): Promise<number> {
+    return this.expireOverdue()
+  },
+
+  async sendExpiryReminders(): Promise<number> {
+    // Stub: in production this would send notifications; return count of credits expiring soon
+    const sb = getServiceClient()
+    const soon = new Date()
+    soon.setDate(soon.getDate() + 7)
+    const today = new Date().toISOString().split('T')[0]
+    const soonStr = soon.toISOString().split('T')[0]
+    const { count } = await sb.from(TABLE)
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'available')
+      .gte('valid_until', today)
+      .lte('valid_until', soonStr)
+    return count ?? 0
+  },
 }

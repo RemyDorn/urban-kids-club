@@ -10,7 +10,9 @@ const TABLE = 'parents'
 
 export const SupabaseParentService = {
 
-  async list(providerId: ID): Promise<Parent[]> {
+  async list(input: { providerId: ID; query?: string } | ID): Promise<Parent[]> {
+    const providerId = typeof input === 'object' ? input.providerId : input
+    const query = typeof input === 'object' ? input.query : undefined
     const sb = getServiceClient()
     // Parents who have bookings with this provider
     const { data: bookingRows, error: bErr } = await sb
@@ -20,13 +22,26 @@ export const SupabaseParentService = {
     if (bErr) throw bErr
     const parentIds = [...new Set((bookingRows ?? []).map((r: { parent_id: string }) => r.parent_id))]
     if (parentIds.length === 0) return []
-    const { data, error } = await sb.from(TABLE).select('*').in('id', parentIds).order('created_at', { ascending: false })
+    let dbQuery = sb.from(TABLE).select('*').in('id', parentIds).order('created_at', { ascending: false })
+    if (query) dbQuery = dbQuery.or(`name.ilike.%${query}%,email.ilike.%${query}%`)
+    const { data, error } = await dbQuery
     if (error) throw error
     return (data ?? []).map(parentFromDb)
   },
 
-  async getById(id: ID): Promise<Parent | undefined> {
+  async getById(id: ID, providerId?: ID): Promise<Parent | undefined> {
     const sb = getServiceClient()
+    if (providerId) {
+      // Verify parent has bookings with this provider before returning
+      const { data: bookingRows, error: bErr } = await sb
+        .from('provider_bookings')
+        .select('parent_id')
+        .eq('provider_id', providerId)
+        .eq('parent_id', id)
+        .limit(1)
+      if (bErr) throw bErr
+      if (!bookingRows?.length) return undefined
+    }
     const { data, error } = await sb.from(TABLE).select('*').eq('id', id).maybeSingle()
     if (error) throw error
     return data ? parentFromDb(data) : undefined
@@ -53,5 +68,19 @@ export const SupabaseParentService = {
     const { error } = await sb.from(TABLE).delete().eq('id', id)
     if (error) throw error
     return true
+  },
+
+  async addChild(id: ID, child: { name: string; age?: number; emergencyContact?: string; emergencyPhone?: string; medicalNotes?: string }): Promise<Parent | undefined> {
+    const parent = await this.getById(id)
+    if (!parent) return undefined
+    const newChild: import('../../types').ChildInfo = {
+      name: child.name,
+      age: child.age ?? 0,
+      emergencyContact: child.emergencyContact ?? '',
+      emergencyPhone: child.emergencyPhone ?? '',
+      medicalNotes: child.medicalNotes,
+    }
+    const children = [...(parent.children ?? []), newChild]
+    return this.update(id, { children })
   },
 }

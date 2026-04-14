@@ -19,9 +19,11 @@ export const SupabaseInvoiceService = {
     return (data ?? []).map(invoiceFromDb)
   },
 
-  async getById(id: ID): Promise<Invoice | undefined> {
+  async getById(id: ID, providerId?: ID): Promise<Invoice | undefined> {
     const sb = getServiceClient()
-    const { data, error } = await sb.from(TABLE).select('*').eq('id', id).maybeSingle()
+    let query = sb.from(TABLE).select('*').eq('id', id)
+    if (providerId) query = query.eq('provider_id', providerId)
+    const { data, error } = await query.maybeSingle()
     if (error) throw error
     return data ? invoiceFromDb(data) : undefined
   },
@@ -90,33 +92,79 @@ export const SupabaseInvoiceService = {
     return invoiceFromDb(data)
   },
 
-  async send(id: ID): Promise<Invoice | undefined> {
+  async send(id: ID, providerId?: ID): Promise<Invoice | undefined> {
     const sb = getServiceClient()
-    const { data, error } = await sb.from(TABLE)
+    let query = sb.from(TABLE)
       .update({ status: 'sent' })
       .eq('id', id).eq('status', 'draft')
-      .select().maybeSingle()
+    if (providerId) query = query.eq('provider_id', providerId)
+    const { data, error } = await query.select().maybeSingle()
     if (error) throw error
     return data ? invoiceFromDb(data) : undefined
   },
 
-  async markPaid(id: ID): Promise<Invoice | undefined> {
+  async markPaid(id: ID, providerId?: ID): Promise<Invoice | undefined> {
     const sb = getServiceClient()
-    const { data, error } = await sb.from(TABLE)
+    let query = sb.from(TABLE)
       .update({ status: 'paid', paid_at: new Date().toISOString() })
       .eq('id', id)
-      .select().maybeSingle()
+    if (providerId) query = query.eq('provider_id', providerId)
+    const { data, error } = await query.select().maybeSingle()
     if (error) throw error
     return data ? invoiceFromDb(data) : undefined
   },
 
-  async cancel(id: ID): Promise<Invoice | undefined> {
+  async cancel(id: ID, providerId?: ID): Promise<Invoice | undefined> {
     const sb = getServiceClient()
-    const { data, error } = await sb.from(TABLE)
+    let query = sb.from(TABLE)
       .update({ status: 'cancelled' })
       .eq('id', id).neq('status', 'paid')
-      .select().maybeSingle()
+    if (providerId) query = query.eq('provider_id', providerId)
+    const { data, error } = await query.select().maybeSingle()
     if (error) throw error
     return data ? invoiceFromDb(data) : undefined
+  },
+
+  async create(input: Omit<Invoice, 'id'>): Promise<Invoice> {
+    const sb = getServiceClient()
+    const row = invoiceToDb(input as Partial<Invoice>)
+    const { data, error } = await sb.from(TABLE).insert(row).select().single()
+    if (error) throw error
+    return invoiceFromDb(data)
+  },
+
+  async getOutstandingTotal(providerId: ID): Promise<number> {
+    const sb = getServiceClient()
+    const { data, error } = await sb.from(TABLE).select('total').eq('provider_id', providerId).in('status', ['draft', 'sent'])
+    if (error) throw error
+    return (data ?? []).reduce((s: number, r: any) => s + (r.total ?? 0), 0)
+  },
+
+  async getVatSummary(providerId: ID, year: number): Promise<Record<number, { net: number; vat: number; gross: number }>> {
+    const sb = getServiceClient()
+    const { data, error } = await sb.from(TABLE)
+      .select('line_items, tax, total, subtotal').eq('provider_id', providerId)
+      .gte('issued_at', `${year}-01-01`).lt('issued_at', `${year + 1}-01-01`)
+      .not('status', 'eq', 'cancelled')
+    if (error) throw error
+    const result: Record<number, { net: number; vat: number; gross: number }> = {}
+    for (const row of data ?? []) {
+      const items: Array<{ vatRate?: number; total?: number }> = row.line_items ?? []
+      for (const item of items) {
+        const rate = Math.round((item.vatRate ?? 0) * 100)
+        if (!result[rate]) result[rate] = { net: 0, vat: 0, gross: 0 }
+        const net = item.total ?? 0
+        const vat = Math.round(net * (item.vatRate ?? 0) * 100) / 100
+        result[rate].net += net
+        result[rate].vat += vat
+        result[rate].gross += net + vat
+      }
+    }
+    return result
+  },
+
+  // Alias for routes compatibility
+  async listByProvider(providerId: ID, filters?: { status?: InvoiceStatus }): Promise<Invoice[]> {
+    return this.list(providerId, filters)
   },
 }

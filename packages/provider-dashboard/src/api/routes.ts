@@ -158,7 +158,7 @@ export function registerRoutes(router: Router) {
   router.put('/api/locations/:id', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const location = await LocationService.update(req.params.id, req.body as any)
+    const location = await LocationService.update(req.params.id, req.body as any, auth.providerId)
     if (!location) return res.error(404, 'Standort nicht gefunden')
     res.json({ data: location })
   })
@@ -230,7 +230,7 @@ export function registerRoutes(router: Router) {
   router.get('/api/activities/:id', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const activity = await ActivityService.getById(req.params.id)
+    const activity = await ActivityService.getById(req.params.id, auth.providerId)
     if (!activity) return res.error(404, 'Aktivität nicht gefunden')
     const spots = await ActivityService.getAvailableSpots(req.params.id)
     res.json({ data: { ...activity, availableSpots: spots } })
@@ -248,7 +248,7 @@ export function registerRoutes(router: Router) {
   router.put('/api/activities/:id', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const activity = await ActivityService.update(req.params.id, req.body as any)
+    const activity = await ActivityService.update(req.params.id, req.body as any, auth.providerId)
     if (!activity) return res.error(404, 'Aktivität nicht gefunden')
     res.json({ data: activity })
   })
@@ -256,7 +256,7 @@ export function registerRoutes(router: Router) {
   router.post('/api/activities/:id/publish', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const result = await ActivityService.publish(req.params.id)
+    const result = await ActivityService.publish(req.params.id, auth.providerId)
     if (!result) return res.error(400, 'Aktivität konnte nicht veröffentlicht werden')
     if ('error' in result) return res.error(400, result.error)
     res.json({ data: result })
@@ -265,7 +265,7 @@ export function registerRoutes(router: Router) {
   router.post('/api/activities/:id/duplicate', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const activity = await ActivityService.duplicate(req.params.id)
+    const activity = await ActivityService.duplicate(req.params.id, auth.providerId)
     if (!activity) return res.error(404, 'Aktivität nicht gefunden')
     res.status(201).json({ data: activity })
   })
@@ -273,7 +273,7 @@ export function registerRoutes(router: Router) {
   router.post('/api/activities/:id/archive', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const activity = await ActivityService.archive(req.params.id)
+    const activity = await ActivityService.archive(req.params.id, auth.providerId)
     if (!activity) return res.error(404, 'Aktivität nicht gefunden')
     res.json({ data: activity })
   })
@@ -319,7 +319,7 @@ export function registerRoutes(router: Router) {
   router.post('/api/bookings/:id/cancel', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const booking = await BookingService.cancel(req.params.id, req.body as any)
+    const booking = await BookingService.cancel(req.params.id, auth.providerId)
     if (!booking) return res.error(400, 'Buchung konnte nicht storniert werden')
     res.json({ data: booking })
   })
@@ -327,7 +327,7 @@ export function registerRoutes(router: Router) {
   router.post('/api/bookings/:id/complete', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const booking = await BookingService.complete(req.params.id)
+    const booking = await BookingService.complete(req.params.id, auth.providerId)
     if (!booking) return res.error(400, 'Buchung konnte nicht abgeschlossen werden')
     res.json({ data: booking })
   })
@@ -336,7 +336,7 @@ export function registerRoutes(router: Router) {
     const auth = await requireAuth(req, res)
     if (!auth) return
     const { amount } = req.body as { amount: number }
-    const booking = await BookingService.markPaid(req.params.id, amount)
+    const booking = await BookingService.markPaid(req.params.id, amount, auth.providerId)
     if (!booking) return res.error(404, 'Buchung nicht gefunden')
     res.json({ data: booking })
   })
@@ -402,7 +402,7 @@ export function registerRoutes(router: Router) {
   router.get('/api/parents/:id', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const parent = await ParentService.getById(req.params.id)
+    const parent = await ParentService.getById(req.params.id, auth.providerId)
     if (!parent) return res.error(404, 'Elternteil nicht gefunden')
     res.json({ data: parent })
   })
@@ -422,6 +422,9 @@ export function registerRoutes(router: Router) {
     if (!auth) return
     const parsed = validate(UpdateParentSchema, req.body)
     if ('error' in parsed) return res.error(400, parsed.error)
+    // Verify parent belongs to this provider before updating
+    const existingParent = await ParentService.getById(req.params.id, auth.providerId)
+    if (!existingParent) return res.error(404, 'Elternteil nicht gefunden')
     const parent = await ParentService.update(req.params.id, parsed.data as any)
     if (!parent) return res.error(404, 'Elternteil nicht gefunden')
     res.json({ data: parent })
@@ -430,6 +433,9 @@ export function registerRoutes(router: Router) {
   router.post('/api/parents/:id/children', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
+    // Verify parent belongs to this provider before modifying
+    const existingParentForChild = await ParentService.getById(req.params.id, auth.providerId)
+    if (!existingParentForChild) return res.error(404, 'Elternteil nicht gefunden')
     const parent = await ParentService.addChild(req.params.id, req.body as any)
     if (!parent) return res.error(404, 'Elternteil nicht gefunden')
     res.json({ data: parent })
@@ -686,8 +692,7 @@ export function registerRoutes(router: Router) {
   router.post('/api/invoices/from-booking/:bookingId', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const { vatRate } = req.body as { vatRate?: number }
-    const result = await InvoiceService.createFromBooking(req.params.bookingId, vatRate)
+    const result = await InvoiceService.createFromBooking(req.params.bookingId, auth.providerId)
     if ('error' in result) return res.error(400, result.error)
     res.status(201).json({ data: result })
   })
@@ -695,7 +700,7 @@ export function registerRoutes(router: Router) {
   router.post('/api/invoices/:id/send', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const invoice = await InvoiceService.send(req.params.id)
+    const invoice = await InvoiceService.send(req.params.id, auth.providerId)
     if (!invoice) return res.error(400, 'Rechnung konnte nicht versendet werden')
     res.json({ data: invoice })
   })
@@ -703,7 +708,7 @@ export function registerRoutes(router: Router) {
   router.post('/api/invoices/:id/pay', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const invoice = await InvoiceService.markPaid(req.params.id)
+    const invoice = await InvoiceService.markPaid(req.params.id, auth.providerId)
     if (!invoice) return res.error(404, 'Rechnung nicht gefunden')
     res.json({ data: invoice })
   })
@@ -772,7 +777,7 @@ export function registerRoutes(router: Router) {
   router.post('/api/payments/:id/complete', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const payment = await PaymentService.markCompleted(req.params.id)
+    const payment = await PaymentService.markCompleted(req.params.id, auth.providerId)
     if (!payment) return res.error(400, 'Zahlung konnte nicht abgeschlossen werden')
     res.json({ data: payment })
   })
@@ -1039,7 +1044,7 @@ export function registerRoutes(router: Router) {
   router.post('/api/notifications/:id/read', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const notification = await NotificationService.markAsRead(req.params.id)
+    const notification = await NotificationService.markAsRead(req.params.id, auth.providerId)
     if (!notification) return res.error(404, 'Benachrichtigung nicht gefunden')
     res.json({ data: notification })
   })
@@ -1189,11 +1194,23 @@ export function registerRoutes(router: Router) {
 
     const db = getServiceClient()
 
-    // 1. Create auth user
+    // 1. Deduplicate slug
+    let slug = displayName.toLowerCase()
+      .replace(/[äöüß]/g, (c: string) => ({ ä: 'ae', ö: 'oe', ü: 'ue', ß: 'ss' } as Record<string, string>)[c] ?? c)
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+    const { data: existingSlugs } = await db.from('providers').select('slug').like('slug', `${slug}%`)
+    if (existingSlugs && existingSlugs.length > 0) {
+      const taken = new Set(existingSlugs.map((r: any) => r.slug))
+      let i = 2
+      const base = slug
+      while (taken.has(slug)) { slug = `${base}-${i++}` }
+    }
+
+    // 2. Create auth user (email_confirm: false — admin must approve)
     const { data: authData, error: authError } = await db.auth.admin.createUser({
       email,
       password,
-      email_confirm: true,
+      email_confirm: false,
     })
     if (authError) {
       if (authError.message.includes('already been registered')) {
@@ -1202,10 +1219,7 @@ export function registerRoutes(router: Router) {
       return res.error(500, 'Registrierung fehlgeschlagen: ' + authError.message)
     }
 
-    // 2. Create provider record
-    const slug = displayName.toLowerCase()
-      .replace(/[äöüß]/g, (c: string) => ({ ä: 'ae', ö: 'oe', ü: 'ue', ß: 'ss' } as Record<string, string>)[c] ?? c)
-      .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+    // 3. Create provider record
 
     const { data: provider, error: provError } = await db
       .from('providers')
@@ -1235,7 +1249,12 @@ export function registerRoutes(router: Router) {
       return res.error(500, 'Provider-Erstellung fehlgeschlagen: ' + provError.message)
     }
 
-    // 3. Create lead entry for admin pipeline tracking
+    // 4. Set provider_id in user metadata for auth middleware
+    await db.auth.admin.updateUserById(authData.user.id, {
+      user_metadata: { provider_id: provider.id }
+    })
+
+    // 5. Create lead entry for admin pipeline tracking
     await db.from('provider_leads').insert({
       company_name: companyName,
       contact_name: contactName,
@@ -1269,7 +1288,7 @@ export function registerRoutes(router: Router) {
   router.get('/api/course-blocks/:id', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const block = await CourseBlockService.getBlock(req.params.id)
+    const block = await CourseBlockService.getBlock(req.params.id, auth.providerId)
     if (!block) return res.error(404, 'Block nicht gefunden')
     res.json({ data: block })
   })
@@ -1401,7 +1420,7 @@ export function registerRoutes(router: Router) {
   router.get('/api/credits/:id', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const credit = await SessionCreditService.getCredit(req.params.id)
+    const credit = await SessionCreditService.getCredit(req.params.id, auth.providerId)
     if (!credit) return res.error(404, 'Guthaben nicht gefunden')
     res.json({ data: credit })
   })
@@ -1410,7 +1429,7 @@ export function registerRoutes(router: Router) {
   router.get('/api/credits/:id/available-slots', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const credit = await SessionCreditService.getCredit(req.params.id)
+    const credit = await SessionCreditService.getCredit(req.params.id, auth.providerId)
     if (!credit) return res.error(404, 'Guthaben nicht gefunden')
     if (credit.status !== 'available') return res.error(400, 'Guthaben ist nicht verfügbar')
     const slots = await CourseBlockService.getAvailableMakeupSlots(
@@ -1449,7 +1468,7 @@ export function registerRoutes(router: Router) {
     const auth = await requireAuth(req, res)
     if (!auth) return
     const cancelledBy = (req.query.cancelledBy as 'parent' | 'provider') ?? 'parent'
-    const result = await MakeupBookingService.cancelMakeup(req.params.id, cancelledBy)
+    const result = await MakeupBookingService.cancelMakeup(req.params.id, cancelledBy, auth.providerId)
     if ('error' in result) return res.error(400, result.error)
     res.json({ data: result })
   })
@@ -1457,7 +1476,7 @@ export function registerRoutes(router: Router) {
   router.post('/api/makeup-bookings/:id/attendance', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const result = await MakeupBookingService.markMakeupAttendance(req.params.id, req.body.status)
+    const result = await MakeupBookingService.markMakeupAttendance(req.params.id, req.body.status, auth.providerId)
     if ('error' in result) return res.error(400, result.error)
     res.json({ data: result })
   })
@@ -1479,7 +1498,7 @@ export function registerRoutes(router: Router) {
   router.get('/api/makeup-bookings/:id', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const makeup = await MakeupBookingService.getMakeup(req.params.id)
+    const makeup = await MakeupBookingService.getMakeup(req.params.id, auth.providerId)
     if (!makeup) return res.error(404, 'Nachholtermin nicht gefunden')
     res.json({ data: makeup })
   })
@@ -1487,22 +1506,22 @@ export function registerRoutes(router: Router) {
   // --- Background Jobs (Cronjobs) ---
 
   router.post('/api/admin/blocks/update-statuses', async (req, res) => {
-    const auth = await requireAuth(req, res)
-    if (!auth) return
+    const admin = await requireAdmin(req, res)
+    if (!admin) return
     const result = await CourseBlockService.updateBlockStatuses()
     res.json({ data: result })
   })
 
   router.post('/api/admin/credits/expire', async (req, res) => {
-    const auth = await requireAuth(req, res)
-    if (!auth) return
+    const admin = await requireAdmin(req, res)
+    if (!admin) return
     const expired = await SessionCreditService.expireCredits()
     res.json({ data: { expired } })
   })
 
   router.post('/api/admin/credits/send-reminders', async (req, res) => {
-    const auth = await requireAuth(req, res)
-    if (!auth) return
+    const admin = await requireAdmin(req, res)
+    if (!admin) return
     const sent = await SessionCreditService.sendExpiryReminders()
     res.json({ data: { sent } })
   })
@@ -1513,7 +1532,7 @@ export function registerRoutes(router: Router) {
     const auth = await requireAuth(req, res)
     if (!auth) return
     const additionalSessions = req.body.additionalSessions ?? 1
-    const result = await CourseBlockService.extendBlock(req.params.id, additionalSessions)
+    const result = await CourseBlockService.extendBlock(req.params.id, additionalSessions, auth.providerId)
     if ('error' in result) return res.error(400, result.error)
     res.json({ data: result, count: result.length })
   })
@@ -1545,28 +1564,34 @@ export function registerRoutes(router: Router) {
     res.json({ data: enriched, count: enriched.length })
   })
 
-  // Eltern: Enrollments mit Block-Info
+  // Eltern: Enrollments mit Block-Info (auth required)
   router.get('/api/widget/enrollments/parent/:parentId', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
     const enrollments = await CourseBlockService.getEnrollmentsByParent(req.params.parentId)
     res.json({ data: enrollments, count: enrollments.length })
   })
 
-  // Eltern: Credits
+  // Eltern: Credits (auth required)
   router.get('/api/widget/credits/parent/:parentId', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
     const credits = await SessionCreditService.getCreditsByParent(req.params.parentId)
     res.json({ data: credits, count: credits.length })
   })
 
-  // Eltern: Makeup-Bookings mit Session-Infos angereichert
+  // Eltern: Makeup-Bookings mit Session-Infos angereichert (auth required)
   router.get('/api/widget/makeup-bookings/parent/:parentId', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
     const makeups = await MakeupBookingService.getMakeupsByParent(req.params.parentId)
-
-    // Return without session enrichment in Supabase mode (would need separate query)
     res.json({ data: makeups, count: makeups.length })
   })
 
-  // Eltern: Verfügbare Makeup-Slots (mit Block-Label angereichert)
+  // Eltern: Verfügbare Makeup-Slots (auth required)
   router.get('/api/widget/credits/:id/available-slots', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
     const credit = await SessionCreditService.getCredit(req.params.id)
     if (!credit) return res.error(404, 'Guthaben nicht gefunden')
     if (credit.status !== 'available') return res.error(400, 'Guthaben ist nicht verfügbar')
@@ -1576,8 +1601,6 @@ export function registerRoutes(router: Router) {
       credit.validUntil,
       credit.blockId
     )
-
-    // Return slots without enrichment (labels can be resolved client-side)
     res.json({ data: slots, count: slots.length })
   })
 

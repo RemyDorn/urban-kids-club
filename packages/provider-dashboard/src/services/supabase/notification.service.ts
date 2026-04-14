@@ -31,11 +31,13 @@ export const SupabaseNotificationService = {
     return (data ?? []).map(notificationFromDb)
   },
 
-  async markRead(id: ID): Promise<Notification | undefined> {
+  async markRead(id: ID, recipientId?: ID): Promise<Notification | undefined> {
     const sb = getServiceClient()
-    const { data, error } = await sb.from(TABLE)
+    let query = sb.from(TABLE)
       .update({ read: true, read_at: new Date().toISOString() })
-      .eq('id', id).select().maybeSingle()
+      .eq('id', id)
+    if (recipientId) query = query.eq('recipient_id', recipientId)
+    const { data, error } = await query.select().maybeSingle()
     if (error) throw error
     return data ? notificationFromDb(data) : undefined
   },
@@ -48,5 +50,26 @@ export const SupabaseNotificationService = {
       .eq('read', false)
     if (error) throw error
     return count ?? 0
+  },
+
+  // Routes compatibility aliases
+  async getByRecipient(recipientId: ID, filters?: { unreadOnly?: boolean }): Promise<Notification[]> {
+    const notifications = await this.list(recipientId)
+    if (filters?.unreadOnly) return notifications.filter((n) => !n.read)
+    return notifications
+  },
+
+  async markAsRead(id: ID, recipientId?: ID): Promise<Notification | undefined> {
+    return this.markRead(id, recipientId)
+  },
+
+  async markAllAsRead(recipientId: ID): Promise<number> {
+    const sb = getServiceClient()
+    const { data, error } = await sb.from(TABLE)
+      .update({ read: true, read_at: new Date().toISOString() })
+      .eq('recipient_id', recipientId).eq('read', false)
+      .select('id')
+    if (error) throw error
+    return data?.length ?? 0
   },
 }

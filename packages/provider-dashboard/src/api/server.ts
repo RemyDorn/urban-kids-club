@@ -90,7 +90,8 @@ const server = createServer((req, res) => {
   if (url.startsWith('/widget/')) {
     res.writeHead(200, {
       'Content-Type': 'text/html; charset=utf-8',
-      'X-Frame-Options': 'ALLOWALL'  // Embedding erlauben
+      // No X-Frame-Options header = allow embedding from any origin
+      // Content-Security-Policy can restrict if needed later
     })
     res.end(parentWidgetHtml)
     return

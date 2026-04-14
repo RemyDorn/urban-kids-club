@@ -10,6 +10,10 @@ const TABLE = 'export_requests'
 
 export const SupabaseExportService = {
 
+  async createExport(input: { providerId: ID; type: ExportRequest['type']; format: ExportFormat; dateRange?: Record<string, string>; filters?: Record<string, string> }): Promise<ExportRequest> {
+    return this.create(input.providerId, input.type, input.format, input.filters ?? input.dateRange)
+  },
+
   async create(providerId: ID, type: ExportRequest['type'], format: ExportFormat, filters?: Record<string, string>): Promise<ExportRequest> {
     const sb = getServiceClient()
     const row = exportRequestToDb({

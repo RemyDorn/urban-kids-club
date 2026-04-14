@@ -42,6 +42,11 @@ export const SupabaseCouponService = {
     return coupon
   },
 
+  // Alias for routes compatibility
+  async listByProvider(providerId: ID): Promise<Coupon[]> {
+    return this.list(providerId)
+  },
+
   async redeem(couponId: ID, bookingId: ID, parentId: ID): Promise<CouponRedemption> {
     const sb = getServiceClient()
 

@@ -27,9 +27,11 @@ export const SupabaseActivityService = {
     return result
   },
 
-  async getById(id: ID): Promise<Activity | undefined> {
+  async getById(id: ID, providerId?: ID): Promise<Activity | undefined> {
     const sb = getServiceClient()
-    const { data, error } = await sb.from(TABLE).select('*').eq('id', id).maybeSingle()
+    let query = sb.from(TABLE).select('*').eq('id', id)
+    if (providerId) query = query.eq('provider_id', providerId)
+    const { data, error } = await query.maybeSingle()
     if (error) throw error
     return data ? activityFromDb(data) : undefined
   },
@@ -42,45 +44,85 @@ export const SupabaseActivityService = {
     return activityFromDb(data)
   },
 
-  async update(id: ID, input: Partial<Activity>): Promise<Activity | undefined> {
+  async update(id: ID, input: Partial<Activity>, providerId?: ID): Promise<Activity | undefined> {
     const sb = getServiceClient()
     const row = activityToDb(input)
     row.updated_at = new Date().toISOString()
-    const { data, error } = await sb.from(TABLE).update(row).eq('id', id).select().maybeSingle()
+    let query = sb.from(TABLE).update(row).eq('id', id)
+    if (providerId) query = query.eq('provider_id', providerId)
+    const { data, error } = await query.select().maybeSingle()
     if (error) throw error
     return data ? activityFromDb(data) : undefined
   },
 
-  async delete(id: ID): Promise<boolean> {
+  async delete(id: ID, providerId?: ID): Promise<boolean> {
     const sb = getServiceClient()
-    const { error } = await sb.from(TABLE).delete().eq('id', id)
+    let query = sb.from(TABLE).delete().eq('id', id)
+    if (providerId) query = query.eq('provider_id', providerId)
+    const { error } = await query
     if (error) throw error
     return true
   },
 
-  async publish(id: ID): Promise<Activity | undefined> {
+  async publish(id: ID, providerId?: ID): Promise<Activity | undefined> {
     const sb = getServiceClient()
-    const { data, error } = await sb.from(TABLE)
+    let query = sb.from(TABLE)
       .update({ status: 'published', updated_at: new Date().toISOString() })
       .eq('id', id).neq('status', 'archived')
-      .select().maybeSingle()
+    if (providerId) query = query.eq('provider_id', providerId)
+    const { data, error } = await query.select().maybeSingle()
     if (error) throw error
     return data ? activityFromDb(data) : undefined
   },
 
-  async archive(id: ID): Promise<Activity | undefined> {
+  async archive(id: ID, providerId?: ID): Promise<Activity | undefined> {
     const sb = getServiceClient()
-    const { data, error } = await sb.from(TABLE)
+    let query = sb.from(TABLE)
       .update({ status: 'archived', updated_at: new Date().toISOString() })
-      .eq('id', id).select().maybeSingle()
+      .eq('id', id)
+    if (providerId) query = query.eq('provider_id', providerId)
+    const { data, error } = await query.select().maybeSingle()
     if (error) throw error
     return data ? activityFromDb(data) : undefined
   },
 
-  async duplicate(id: ID): Promise<Activity | undefined> {
-    const original = await this.getById(id)
+  async duplicate(id: ID, providerId?: ID): Promise<Activity | undefined> {
+    const original = await this.getById(id, providerId)
     if (!original) return undefined
     const { id: _id, createdAt, updatedAt, status, ...rest } = original
     return this.create({ ...rest, title: `${original.title} (Kopie)` })
+  },
+
+  async search(filters: { status?: ActivityStatus; category?: string; query?: string; providerId?: ID; ageMin?: number; ageMax?: number }): Promise<Activity[]> {
+    const sb = getServiceClient()
+    let query = sb.from(TABLE).select('*').order('created_at', { ascending: false })
+    if (filters.providerId) query = query.eq('provider_id', filters.providerId)
+    if (filters.status) query = query.eq('status', filters.status)
+    if (filters.category) query = query.eq('category', filters.category)
+    const { data, error } = await query
+    if (error) throw error
+    let result = (data ?? []).map(activityFromDb)
+    if (filters.query) {
+      const q = filters.query.toLowerCase()
+      result = result.filter((a) => a.title.toLowerCase().includes(q) || a.description.toLowerCase().includes(q))
+    }
+    if (filters.ageMin !== undefined) result = result.filter((a) => (a.ageRange?.max ?? 99) >= filters.ageMin!)
+    if (filters.ageMax !== undefined) result = result.filter((a) => (a.ageRange?.min ?? 0) <= filters.ageMax!)
+    return result
+  },
+
+  async getAvailableSpots(id: ID): Promise<number> {
+    const sb = getServiceClient()
+    const { data: activity } = await sb.from(TABLE).select('capacity').eq('id', id).single()
+    if (!activity) return 0
+    const { count } = await sb.from('provider_bookings')
+      .select('*', { count: 'exact', head: true })
+      .eq('activity_id', id).eq('status', 'confirmed')
+    return Math.max(0, (activity.capacity ?? 0) - (count ?? 0))
+  },
+
+  // Alias for routes compatibility
+  async listByProvider(providerId: ID, filters?: { status?: ActivityStatus; category?: string; query?: string }): Promise<Activity[]> {
+    return this.list(providerId, filters)
   },
 }

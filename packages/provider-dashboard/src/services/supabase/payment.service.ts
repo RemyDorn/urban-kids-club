@@ -20,9 +20,11 @@ export const SupabasePaymentService = {
     return (data ?? []).map(paymentFromDb)
   },
 
-  async getById(id: ID): Promise<PaymentRecord | undefined> {
+  async getById(id: ID, providerId?: ID): Promise<PaymentRecord | undefined> {
     const sb = getServiceClient()
-    const { data, error } = await sb.from('payments').select('*').eq('id', id).maybeSingle()
+    let query = sb.from('payments').select('*').eq('id', id)
+    if (providerId) query = query.eq('provider_id', providerId)
+    const { data, error } = await query.maybeSingle()
     if (error) throw error
     return data ? paymentFromDb(data) : undefined
   },
@@ -48,6 +50,44 @@ export const SupabasePaymentService = {
     const { error } = await sb.from('payments').delete().eq('id', id)
     if (error) throw error
     return true
+  },
+
+  async markCompleted(id: ID, providerId?: ID): Promise<PaymentRecord | undefined> {
+    const sb = getServiceClient()
+    let query = sb.from('payments')
+      .update({ status: 'completed', processed_at: new Date().toISOString() })
+      .eq('id', id)
+    if (providerId) query = query.eq('provider_id', providerId)
+    const { data, error } = await query.select().maybeSingle()
+    if (error) throw error
+    return data ? paymentFromDb(data) : undefined
+  },
+
+  async getRevenueSummary(providerId: ID): Promise<{ total: number; byMethod: Record<string, number> }> {
+    const sb = getServiceClient()
+    const { data, error } = await sb.from('payments').select('amount, method').eq('provider_id', providerId).eq('status', 'completed')
+    if (error) throw error
+    const rows = data ?? []
+    const total = rows.reduce((s: number, r: any) => s + (r.amount ?? 0), 0)
+    const byMethod: Record<string, number> = {}
+    for (const r of rows) {
+      byMethod[r.method] = (byMethod[r.method] ?? 0) + (r.amount ?? 0)
+    }
+    return { total, byMethod }
+  },
+
+  async runSepaCollection(providerId: ID): Promise<PaymentRecord[]> {
+    // Returns pending SEPA payments for collection
+    const sb = getServiceClient()
+    const { data, error } = await sb.from('payments')
+      .select('*').eq('provider_id', providerId).eq('method', 'sepa_debit').eq('status', 'pending')
+    if (error) throw error
+    return (data ?? []).map(paymentFromDb)
+  },
+
+  // Alias for routes compatibility
+  async listByProvider(providerId: ID, filters?: { method?: PaymentMethod; status?: string }): Promise<PaymentRecord[]> {
+    return this.list(providerId, filters)
   },
 }
 
@@ -112,5 +152,10 @@ export const SupabaseSepaMandateService = {
     const { error } = await sb.from('sepa_mandates').delete().eq('id', id)
     if (error) throw error
     return true
+  },
+
+  // Alias for routes compatibility
+  async listByProvider(providerId: ID): Promise<SepaMandate[]> {
+    return this.list(providerId)
   },
 }
