@@ -72,6 +72,30 @@ function generateEmbedHtml(slug: string, type: string, _url: string): string {
   const apiBase = '' // relative to same origin
   const brandColor = '#B5533A'
 
+  if (type === 'booking-success') {
+    return `<!DOCTYPE html>
+<html lang="de"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter',system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#fff}
+.success{text-align:center;padding:40px;max-width:400px}
+.check{width:64px;height:64px;border-radius:50%;background:#059669;color:#fff;display:flex;align-items:center;justify-content:center;font-size:32px;margin:0 auto 20px;animation:pop 0.4s ease}
+@keyframes pop{0%{transform:scale(0)}50%{transform:scale(1.2)}100%{transform:scale(1)}}
+h2{color:#1f2937;font-size:20px;margin-bottom:8px}
+p{color:#64748b;font-size:14px;line-height:1.6}
+</style>
+</head><body>
+<div class="success">
+  <div class="check">\\u2713</div>
+  <h2>Buchung best\\u00e4tigt!</h2>
+  <p>Vielen Dank f\\u00fcr Ihre Buchung. Sie erhalten in K\\u00fcrze eine Best\\u00e4tigung per E-Mail.</p>
+</div>
+<div id="conversion-pixels"></div>
+</body></html>`
+  }
+
   if (type === 'calendar') {
     return `<!DOCTYPE html>
 <html lang="de"><head>
@@ -200,24 +224,130 @@ function render(){
 }
 window._navMonth=function(dir){curMonth+=dir;if(curMonth>11){curMonth=0;curYear++}if(curMonth<0){curMonth=11;curYear--};selDate=null;render()}
 window._selectDay=function(ds){selDate=selDate===ds?null:ds;render()}
-window._bookCourse=function(title,date,time){
+window._bookCourse=async function(title,date,time){
   const sd=new Date(+date.split('-')[0],+date.split('-')[1]-1,+date.split('-')[2])
   const dateStr=sd.getDate()+'. '+ML[sd.getMonth()]+' '+sd.getFullYear()
+
+  // Find activity ID from courses array
+  const course=courses.find(c=>c.title===title)
+  if(!course){alert('Kurs nicht gefunden');return}
+
+  // Fetch activity checkout details
+  let actData
+  try{
+    const r=await fetch('/api/checkout/activity/'+course.id)
+    actData=await r.json()
+  }catch(e){alert('Fehler beim Laden der Kursdaten');return}
+
+  const act=actData.activity
+  const prov=actData.provider
+  const cancel=actData.cancellation
+  const price=act.pricing?.[0]?.amount||0
+  const priceStr=(price/100).toFixed(2).replace('.',',')+' \\u20ac'
+  const hasOnline=act.paymentOnline&&(prov.stripeConnected||prov.paypalConnected)
+  const hasOnsite=act.paymentOnsite
+
+  let step=1
   const m=document.createElement('div');m.className='book-modal'
   m.onclick=function(e){if(e.target===m)m.remove()}
-  m.innerHTML='<div class="book-modal-inner"><h3>'+title+'</h3><p>'+dateStr+' um '+time+' Uhr</p><input id="bkName" placeholder="Ihr Name" required><input id="bkEmail" type="email" placeholder="E-Mail-Adresse" required><input id="bkPhone" placeholder="Telefon (optional)"><textarea id="bkMsg" rows="2" placeholder="Nachricht (optional)"></textarea><div class="btn-row"><button class="btn-cancel" onclick="this.closest(\\'.book-modal\\').remove()">Abbrechen</button><button class="btn-send" id="bkSend">Anfrage senden</button></div></div>'
-  document.body.appendChild(m)
-  document.getElementById('bkSend').onclick=async function(){
-    const name=document.getElementById('bkName').value.trim()
-    const email=document.getElementById('bkEmail').value.trim()
-    if(!name||!email){alert('Bitte Name und E-Mail ausf\\u00fcllen.');return}
-    this.textContent='Wird gesendet...'
-    this.disabled=true
-    try{
-      await fetch('/api/widget/booking-inquiry',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({slug:slug,course:title,date:date,time:time,name:name,email:email,phone:document.getElementById('bkPhone').value,message:document.getElementById('bkMsg').value})})
-      m.querySelector('.book-modal-inner').innerHTML='<div style="text-align:center;padding:20px"><div style="font-size:32px;margin-bottom:12px">\\u2705</div><h3 style="color:#059669">Anfrage gesendet!</h3><p style="color:#64748b;margin-top:8px">Wir melden uns schnellstm\\u00f6glich bei Ihnen.</p><button class="btn-cancel" style="margin-top:16px" onclick="this.closest(\\'.book-modal\\').remove()">Schlie\\u00dfen</button></div>'
-    }catch(e){alert('Fehler beim Senden. Bitte versuchen Sie es erneut.');this.textContent='Anfrage senden';this.disabled=false}
+
+  function renderStep(){
+    let html='<div class="book-modal-inner" style="max-width:400px">'
+    html+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><h3 style="font-size:16px;font-weight:700;color:#1f2937;margin:0">'+esc(title)+'</h3><button onclick="this.closest(\\'.book-modal\\').remove()" style="background:none;border:none;font-size:20px;color:#94a3b8;cursor:pointer">\\u00d7</button></div>'
+    html+='<p style="font-size:13px;color:#64748b;margin-bottom:16px">'+dateStr+' um '+esc(time)+' Uhr \\u00b7 '+priceStr+'</p>'
+
+    // Progress bar
+    const totalSteps=hasOnline&&hasOnsite?4:3
+    html+='<div style="display:flex;gap:4px;margin-bottom:20px">'
+    for(let i=1;i<=totalSteps;i++){
+      html+='<div style="flex:1;height:3px;border-radius:2px;background:'+(i<=step?'${brandColor}':'#e2e8f0')+'"></div>'
+    }
+    html+='</div>'
+
+    if(step===1){
+      html+='<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:12px">Kind</div>'
+      html+='<div style="display:flex;gap:8px;margin-bottom:8px"><input id="ckFirst" placeholder="Vorname" style="flex:1;padding:10px 12px;border:1px solid #e2e8f0;border-radius:10px;font-size:13px;outline:none" required><input id="ckLast" placeholder="Nachname" style="flex:1;padding:10px 12px;border:1px solid #e2e8f0;border-radius:10px;font-size:13px;outline:none" required></div>'
+      html+='<input id="ckYear" type="number" placeholder="Geburtsjahr (z.B. 2020)" min="2005" max="2026" style="width:100%;padding:10px 12px;border:1px solid #e2e8f0;border-radius:10px;font-size:13px;outline:none;margin-bottom:16px">'
+      html+='<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:12px">Elternteil</div>'
+      html+='<div style="display:flex;gap:8px;margin-bottom:8px"><input id="cpFirst" placeholder="Vorname" style="flex:1;padding:10px 12px;border:1px solid #e2e8f0;border-radius:10px;font-size:13px;outline:none" required><input id="cpLast" placeholder="Nachname" style="flex:1;padding:10px 12px;border:1px solid #e2e8f0;border-radius:10px;font-size:13px;outline:none" required></div>'
+      html+='<input id="cpEmail" type="email" placeholder="E-Mail" style="width:100%;padding:10px 12px;border:1px solid #e2e8f0;border-radius:10px;font-size:13px;outline:none;margin-bottom:8px" required>'
+      html+='<input id="cpPhone" type="tel" placeholder="Telefon" style="width:100%;padding:10px 12px;border:1px solid #e2e8f0;border-radius:10px;font-size:13px;outline:none;margin-bottom:16px" required>'
+      html+='<button id="btnNext1" style="width:100%;padding:12px;border:none;border-radius:10px;background:${brandColor};color:#fff;font-weight:600;font-size:14px;cursor:pointer">Weiter</button>'
+    }
+
+    if(step===2&&hasOnline&&hasOnsite){
+      html+='<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:12px">Zahlungsart w\\u00e4hlen</div>'
+      if(hasOnline){
+        html+='<button class="pay-opt" data-method="online" style="width:100%;padding:14px 16px;border:2px solid #e2e8f0;border-radius:12px;background:#fff;cursor:pointer;display:flex;align-items:center;gap:12px;margin-bottom:8px;transition:all 0.2s"><span style="font-size:24px">\\ud83d\\udcb3</span><div style="text-align:left"><div style="font-weight:600;font-size:14px;color:#1f2937">Jetzt online bezahlen</div><div style="font-size:12px;color:#64748b">'+(prov.stripeConnected?'Kreditkarte, Apple Pay':'')+(prov.stripeConnected&&prov.paypalConnected?' oder ':'')+(prov.paypalConnected?'PayPal':'')+'</div></div></button>'
+      }
+      if(hasOnsite){
+        html+='<button class="pay-opt" data-method="onsite" style="width:100%;padding:14px 16px;border:2px solid #e2e8f0;border-radius:12px;background:#fff;cursor:pointer;display:flex;align-items:center;gap:12px;margin-bottom:8px;transition:all 0.2s"><span style="font-size:24px">\\ud83c\\udfe0</span><div style="text-align:left"><div style="font-weight:600;font-size:14px;color:#1f2937">Vor Ort bezahlen</div><div style="font-size:12px;color:#64748b">Zahlung beim ersten Termin</div></div></button>'
+      }
+    }
+
+    // AGB step (step 2 if only one payment method, step 3 if both)
+    const agbStep=hasOnline&&hasOnsite?3:2
+    if(step===agbStep){
+      const payLabel=window._checkoutPayMethod==='onsite'?'Vor Ort bezahlen':'Online bezahlen ('+priceStr+')'
+      html+='<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:12px">Best\\u00e4tigung</div>'
+      html+='<div style="background:#f8fafc;border-radius:10px;padding:12px;margin-bottom:16px;font-size:13px;color:#374151"><div>'+esc(title)+'</div><div style="color:#64748b">'+dateStr+' \\u00b7 '+esc(time)+' Uhr</div><div style="font-weight:700;margin-top:4px">'+priceStr+'</div></div>'
+      html+='<label style="display:flex;align-items:start;gap:8px;margin-bottom:10px;cursor:pointer"><input type="checkbox" id="agbCheck" style="margin-top:3px"><span style="font-size:12px;color:#374151">Ich stimme den <a href="#" style="color:${brandColor}">AGB</a> zu.</span></label>'
+      if(cancel.custom_text){
+        html+='<label style="display:flex;align-items:start;gap:8px;margin-bottom:16px;cursor:pointer"><input type="checkbox" id="stornoCheck" style="margin-top:3px"><span style="font-size:12px;color:#374151">'+esc(cancel.custom_text)+'</span></label>'
+      }
+      html+='<button id="btnSubmit" style="width:100%;padding:12px;border:none;border-radius:10px;background:${brandColor};color:#fff;font-weight:600;font-size:14px;cursor:pointer">'+(window._checkoutPayMethod==='onsite'?'Verbindlich buchen':'Kostenpflichtig buchen')+'</button>'
+    }
+
+    html+='</div>'
+    m.innerHTML=html
+
+    // Attach event handlers
+    if(step===1){
+      m.querySelector('#btnNext1').onclick=function(){
+        const ckF=m.querySelector('#ckFirst').value.trim()
+        const ckL=m.querySelector('#ckLast').value.trim()
+        const ckY=m.querySelector('#ckYear').value
+        const cpF=m.querySelector('#cpFirst').value.trim()
+        const cpL=m.querySelector('#cpLast').value.trim()
+        const cpE=m.querySelector('#cpEmail').value.trim()
+        const cpP=m.querySelector('#cpPhone').value.trim()
+        if(!ckF||!ckL||!ckY||!cpF||!cpL||!cpE||!cpP){alert('Bitte alle Felder ausf\\u00fcllen.');return}
+        window._checkoutChild={firstName:ckF,lastName:ckL,birthYear:parseInt(ckY)}
+        window._checkoutParent={firstName:cpF,lastName:cpL,email:cpE,phone:cpP}
+        if(!hasOnline){window._checkoutPayMethod='onsite'}
+        else if(!hasOnsite){window._checkoutPayMethod='stripe'}
+        step=2;renderStep()
+      }
+    }
+    if(step===2&&hasOnline&&hasOnsite){
+      m.querySelectorAll('.pay-opt').forEach(btn=>{
+        btn.onmouseover=function(){this.style.borderColor='${brandColor}'}
+        btn.onmouseout=function(){this.style.borderColor='#e2e8f0'}
+        btn.onclick=function(){
+          window._checkoutPayMethod=this.dataset.method==='online'?(prov.stripeConnected?'stripe':'paypal'):'onsite'
+          step=3;renderStep()
+        }
+      })
+    }
+    if(step===agbStep){
+      m.querySelector('#btnSubmit').onclick=async function(){
+        if(!m.querySelector('#agbCheck').checked){alert('Bitte AGB akzeptieren.');return}
+        if(cancel.custom_text&&!m.querySelector('#stornoCheck')?.checked){alert('Bitte Stornierungsbedingungen akzeptieren.');return}
+        this.textContent='Wird verarbeitet...'
+        this.disabled=true
+        try{
+          const r=await fetch('/api/checkout/create-session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({slug:slug,activityId:course.id,child:window._checkoutChild,parent:window._checkoutParent,paymentMethod:window._checkoutPayMethod})})
+          const data=await r.json()
+          if(!r.ok){alert(data.error||'Fehler beim Buchen');this.textContent='Erneut versuchen';this.disabled=false;return}
+          if(data.redirect){window.top.location.href=data.redirect}
+          else{m.querySelector('.book-modal-inner').innerHTML='<div style="text-align:center;padding:24px"><div style="width:56px;height:56px;border-radius:50%;background:#059669;color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto 16px">\\u2713</div><h3 style="font-size:18px;font-weight:700;color:#1f2937;margin-bottom:8px">Buchung best\\u00e4tigt!</h3><p style="font-size:13px;color:#64748b">Vielen Dank! Sie erhalten eine Best\\u00e4tigung per E-Mail.</p><button onclick="this.closest(\\'.book-modal\\').remove()" style="margin-top:16px;padding:10px 24px;border:1px solid #e2e8f0;border-radius:10px;background:#fff;color:#374151;font-size:13px;cursor:pointer">Schlie\\u00dfen</button></div>'}
+        }catch(e){alert('Netzwerkfehler');this.textContent='Erneut versuchen';this.disabled=false}
+      }
+    }
   }
+
+  document.body.appendChild(m)
+  renderStep()
 }
 // Apply URL customization params
 const params=new URLSearchParams(window.location.search)
