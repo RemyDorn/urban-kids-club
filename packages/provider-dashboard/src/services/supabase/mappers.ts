@@ -177,6 +177,9 @@ export function bookingFromDb(r: Row): Booking {
     currency: r.currency ?? 'EUR',
     source: r.source ?? 'direct',
     notes: r.notes ?? undefined,
+    paymentMethod: r.payment_method ?? 'onsite',
+    stripeSessionId: r.stripe_session_id ?? null,
+    paypalOrderId: r.paypal_order_id ?? null,
     createdAt: toDate(r.created_at),
     updatedAt: toDate(r.updated_at),
   }

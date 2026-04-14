@@ -1746,7 +1746,8 @@
                   <td class="px-6 py-4"><span class="px-2 py-1 rounded-full text-xs font-medium ${statusColors[b.status] || ''}">${statusLabelsDE[b.status] || b.status}</span></td>
                   <td class="px-6 py-4">
                     <span class="text-sm font-medium ${paymentColors[b.paymentStatus] || ''}">${paymentLabelsDE[b.paymentStatus] || b.paymentStatus}</span>
-                    ${b.amountPaid > 0 ? `<span class="text-xs text-gray-400 ml-1">(${b.amountPaid}€)</span>` : ''}
+                    ${b.amountPaid > 0 ? `<span class="text-xs text-gray-400 ml-1">(${(b.amountPaid / 100).toFixed(2)}€)</span>` : ''}
+                    <div class="text-xs text-gray-400 mt-0.5">${({stripe:'💳 Stripe',paypal:'🅿️ PayPal',onsite:'🏠 Vor Ort'})[b.paymentMethod] || ''}</div>
                   </td>
                   <td class="px-6 py-4">
                     <span class="px-2 py-0.5 rounded text-xs font-medium ${b.source === 'platform' ? 'bg-brand-100 text-brand-700' : 'bg-gray-100 text-gray-600'}">${b.source === 'platform' ? 'Kids Club' : 'Direkt'}</span>
