@@ -142,6 +142,16 @@ export function activityToDb(a: Partial<Activity> & { id?: ID; providerId?: ID }
   if ((a as Record<string, unknown>).instructorId !== undefined) row.instructor_id = (a as Record<string, unknown>).instructorId ?? null
   if (a.waitlistEnabled !== undefined) row.waitlist_enabled = a.waitlistEnabled
   if (a.trialEnabled !== undefined) row.trial_enabled = a.trialEnabled
+  // Calculate duration from schedule if available, default 60
+  if (a.schedule && (a.schedule as any).slots?.[0]) {
+    const slot = (a.schedule as any).slots[0]
+    if (slot.startTime && slot.endTime) {
+      const [sh, sm] = slot.startTime.split(':').map(Number)
+      const [eh, em] = slot.endTime.split(':').map(Number)
+      row.duration_minutes = (eh * 60 + em) - (sh * 60 + sm)
+    }
+  }
+  if (!row.duration_minutes) row.duration_minutes = 60
   return row
 }
 
