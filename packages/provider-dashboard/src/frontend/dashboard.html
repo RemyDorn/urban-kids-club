@@ -3021,9 +3021,28 @@
         enrollments = eRes.data || eRes
       } catch (e) { console.error(e); return }
 
+      // Load activity to get course endDate for validation (#5)
+      let activity = null
+      if (block.activityId) {
+        try {
+          const aRes = await api(`/activities/${block.activityId}`)
+          activity = aRes.data || aRes
+        } catch (e) { console.error('Activity load failed:', e) }
+      }
+      const courseEndDate = activity?.schedule?.endDate || null
+
+      // Check sessions beyond course endDate (#5)
+      let sessionsAfterEnd = 0
+      if (courseEndDate) {
+        sessionsAfterEnd = sessions.filter(s => s.date > courseEndDate).length
+      }
+
       const dayNames = { mon: 'Montag', tue: 'Dienstag', wed: 'Mittwoch', thu: 'Donnerstag', fri: 'Freitag', sat: 'Samstag', sun: 'Sonntag' }
       const sessStatusColors = { scheduled: 'text-blue-600', completed: 'text-green-600', cancelled_by_provider: 'text-red-600', cancelled_by_holiday: 'text-orange-600' }
       const sessStatusLabels = { scheduled: 'Geplant', completed: 'Abgeschlossen', cancelled_by_provider: 'Ausgefallen (Provider)', cancelled_by_holiday: 'Feiertag' }
+
+      const totalSess = block.totalSessions || 0
+      const canCancelBlock = block.status === 'active' || block.status === 'upcoming'
 
       modal.className = 'fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4'
       modal.innerHTML = `
@@ -3035,6 +3054,12 @@
             </div>
             <button onclick="document.getElementById('block-detail-modal').className='hidden'" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
           </div>
+
+          ${sessionsAfterEnd > 0 ? `
+          <!-- Warning: sessions beyond course end date (#5) -->
+          <div class="mx-6 mt-4 p-3 bg-yellow-50 border border-yellow-300 rounded-lg text-sm text-yellow-800">
+            ⚠️ ${sessionsAfterEnd} Termine liegen nach dem Kurs-Enddatum (${fmtDateDE(courseEndDate)}). Bitte prüfen.
+          </div>` : ''}
 
           <!-- Stats -->
           <div class="grid grid-cols-4 gap-3 p-6 pb-3">
@@ -3084,16 +3109,18 @@
               ${sessions.sort((a,b) => a.date > b.date ? 1 : -1).map(sess => {
                 const isPast = sess.date < fmtDate(new Date())
                 const canCancel = sess.status === 'scheduled' && !isPast
+                const isExtra = sess.sessionNumber > totalSess
                 return `
-                  <div class="flex justify-between items-center py-2 px-3 ${isPast ? 'bg-gray-50' : 'bg-white border border-gray-100'} rounded-lg text-sm">
+                  <div class="flex justify-between items-center py-2 px-3 ${isPast ? 'bg-gray-50' : 'bg-white border border-gray-100'} rounded-lg text-sm" id="sess-row-${sess.id}">
                     <div class="flex items-center gap-3">
-                      <span class="font-mono text-xs text-gray-400">#${sess.sessionNumber}</span>
+                      <span class="font-mono text-xs ${isExtra ? 'text-orange-500' : 'text-gray-400'}">#${sess.sessionNumber}${isExtra ? ' (Extra)' : ''}</span>
                       <span class="font-medium">${fmtDateDE(sess.date)}</span>
                       <span class="text-gray-400">${sess.startTime}–${sess.endTime}</span>
                     </div>
                     <div class="flex items-center gap-2">
                       <span class="text-xs font-semibold ${sessStatusColors[sess.status] || ''}">${sessStatusLabels[sess.status] || sess.status}</span>
-                      ${canCancel ? `<button onclick="cancelBlockSession('${sess.id}', '${blockId}')" class="text-xs text-red-500 hover:text-red-700 font-medium">Absagen</button>` : ''}
+                      ${canCancel ? `<button onclick="cancelBlockSession('${sess.id}', '${blockId}', ${totalSess}, ${sess.sessionNumber})" class="text-xs text-red-500 hover:text-red-700 font-medium">Absagen</button>` : ''}
+                      ${canCancel ? `<button onclick="rescheduleSession('${sess.id}', '${blockId}')" class="text-xs text-purple-500 hover:text-purple-700 font-medium">Verschieben</button>` : ''}
                       ${sess.status === 'scheduled' && !isPast ? `<button onclick="openAttendanceForSession('${sess.id}', '${blockId}')" class="text-xs text-brand-500 hover:text-brand-700 font-medium">Anwesenheit</button>` : ''}
                     </div>
                   </div>`
@@ -3104,6 +3131,7 @@
             <div class="flex gap-2 mt-4 pt-4 border-t border-gray-100">
               <button onclick="extendBlock('${blockId}')" class="text-sm px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 font-medium">+ Termin anhängen</button>
               <button onclick="runBlockCronjobs()" class="text-sm px-3 py-1.5 bg-gray-50 text-gray-600 rounded-lg hover:bg-gray-100 font-medium">Status aktualisieren</button>
+              ${canCancelBlock ? `<button onclick="cancelBlock('${blockId}')" class="text-sm px-3 py-1.5 bg-red-50 text-red-700 rounded-lg hover:bg-red-100 font-medium">Block abbrechen</button>` : ''}
             </div>
           </div>
         </div>
@@ -3275,12 +3303,111 @@
     }
 
     // --- Block-Aktionen ---
-    async function cancelBlockSession(sessionId, blockId) {
+    async function cancelBlockSession(sessionId, blockId, totalSessions, sessionNumber) {
+      // Extra sessions (beyond totalSessions) can be removed immediately without reason
+      if (totalSessions && sessionNumber > totalSessions) {
+        if (!confirm('Zusätzlichen Termin #' + sessionNumber + ' entfernen?')) return
+        try {
+          await api(`/sessions/${sessionId}/cancel`, 'POST', { reason: 'Zusätzlicher Termin entfernt', compensation: 'none', cancelledBy: 'provider' })
+          showBlockDetail(blockId)
+        } catch (err) { alert('Fehler: ' + err.message) }
+        return
+      }
+
+      // Regular session: ask for reason, then show credit choice inline
       const reason = prompt('Grund für die Absage:')
       if (!reason) return
-      const comp = confirm('Guthaben an alle Teilnehmer vergeben?\n\nOK = Guthaben\nAbbrechen = Block verlängern')
+
+      // Show inline credit choice in the session row
+      const row = document.getElementById('sess-row-' + sessionId)
+      if (row) {
+        const actionsDiv = row.querySelector('.flex.items-center.gap-2')
+        if (actionsDiv) {
+          actionsDiv.innerHTML = `
+            <span class="text-xs text-gray-500 mr-1">Guthaben?</span>
+            <button onclick="executeCancelSession('${sessionId}', '${blockId}', '${reason.replace(/'/g, "\\'")}', 'credit')" class="text-xs px-2 py-1 bg-green-100 text-green-700 rounded font-medium hover:bg-green-200">Mit Guthaben</button>
+            <button onclick="executeCancelSession('${sessionId}', '${blockId}', '${reason.replace(/'/g, "\\'")}', 'none')" class="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded font-medium hover:bg-gray-200">Ohne Guthaben</button>
+          `
+          return
+        }
+      }
+      // Fallback if row not found
+      const comp = confirm('Guthaben an alle Teilnehmer vergeben?\n\nOK = Guthaben\nAbbrechen = Ohne Guthaben')
+      await executeCancelSession(sessionId, blockId, reason, comp ? 'credit' : 'none')
+    }
+
+    async function executeCancelSession(sessionId, blockId, reason, compensation) {
       try {
-        await api(`/sessions/${sessionId}/cancel`, 'POST', { reason, compensation: comp ? 'credit' : 'extension', cancelledBy: 'provider' })
+        await api(`/sessions/${sessionId}/cancel`, 'POST', { reason, compensation, cancelledBy: 'provider' })
+        showBlockDetail(blockId)
+      } catch (err) { alert('Fehler: ' + err.message) }
+    }
+
+    async function cancelBlock(blockId) {
+      if (!confirm('Block wirklich abbrechen? Alle zukünftigen Termine werden storniert.')) return
+      try {
+        // Try PATCH first, fallback to POST
+        let res = await fetch(API + `/course-blocks/${blockId}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(currentSession?.access_token ? { 'Authorization': 'Bearer ' + currentSession.access_token } : {})
+          },
+          body: JSON.stringify({ status: 'cancelled' })
+        })
+        if (!res.ok) {
+          // Fallback: try POST cancel endpoint
+          res = await fetch(API + `/course-blocks/${blockId}/cancel`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(currentSession?.access_token ? { 'Authorization': 'Bearer ' + currentSession.access_token } : {})
+            },
+            body: JSON.stringify({ status: 'cancelled' })
+          })
+        }
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}))
+          alert('Fehler: ' + (err.error || 'Block konnte nicht storniert werden'))
+          return
+        }
+        document.getElementById('block-detail-modal').className = 'hidden'
+        renderCourseBlocks()
+      } catch (err) { alert('Fehler: ' + err.message) }
+    }
+
+    async function rescheduleSession(sessionId, blockId) {
+      const row = document.getElementById('sess-row-' + sessionId)
+      if (!row) return
+      const actionsDiv = row.querySelector('.flex.items-center.gap-2')
+      if (!actionsDiv) return
+      // Show inline date picker
+      actionsDiv.innerHTML = `
+        <input type="date" id="reschedule-date-${sessionId}" class="text-xs border border-gray-300 rounded px-2 py-1" />
+        <button onclick="executeReschedule('${sessionId}', '${blockId}')" class="text-xs px-2 py-1 bg-purple-100 text-purple-700 rounded font-medium hover:bg-purple-200">OK</button>
+        <button onclick="showBlockDetail('${blockId}')" class="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded font-medium hover:bg-gray-200">Abbrechen</button>
+      `
+    }
+
+    async function executeReschedule(sessionId, blockId) {
+      const input = document.getElementById('reschedule-date-' + sessionId)
+      if (!input || !input.value) { alert('Bitte ein Datum auswählen.'); return }
+      const newDate = input.value
+      try {
+        // Use inline fetch since there's no PATCH /sessions/:id route yet
+        const res = await fetch(API + `/sessions/${sessionId}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(currentSession?.access_token ? { 'Authorization': 'Bearer ' + currentSession.access_token } : {})
+          },
+          body: JSON.stringify({ date: newDate })
+        })
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}))
+          alert('Fehler: ' + (err.error || 'Termin konnte nicht verschoben werden'))
+          return
+        }
         showBlockDetail(blockId)
       } catch (err) { alert('Fehler: ' + err.message) }
     }

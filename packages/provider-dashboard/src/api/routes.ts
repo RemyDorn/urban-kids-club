@@ -1338,6 +1338,43 @@ export function registerRoutes(router: Router) {
     res.json({ data: result })
   })
 
+  // --- Session Reschedule (PATCH) ---
+
+  router.patch('/api/sessions/:id', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    const session = await CourseBlockService.getSession(req.params.id)
+    if (!session) return res.error(404, 'Session nicht gefunden')
+    // Update the session date
+    if (req.body.date) {
+      ;(session as any).date = req.body.date
+    }
+    res.json({ data: session })
+  })
+
+  // --- Block Cancel / Update Status (PATCH) ---
+
+  router.patch('/api/course-blocks/:id', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    const block = await CourseBlockService.getBlock(req.params.id)
+    if (!block) return res.error(404, 'Block nicht gefunden')
+    if (req.body.status) {
+      ;(block as any).status = req.body.status
+      // If cancelling, also cancel all future scheduled sessions
+      if (req.body.status === 'cancelled') {
+        const sessions = await CourseBlockService.getSessionsByBlock(req.params.id)
+        const today = new Date().toISOString().slice(0, 10)
+        for (const sess of sessions) {
+          if (sess.status === 'scheduled' && sess.date >= today) {
+            ;(sess as any).status = 'cancelled_by_provider'
+          }
+        }
+      }
+    }
+    res.json({ data: block })
+  })
+
   // --- Block Enrollments ---
 
   router.post('/api/course-blocks/:id/enroll', async (req, res) => {
@@ -1554,6 +1591,27 @@ export function registerRoutes(router: Router) {
       pricing: a.pricing, status: a.status, color: a.color, images: a.images,
     }))
     res.json({ data: safe, count: safe.length })
+  })
+
+  // Public: Booking inquiry from embed widget (creates a lead/notification)
+  router.post('/api/widget/booking-inquiry', async (req, res) => {
+    const { slug, course, date, time, name, email, phone, message } = req.body as any
+    if (!slug || !name || !email) return res.error(400, 'Name und E-Mail erforderlich')
+    const provider = await ProviderService.getBySlug(slug)
+    if (!provider) return res.error(404, 'Provider nicht gefunden')
+    const db = getServiceClient()
+    await db.from('booking_inquiries').insert({
+      provider_id: provider.id,
+      course_name: course || '',
+      preferred_date: date || '',
+      preferred_time: time || '',
+      parent_name: name,
+      parent_email: email,
+      parent_phone: phone || '',
+      message: message || '',
+      status: 'new',
+    }).then(() => {}).catch(() => {})
+    res.json({ success: true })
   })
 
   // ============================================================

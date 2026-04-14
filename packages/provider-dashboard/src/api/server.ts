@@ -110,6 +110,19 @@ body{font-family:'Inter',system-ui,sans-serif;background:transparent;color:#1f29
 .slot-meta{font-size:12px;color:#94a3b8;margin-top:2px}
 .slot-badge{display:inline-block;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:600;background:${brandColor}15;color:${brandColor}}
 .empty-state{text-align:center;padding:24px;color:#94a3b8;font-size:13px}
+.book-btn{padding:8px 16px;border-radius:8px;border:none;background:${brandColor};color:#fff;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;transition:all 0.2s;letter-spacing:0.3px}
+.book-btn:hover{opacity:0.85;transform:scale(1.03)}
+.book-modal{position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:100;animation:fadeIn 0.2s}
+.book-modal-inner{background:#fff;border-radius:16px;padding:24px;max-width:360px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.15)}
+.book-modal h3{font-size:16px;font-weight:700;color:#1f2937;margin-bottom:4px}
+.book-modal p{font-size:13px;color:#64748b;margin-bottom:16px}
+.book-modal input,.book-modal textarea{width:100%;padding:10px 12px;border:1px solid #e2e8f0;border-radius:10px;font-size:13px;font-family:inherit;margin-bottom:10px;outline:none;transition:border 0.2s}
+.book-modal input:focus,.book-modal textarea:focus{border-color:${brandColor}}
+.book-modal .btn-row{display:flex;gap:8px;margin-top:4px}
+.book-modal .btn-send{flex:1;padding:10px;border:none;border-radius:10px;background:${brandColor};color:#fff;font-weight:600;font-size:13px;cursor:pointer;transition:opacity 0.2s}
+.book-modal .btn-send:hover{opacity:0.85}
+.book-modal .btn-cancel{padding:10px 16px;border:1px solid #e2e8f0;border-radius:10px;background:#fff;color:#64748b;font-size:13px;cursor:pointer}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
 .powered{text-align:center;padding:8px;font-size:10px;color:#c4b5ab}
 .powered a{color:#94a3b8;text-decoration:none}
 </style>
@@ -178,7 +191,7 @@ function render(){
     const evts=getCoursesForDate(sd)
     slotsHtml='<div class="slots-panel"><div class="slots-date">'+dayName+', '+sd.getDate()+'. '+ML[sd.getMonth()]+'</div>'
     if(evts.length){
-      slotsHtml+=evts.map(e=>'<div class="slot-card"><div class="slot-time">'+e.start+' Uhr</div><div class="slot-info"><div class="slot-title">'+e.title+'</div><div class="slot-meta">'+e.start+' \\u2013 '+e.end+' Uhr \\u00b7 <span class="slot-badge">'+e.cat+'</span> \\u00b7 '+e.age+(e.price?' \\u00b7 '+e.price:'')+'</div></div></div>').join('')
+      slotsHtml+=evts.map(e=>'<div class="slot-card"><div class="slot-time">'+e.start+' Uhr</div><div class="slot-info"><div class="slot-title">'+e.title+'</div><div class="slot-meta">'+e.start+' \\u2013 '+e.end+' Uhr \\u00b7 <span class="slot-badge">'+e.cat+'</span> \\u00b7 '+e.age+(e.price?' \\u00b7 '+e.price:'')+'</div></div><button class="book-btn" onclick="window._bookCourse(\\''+e.title+'\\',\\''+selDate+'\\',\\''+e.start+'\\')">Buchen</button></div>').join('')
     }else{slotsHtml+='<div class="empty-state">Keine Kurse an diesem Tag.</div>'}
     slotsHtml+='</div>'
   }
@@ -186,6 +199,30 @@ function render(){
 }
 window._navMonth=function(dir){curMonth+=dir;if(curMonth>11){curMonth=0;curYear++}if(curMonth<0){curMonth=11;curYear--};selDate=null;render()}
 window._selectDay=function(ds){selDate=selDate===ds?null:ds;render()}
+window._bookCourse=function(title,date,time){
+  const sd=new Date(+date.split('-')[0],+date.split('-')[1]-1,+date.split('-')[2])
+  const dateStr=sd.getDate()+'. '+ML[sd.getMonth()]+' '+sd.getFullYear()
+  const m=document.createElement('div');m.className='book-modal'
+  m.onclick=function(e){if(e.target===m)m.remove()}
+  m.innerHTML='<div class="book-modal-inner"><h3>'+title+'</h3><p>'+dateStr+' um '+time+' Uhr</p><input id="bkName" placeholder="Ihr Name" required><input id="bkEmail" type="email" placeholder="E-Mail-Adresse" required><input id="bkPhone" placeholder="Telefon (optional)"><textarea id="bkMsg" rows="2" placeholder="Nachricht (optional)"></textarea><div class="btn-row"><button class="btn-cancel" onclick="this.closest(\\'.book-modal\\').remove()">Abbrechen</button><button class="btn-send" id="bkSend">Anfrage senden</button></div></div>'
+  document.body.appendChild(m)
+  document.getElementById('bkSend').onclick=async function(){
+    const name=document.getElementById('bkName').value.trim()
+    const email=document.getElementById('bkEmail').value.trim()
+    if(!name||!email){alert('Bitte Name und E-Mail ausf\\u00fcllen.');return}
+    this.textContent='Wird gesendet...'
+    this.disabled=true
+    try{
+      await fetch('/api/widget/booking-inquiry',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({slug:slug,course:title,date:date,time:time,name:name,email:email,phone:document.getElementById('bkPhone').value,message:document.getElementById('bkMsg').value})})
+      m.querySelector('.book-modal-inner').innerHTML='<div style="text-align:center;padding:20px"><div style="font-size:32px;margin-bottom:12px">\\u2705</div><h3 style="color:#059669">Anfrage gesendet!</h3><p style="color:#64748b;margin-top:8px">Wir melden uns schnellstm\\u00f6glich bei Ihnen.</p><button class="btn-cancel" style="margin-top:16px" onclick="this.closest(\\'.book-modal\\').remove()">Schlie\\u00dfen</button></div>'
+    }catch(e){alert('Fehler beim Senden. Bitte versuchen Sie es erneut.');this.textContent='Anfrage senden';this.disabled=false}
+  }
+}
+// Apply URL customization params
+const params=new URLSearchParams(window.location.search)
+if(params.get('color')){document.documentElement.style.setProperty('--brand',params.get('color'));document.querySelectorAll('.cal-header').forEach(h=>{h.style.background='linear-gradient(135deg,'+params.get('color')+' 0%,'+params.get('color')+'cc 100%)'})}
+if(params.get('radius')){document.querySelector('.cal-wrap').style.borderRadius=params.get('radius')}
+if(params.get('font')){document.body.style.fontFamily=params.get('font')+',system-ui,sans-serif'}
 })()
 </script></body></html>`
   }
