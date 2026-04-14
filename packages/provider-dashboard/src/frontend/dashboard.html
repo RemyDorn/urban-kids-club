@@ -3131,6 +3131,8 @@
           sessions: pricing.packageSize || 8,
           capacity: a.capacity || 10,
           category: a.category || '',
+          courseStartDate: a.schedule?.startDate || '',
+          courseEndDate: a.schedule?.endDate || '',
         }
         // calc duration properly
         if (slot.startTime && slot.endTime) {
@@ -3196,6 +3198,9 @@
       document.querySelector('[name=pricePerBlock]').value = d.price
       document.querySelector('[name=capacity]').value = d.capacity
       // Show summary
+      const endDateHint = d.courseEndDate
+        ? `<div class="col-span-2 mt-1 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-800">⚠️ Kurs endet am <strong>${fmtDateDE(d.courseEndDate)}</strong> — Block-Termine müssen in diesen Zeitraum passen.</div>`
+        : ''
       document.getElementById('blockAutoFields').innerHTML = `
         <p class="text-xs text-gray-400 mb-2">Aus Kurs übernommen:</p>
         <div class="grid grid-cols-2 gap-2">
@@ -3205,6 +3210,7 @@
           <div>💰 ${d.price}€ pro Block</div>
           <div>👥 ${d.capacity} Plätze</div>
           <div>🔄 +2 Nachhol-Plätze</div>
+          ${endDateHint}
         </div>
       `
     }
@@ -3235,6 +3241,27 @@
 
       if (!body.activityId || !body.seasonLabel || !body.startDate) {
         alert('Bitte Kurs, Block-Label und Startdatum ausfüllen.')
+        return
+      }
+
+      // Validate: block sessions must fit within course date range
+      const actInfo = window._blockActData?.[body.activityId]
+      if (actInfo?.courseEndDate) {
+        const blockStart = new Date(body.startDate)
+        const courseEnd = new Date(actInfo.courseEndDate)
+        if (blockStart >= courseEnd) {
+          alert('Fehler: Das Block-Startdatum liegt nach dem Kurs-Enddatum (' + fmtDateDE(actInfo.courseEndDate) + ').\n\nBitte passe das Startdatum oder das Kurs-Enddatum an.')
+          return
+        }
+        // Calculate how many weekly sessions fit between start and course end
+        const weeksAvailable = Math.floor((courseEnd - blockStart) / (7 * 24 * 60 * 60 * 1000)) + 1
+        if (body.totalSessions > weeksAvailable) {
+          alert('Achtung: Der Kurs endet am ' + fmtDateDE(actInfo.courseEndDate) + '.\n\nAb dem ' + fmtDateDE(body.startDate) + ' passen nur ' + weeksAvailable + ' Termine in den Zeitraum, aber der Block hat ' + body.totalSessions + ' Termine.\n\nBitte reduziere die Termine auf max. ' + weeksAvailable + ' oder verlängere das Kurs-Enddatum.')
+          return
+        }
+      }
+      if (actInfo?.courseStartDate && body.startDate < actInfo.courseStartDate) {
+        alert('Fehler: Das Block-Startdatum (' + fmtDateDE(body.startDate) + ') liegt vor dem Kurs-Startdatum (' + fmtDateDE(actInfo.courseStartDate) + ').')
         return
       }
 
