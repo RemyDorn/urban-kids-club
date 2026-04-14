@@ -528,24 +528,12 @@
       showLoginScreen()
     }
 
-    // Listen for auth state changes
-    sb.auth.onAuthStateChange(async (event, session) => {
+    // Listen for auth state changes (only handle sign-out;
+    // sign-in is handled by handleLogin/checkAuth to avoid race conditions)
+    let loginInProgress = false
+    sb.auth.onAuthStateChange((event, session) => {
       currentSession = session
-      if (event === 'SIGNED_IN' && session) {
-        // Check provider status before showing dashboard
-        const email = session.user?.email
-        if (email) {
-          const { data: prov } = await sb.from('providers').select('status').eq('login_email', email).single()
-          if (prov && prov.status !== 'active') {
-            document.getElementById('pendingScreen').style.display = 'flex'
-            document.getElementById('loginScreen').style.display = 'none'
-            document.getElementById('mainContent').style.display = 'none'
-            return
-          }
-        }
-        showDashboard()
-        init()
-      } else if (event === 'SIGNED_OUT') {
+      if (event === 'SIGNED_OUT') {
         document.getElementById('pendingScreen').style.display = 'none'
         showLoginScreen()
       }
