@@ -733,11 +733,14 @@
 
       activities.data.filter(a => a.status === 'published').forEach(a => {
         if (a.schedule.type === 'recurring') {
+          const recurStart = a.schedule.startDate || ''
+          const recurEnd = a.schedule.endDate || '9999-12-31'
           for (const slot of a.schedule.slots) {
             const targetDay = dayToNum[slot.day]
             days.forEach(d => {
-              if (d.getDay() === targetDay && !holidayDates.has(fmtDate(d))) {
-                events.push({ activityId: a.id, title: a.title, date: fmtDate(d), startTime: slot.startTime, endTime: slot.endTime, type: 'activity' })
+              const ds = fmtDate(d)
+              if (d.getDay() === targetDay && ds >= recurStart && ds <= recurEnd && !holidayDates.has(ds)) {
+                events.push({ activityId: a.id, title: a.title, date: ds, startTime: slot.startTime, endTime: slot.endTime, type: 'activity' })
               }
             })
           }
@@ -885,9 +888,9 @@
         const dayEvents = eventsByDay[fmtDate(d)] || []
         const col = dayIdx + 1 // 0 is the hour label column
 
-        dayEvents.forEach(event => {
-          const startParts = event.startTime.split(':')
-          const endParts = event.endTime.split(':')
+        dayEvents.forEach(ev => {
+          const startParts = ev.startTime.split(':')
+          const endParts = ev.endTime.split(':')
           const startH = parseInt(startParts[0]) + parseInt(startParts[1]) / 60
           const endH = parseInt(endParts[0]) + parseInt(endParts[1]) / 60
           const duration = endH - startH
@@ -895,9 +898,9 @@
           const topOffset = (startH - 7) * hourHeight
           const height = Math.max(duration * hourHeight - 4, 24)
 
-          const activity = actMap[event.activityId]
-          const occ = occMap[event.activityId]
-          const actIdx = activities.data.findIndex(a => a.id === event.activityId)
+          const activity = actMap[ev.activityId]
+          const occ = occMap[ev.activityId]
+          const actIdx = activities.data.findIndex(a => a.id === ev.activityId)
           const clr = getCourseColor(activity, actIdx)
           const occPct = occ ? Math.round(occ.occupancy * 100) : 0
           const occText = occ ? `${occ.booked}/${occ.capacity}` : ''
@@ -916,12 +919,12 @@
               border-color:${clr}; border-left-width:4px;
               background: linear-gradient(to top, ${hexToRgba(clr, 0.4)} ${occPct}%, ${hexToRgba(clr, 0.06)} ${occPct}%);
             `
-            eventEl.onclick = () => showEventDetail(event, activity, occ)
+            eventEl.onclick = () => showEventDetail(ev, activity, occ)
 
             const showOcc = height > 40
             eventEl.innerHTML = `
-              <div class="font-semibold truncate" style="font-size:11px;line-height:1.3;color:#1f2937;">${escapeHtml(event.title)}</div>
-              <div class="truncate" style="font-size:10px;color:#6b7280;">${event.startTime}–${event.endTime}</div>
+              <div class="font-semibold truncate" style="font-size:11px;line-height:1.3;color:#1f2937;">${escapeHtml(ev.title)}</div>
+              <div class="truncate" style="font-size:10px;color:#6b7280;">${ev.startTime}–${ev.endTime}</div>
               ${showOcc && occ ? `<div style="font-size:9px;font-weight:600;color:${clr};margin-top:2px;">${occText} (${occPct}%)</div>` : ''}
             `
             firstCell.appendChild(eventEl)
@@ -930,15 +933,25 @@
       })
     }
 
-    function showEventDetail(event, activity, occ) {
+    function showEventDetail(ev, activity, occ) {
       const occPct = occ ? Math.round(occ.occupancy * 100) : 0
+      // Parse event date (YYYY-MM-DD string from fmtDate)
+      const evDate = ev.date
+      let eventDateStr = evDate || 'Unbekannt'
+      if (typeof evDate === 'string' && evDate.includes('-')) {
+        const [y, m, d] = evDate.split('-')
+        const dt = new Date(parseInt(y), parseInt(m) - 1, parseInt(d))
+        if (!isNaN(dt.getTime())) {
+          eventDateStr = dt.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+        }
+      }
       const modal = document.getElementById('calModal')
       modal.className = 'cal-modal-backdrop'
       modal.onclick = (e) => { if (e.target === modal) modal.className = 'hidden' }
       modal.innerHTML = `
         <div class="cal-modal fade-in">
           <div class="flex items-center justify-between mb-4">
-            <h3 class="text-lg font-bold text-gray-900">${escapeHtml(event.title)}</h3>
+            <h3 class="text-lg font-bold text-gray-900">${escapeHtml(ev.title)}</h3>
             <button onclick="document.getElementById('calModal').className='hidden'" class="text-gray-400 hover:text-gray-600">
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
@@ -948,11 +961,11 @@
             <div class="grid grid-cols-2 gap-4">
               <div class="bg-gray-50 rounded-lg p-3">
                 <div class="text-xs text-gray-500 mb-1">Datum</div>
-                <div class="font-semibold text-gray-900">${(() => { const [y,m,d] = event.date.split('-').map(Number); return new Date(y, m-1, d).toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' }); })()}</div>
+                <div class="font-semibold text-gray-900">${eventDateStr}</div>
               </div>
               <div class="bg-gray-50 rounded-lg p-3">
                 <div class="text-xs text-gray-500 mb-1">Uhrzeit</div>
-                <div class="font-semibold text-gray-900">${event.startTime} – ${event.endTime}</div>
+                <div class="font-semibold text-gray-900">${ev.startTime} – ${ev.endTime}</div>
               </div>
             </div>
 
