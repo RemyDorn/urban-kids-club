@@ -195,7 +195,7 @@ export const CalendarService = {
 
       ical.push(
         'BEGIN:VEVENT',
-        `UID:${event.id}@urbankidsclub.de`,
+        `UID:${event.id}@urbankids.club`,
         `DTSTART:${dtStart}`,
         `DTEND:${dtEnd}`,
         `SUMMARY:${this._escapeIcal(event.title)}`,

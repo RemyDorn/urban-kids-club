@@ -183,7 +183,7 @@
       </div>
       <h2 class="text-xl font-bold mb-3" style="color:#f5e6d3;font-family:'Barlow Condensed',sans-serif">KONTO WIRD GEPRÜFT</h2>
       <p class="text-sm mb-6" style="color:#c49980">Vielen Dank für Ihre Registrierung! Ihr Konto wird aktuell von unserem Team geprüft. Sobald die Freigabe erfolgt ist, erhalten Sie eine Benachrichtigung per E-Mail und können sich anmelden.</p>
-      <p class="text-xs mb-6" style="color:#8a6a50">Bei Fragen kontaktieren Sie uns unter <span style="color:#d4956a">support@socialy.club</span></p>
+      <p class="text-xs mb-6" style="color:#8a6a50">Bei Fragen kontaktieren Sie uns unter <span style="color:#d4956a">support@urbankids.club</span></p>
       <button type="button" onclick="handleLogout()" class="px-6 py-2.5 rounded-lg text-sm font-semibold transition-all hover:opacity-90" style="background:rgba(255,255,255,0.1);color:#f5e6d3;border:1px solid #5a3828">
         Abmelden
       </button>
@@ -1384,7 +1384,7 @@
                   <input type="checkbox" name="platformEnabled" ${pl.enabled ? 'checked' : ''} onchange="document.getElementById('platformFields').classList.toggle('hidden')" class="rounded border-brand-300 text-brand-500 focus:ring-brand-500 w-4 h-4">
                   <div>
                     <div class="text-sm font-medium text-gray-900">Auf Kids Club Plattform listen</div>
-                    <div class="text-xs text-gray-500">Eltern können diesen Kurs auf urbankidsclub.de finden und buchen</div>
+                    <div class="text-xs text-gray-500">Eltern können diesen Kurs auf urbankids.club finden und buchen</div>
                   </div>
                 </label>
 
@@ -3477,7 +3477,7 @@
     // --- Embed / Widgets ---
     async function renderEmbed() {
       const slug = currentProvider.slug || 'mein-studio'
-      const baseUrl = 'https://urbankidsclub.de'
+      const baseUrl = 'https://app.urbankids.club'
       const activities = await api(`/providers/${currentProvider.id}/activities`)
       const published = activities.data.filter(a => a.status === 'published')
 
@@ -4060,7 +4060,7 @@
                 <div class="w-16 h-16 bg-brand-100 text-brand-700 rounded-xl flex items-center justify-center text-2xl font-bold">${escapeHtml(p.name[0])}</div>
                 <div>
                   <div class="font-bold text-gray-900">${escapeHtml(p.name)}</div>
-                  <div class="text-sm text-gray-500">${escapeHtml(p.slug)}.urbankidsclub.de</div>
+                  <div class="text-sm text-gray-500">${escapeHtml(p.slug)}.urbankids.club</div>
                 </div>
               </div>
               <div>

@@ -115,7 +115,7 @@ export const WidgetService = {
     return [
       `<!-- Urban Kids Club Widget – ${widget.type} -->`,
       `<iframe`,
-      `  src="https://urbankidsclub.de/${embedPath}/${slug}?${params.toString()}"`,
+      `  src="https://app.urbankids.club/${embedPath}/${slug}?${params.toString()}"`,
       `  width="${size.width}"`,
       `  height="${size.height}"`,
       `  frameborder="0"`,

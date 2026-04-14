@@ -8,7 +8,7 @@ export const openApiSpec = {
     title: 'Urban Kids Club – Provider Dashboard API',
     description: 'REST API für die Provider SaaS-Plattform. Verwaltet Kurse, Buchungen, Finanzen und mehr.',
     version: '0.1.0',
-    contact: { name: 'Urban Kids Club', email: 'api@urbankidsclub.de' },
+    contact: { name: 'Urban Kids Club', email: 'api@urbankids.club' },
   },
   servers: [{ url: 'http://localhost:3000', description: 'Lokaler Entwicklungsserver' }],
   tags: [

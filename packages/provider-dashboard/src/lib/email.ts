@@ -44,7 +44,7 @@ class ResendEmailProvider implements EmailProvider {
   private apiKey: string
   private fromAddress: string
 
-  constructor(apiKey: string, fromAddress: string = 'Urban Kids Club <noreply@urbankidsclub.de>') {
+  constructor(apiKey: string, fromAddress: string = 'Urban Kids Club <noreply@urbankids.club>') {
     this.apiKey = apiKey
     this.fromAddress = fromAddress
   }
