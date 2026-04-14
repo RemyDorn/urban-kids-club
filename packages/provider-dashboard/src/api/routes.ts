@@ -1538,6 +1538,25 @@ export function registerRoutes(router: Router) {
   })
 
   // ============================================================
+  // PUBLIC EMBED ENDPOINTS (kein Auth – für iframe-Widgets)
+  // ============================================================
+
+  // Public: Activities by provider slug (for embed calendar/course list)
+  router.get('/api/providers/by-slug/:slug/activities', async (req, res) => {
+    const provider = await ProviderService.getBySlug(req.params.slug)
+    if (!provider) return res.error(404, 'Provider nicht gefunden')
+    const activities = await ActivityService.listByProvider(provider.id)
+    // Only return public-safe fields
+    const safe = activities.map((a: any) => ({
+      id: a.id, title: a.title, description: a.description, category: a.category,
+      ageRange: a.ageRange || { min: a.age_group_min, max: a.age_group_max },
+      duration: a.duration || a.duration_minutes, schedule: a.schedule,
+      pricing: a.pricing, status: a.status, color: a.color, images: a.images,
+    }))
+    res.json({ data: safe, count: safe.length })
+  })
+
+  // ============================================================
   // PUBLIC WIDGET ENDPOINTS (kein Auth – für Eltern-Widget auf Squarespace)
   // ============================================================
   // Diese Endpoints liefern angereicherte Daten für das eingebettete Widget.
