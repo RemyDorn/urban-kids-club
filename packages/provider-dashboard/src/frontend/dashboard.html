@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.tailwindcss.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://yuilhiqnrjuuqoqggihm.supabase.co">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.tailwindcss.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://*.supabase.co https://yuilhiqnrjuuqoqggihm.supabase.co https://cdn.jsdelivr.net">
   <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <title>Urban Kids Club – Provider Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
@@ -3468,8 +3468,10 @@
     // --- Helper ---
     function fmtDate(d) {
       if (!d) return '–'
-      const [y,m,dd] = d.split('-')
-      return `${dd}.${m}.${y}`
+      const s = typeof d === 'string' ? d : (d instanceof Date ? d.toISOString().split('T')[0] : String(d))
+      const parts = s.split('-')
+      if (parts.length !== 3) return s
+      return `${parts[2]}.${parts[1]}.${parts[0]}`
     }
 
     // --- Embed / Widgets ---
