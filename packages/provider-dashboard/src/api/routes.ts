@@ -1622,6 +1622,127 @@ export function registerRoutes(router: Router) {
   })
 
   // ============================================================
+  // PUBLIC CHECKOUT (no auth — called from embed widget)
+  // ============================================================
+
+  router.post('/api/checkout/create-session', async (req, res) => {
+    const { slug, activityId, blockId, child, parent, paymentMethod } = req.body as any
+    if (!slug || !activityId || !child?.firstName || !parent?.email || !paymentMethod) {
+      return res.error(400, 'Pflichtfelder fehlen')
+    }
+
+    const db = getServiceClient()
+    const provider = await ProviderService.getBySlug(slug)
+    if (!provider) return res.error(404, 'Provider nicht gefunden')
+
+    const { data: activity } = await db.from('activities').select('*').eq('id', activityId).single()
+    if (!activity) return res.error(404, 'Kurs nicht gefunden')
+
+    const price = activity.pricing?.[0]?.amount || 0
+
+    if (paymentMethod === 'onsite') {
+      const { CheckoutService } = await import('../services/supabase/checkout.service')
+      const booking = await CheckoutService.createBooking({
+        providerId: provider.id, activityId, blockId,
+        childFirstName: child.firstName, childLastName: child.lastName, childBirthYear: child.birthYear,
+        parentFirstName: parent.firstName, parentLastName: parent.lastName,
+        parentEmail: parent.email, parentPhone: parent.phone || '',
+        paymentMethod: 'onsite', amount: price, currency: 'EUR',
+      })
+      return res.json({ success: true, bookingId: booking.id, redirect: null })
+    }
+
+    if (paymentMethod === 'stripe') {
+      if (!provider.stripe_connected || !provider.stripe_account_id) {
+        return res.error(400, 'Stripe nicht verbunden')
+      }
+      const { createCheckoutSession } = await import('../lib/stripe')
+      const origin = req.raw.headers.origin || req.raw.headers.host ? `https://${req.raw.headers.host}` : 'https://app.urbankids.club'
+      const url = await createCheckoutSession({
+        stripeAccountId: provider.stripe_account_id,
+        amount: price, currency: 'EUR', courseName: activity.title,
+        successUrl: `${origin}/embed/${slug}/booking-success?session_id={CHECKOUT_SESSION_ID}`,
+        cancelUrl: `${origin}/embed/${slug}/calendar`,
+        metadata: {
+          provider_id: provider.id, activity_id: activityId, block_id: blockId || '',
+          child_first: child.firstName, child_last: child.lastName, child_year: String(child.birthYear),
+          parent_first: parent.firstName, parent_last: parent.lastName,
+          parent_email: parent.email, parent_phone: parent.phone || '',
+        },
+      })
+      return res.json({ success: true, redirect: url })
+    }
+
+    if (paymentMethod === 'paypal') {
+      const { data: provData } = await db.from('providers')
+        .select('paypal_client_id, paypal_secret').eq('id', provider.id).single()
+      if (!provData?.paypal_client_id) return res.error(400, 'PayPal nicht verbunden')
+
+      const origin = req.raw.headers.origin || `https://${req.raw.headers.host}` || 'https://app.urbankids.club'
+      const auth = Buffer.from(`${provData.paypal_client_id}:${provData.paypal_secret}`).toString('base64')
+      const ppRes = await fetch('https://api-m.paypal.com/v2/checkout/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Basic ${auth}` },
+        body: JSON.stringify({
+          intent: 'CAPTURE',
+          purchase_units: [{ amount: { currency_code: 'EUR', value: (price / 100).toFixed(2) } }],
+          application_context: {
+            return_url: `${origin}/embed/${slug}/booking-success?paypal=1`,
+            cancel_url: `${origin}/embed/${slug}/calendar`,
+            brand_name: provider.company_name || provider.display_name,
+          },
+        }),
+      })
+      const ppData = await ppRes.json() as any
+      const approveUrl = ppData.links?.find((l: any) => l.rel === 'approve')?.href
+      if (!approveUrl) return res.error(500, 'PayPal Order konnte nicht erstellt werden')
+      return res.json({ success: true, redirect: approveUrl })
+    }
+
+    res.error(400, 'Ungueltige Zahlungsart')
+  })
+
+  // Stripe Webhook
+  router.post('/api/webhooks/stripe', async (req, res) => {
+    const event = req.body
+    if (event?.type === 'checkout.session.completed') {
+      const session = event.data.object
+      const meta = session.metadata || {}
+      try {
+        const { CheckoutService } = await import('../services/supabase/checkout.service')
+        await CheckoutService.createBooking({
+          providerId: meta.provider_id, activityId: meta.activity_id, blockId: meta.block_id || undefined,
+          childFirstName: meta.child_first, childLastName: meta.child_last,
+          childBirthYear: parseInt(meta.child_year) || 2020,
+          parentFirstName: meta.parent_first, parentLastName: meta.parent_last,
+          parentEmail: meta.parent_email, parentPhone: meta.parent_phone || '',
+          paymentMethod: 'stripe', amount: session.amount_total || 0,
+          currency: session.currency || 'eur', stripeSessionId: session.id,
+        })
+      } catch (err: any) {
+        console.error('Webhook booking creation failed:', err.message)
+      }
+    }
+    res.json({ received: true })
+  })
+
+  // Public: Get activity details + payment config for checkout form
+  router.get('/api/checkout/activity/:activityId', async (req, res) => {
+    const db = getServiceClient()
+    const { data: activity } = await db.from('activities').select('id, title, category, pricing, payment_online, payment_onsite, provider_id').eq('id', req.params.activityId).single()
+    if (!activity) return res.error(404, 'Kurs nicht gefunden')
+    // Get provider payment config
+    const { data: provider } = await db.from('providers').select('stripe_connected, paypal_connected').eq('id', activity.provider_id).single()
+    // Get cancellation policy
+    const { data: policy } = await db.from('cancellation_policies').select('*').eq('provider_id', activity.provider_id).single()
+    res.json({
+      activity: { id: activity.id, title: activity.title, category: activity.category, pricing: activity.pricing, paymentOnline: activity.payment_online, paymentOnsite: activity.payment_onsite },
+      provider: { stripeConnected: provider?.stripe_connected || false, paypalConnected: provider?.paypal_connected || false },
+      cancellation: policy || { fee_type: 'fixed', fee_value: 0, deadline_hours: 48, custom_text: '' },
+    })
+  })
+
+  // ============================================================
   // PUBLIC WIDGET ENDPOINTS (kein Auth – für Eltern-Widget auf Squarespace)
   // ============================================================
   // Diese Endpoints liefern angereicherte Daten für das eingebettete Widget.
