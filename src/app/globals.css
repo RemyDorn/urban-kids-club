@@ -30,6 +30,12 @@ html {
   scroll-behavior: smooth;
 }
 
+/* Selection */
+::selection {
+  background: rgba(139, 92, 246, 0.3);
+  color: #fff;
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
@@ -60,6 +66,22 @@ html {
   background-clip: text;
 }
 
+/* Animated gradient text (moves) */
+.gradient-text-animated {
+  background: linear-gradient(270deg, #8b5cf6, #3b82f6, #06b6d4, #ec4899, #8b5cf6);
+  background-size: 300% 300%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: gradient-text-shift 6s ease infinite;
+}
+
+@keyframes gradient-text-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
 /* Animated gradient background */
 .animated-gradient {
   background: linear-gradient(-45deg, #0a0a0a, #1a0533, #0a1628, #0a0a0a);
@@ -87,11 +109,13 @@ html {
   background: rgba(17, 17, 17, 0.6);
   backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.05);
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .glass-card:hover {
-  border-color: rgba(139, 92, 246, 0.2);
-  background: rgba(17, 17, 17, 0.8);
+  border-color: rgba(139, 92, 246, 0.25);
+  background: rgba(17, 17, 17, 0.85);
+  box-shadow: 0 8px 40px rgba(139, 92, 246, 0.08), 0 0 0 1px rgba(139, 92, 246, 0.1);
 }
 
 /* Grid background pattern */
@@ -100,6 +124,12 @@ html {
     linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
   background-size: 60px 60px;
+}
+
+/* Dot background pattern */
+.dot-bg {
+  background-image: radial-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-size: 24px 24px;
 }
 
 /* Radial gradient overlay */
@@ -127,6 +157,37 @@ html {
   pointer-events: none;
 }
 
+/* Rotating border (animated) */
+.border-rotate {
+  position: relative;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.border-rotate::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  border-radius: 16px;
+  background: conic-gradient(from var(--angle, 0deg), rgba(139, 92, 246, 0.4), rgba(59, 130, 246, 0.1), rgba(6, 182, 212, 0.4), rgba(236, 72, 153, 0.1), rgba(139, 92, 246, 0.4));
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  -webkit-mask-composite: xor;
+  pointer-events: none;
+  animation: border-spin 4s linear infinite;
+}
+
+@keyframes border-spin {
+  to { --angle: 360deg; }
+}
+
+@property --angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
 /* Pulse dot animation */
 .pulse-dot {
   animation: pulse-dot 2s ease-in-out infinite;
@@ -145,6 +206,17 @@ html {
 @keyframes float {
   0%, 100% { transform: translateY(0px); }
   50% { transform: translateY(-20px); }
+}
+
+/* Subtle float */
+.float-subtle {
+  animation: float-subtle 8s ease-in-out infinite;
+}
+
+@keyframes float-subtle {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  33% { transform: translateY(-8px) rotate(0.5deg); }
+  66% { transform: translateY(4px) rotate(-0.5deg); }
 }
 
 /* Shimmer effect */
@@ -171,6 +243,27 @@ html {
   100% { transform: translateX(100%); }
 }
 
+/* Marquee */
+.marquee {
+  animation: marquee 30s linear infinite;
+}
+
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+/* Noise texture overlay */
+.noise-bg::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' fill='white'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 1;
+}
+
 /* Line animation for the "How it works" section */
 .line-animate {
   background: linear-gradient(180deg, #8b5cf6, #3b82f6);
@@ -181,4 +274,25 @@ html {
 @keyframes line-grow {
   from { transform: scaleY(0); }
   to { transform: scaleY(1); }
+}
+
+/* Button press effect */
+.btn-press:active {
+  transform: scale(0.97);
+}
+
+/* Focus ring */
+.focus-ring:focus-visible {
+  outline: 2px solid rgba(139, 92, 246, 0.5);
+  outline-offset: 2px;
+}
+
+/* Smooth image reveal */
+.reveal-up {
+  clip-path: inset(100% 0 0 0);
+  animation: reveal-up 0.8s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes reveal-up {
+  to { clip-path: inset(0 0 0 0); }
 }
