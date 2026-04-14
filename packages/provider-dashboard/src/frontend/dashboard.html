@@ -3098,6 +3098,31 @@
       let activities = []
       try { const r = await api(`/providers/${currentProvider.id}/activities`); activities = r.data || r } catch(e) {}
 
+      // Pre-serialize activity data for auto-fill
+      const actData = {}
+      const dayMap = {MO:'mon',TU:'tue',WE:'wed',TH:'thu',FR:'fri',SA:'sat',SU:'sun'}
+      activities.forEach(a => {
+        const slot = a.schedule?.slots?.[0] || {}
+        const pricing = a.pricing?.[0] || {}
+        actData[a.id] = {
+          day: dayMap[slot.day] || 'mon',
+          time: slot.startTime || '09:00',
+          endTime: slot.endTime || '10:00',
+          duration: slot.startTime && slot.endTime ? ((parseInt(slot.endTime)*60+parseInt(slot.endTime.split(':')[1]))-(parseInt(slot.startTime)*60+parseInt(slot.startTime.split(':')[1]))) : 60,
+          price: pricing.amount || 140,
+          sessions: pricing.packageSize || 8,
+          capacity: a.capacity || 10,
+          category: a.category || '',
+        }
+        // calc duration properly
+        if (slot.startTime && slot.endTime) {
+          const [sh,sm] = slot.startTime.split(':').map(Number)
+          const [eh,em] = slot.endTime.split(':').map(Number)
+          actData[a.id].duration = (eh*60+em) - (sh*60+sm)
+        }
+      })
+      window._blockActData = actData
+
       modal.className = 'fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4'
       modal.innerHTML = `
         <div class="bg-white rounded-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto shadow-2xl p-6">
@@ -3108,7 +3133,7 @@
           <form onsubmit="submitCreateBlock(event)" class="space-y-4">
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-1">Kurs</label>
-              <select name="activityId" required class="w-full border rounded-lg px-3 py-2 text-sm">
+              <select name="activityId" required class="w-full border rounded-lg px-3 py-2 text-sm" onchange="autoFillBlock(this.value)">
                 <option value="">Kurs wählen…</option>
                 ${activities.map(a => `<option value="${a.id}" data-type="${a.category}">${escapeHtml(a.title)}</option>`).join('')}
               </select>
@@ -3117,55 +3142,48 @@
               <label class="block text-sm font-medium text-gray-700 mb-1">Block-Label</label>
               <input type="text" name="seasonLabel" placeholder="z.B. Block 1 – Mai/Juni 2026" required class="w-full border rounded-lg px-3 py-2 text-sm">
             </div>
-            <div class="grid grid-cols-2 gap-3">
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Startdatum</label>
-                <input type="date" name="startDate" required class="w-full border rounded-lg px-3 py-2 text-sm">
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Wochentag</label>
-                <select name="recurringDay" required class="w-full border rounded-lg px-3 py-2 text-sm">
-                  <option value="mon">Montag</option><option value="tue">Dienstag</option><option value="wed">Mittwoch</option>
-                  <option value="thu">Donnerstag</option><option value="fri">Freitag</option><option value="sat">Samstag</option>
-                </select>
-              </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Startdatum</label>
+              <input type="date" name="startDate" required class="w-full border rounded-lg px-3 py-2 text-sm">
             </div>
-            <div class="grid grid-cols-2 gap-3">
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Uhrzeit</label>
-                <input type="time" name="recurringTime" value="09:00" required class="w-full border rounded-lg px-3 py-2 text-sm">
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Dauer (Min)</label>
-                <input type="number" name="durationMinutes" value="60" required class="w-full border rounded-lg px-3 py-2 text-sm">
-              </div>
+            <div id="blockAutoFields" class="space-y-3 p-3 bg-gray-50 rounded-lg text-sm text-gray-600">
+              <p class="text-xs text-gray-400">Wähle einen Kurs — die restlichen Daten werden automatisch übernommen.</p>
             </div>
-            <div class="grid grid-cols-3 gap-3">
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Termine</label>
-                <input type="number" name="totalSessions" value="8" required class="w-full border rounded-lg px-3 py-2 text-sm">
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Preis (€)</label>
-                <input type="number" name="pricePerBlock" value="140" step="0.01" required class="w-full border rounded-lg px-3 py-2 text-sm">
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Kapazität</label>
-                <input type="number" name="capacity" value="10" required class="w-full border rounded-lg px-3 py-2 text-sm">
-              </div>
-            </div>
-            <div class="grid grid-cols-2 gap-3">
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Nachhol-Plätze extra</label>
-                <input type="number" name="makeupCapacity" value="2" class="w-full border rounded-lg px-3 py-2 text-sm">
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Max Credits/Kind</label>
-                <input type="number" name="maxCreditsPerEnrollment" value="2" class="w-full border rounded-lg px-3 py-2 text-sm">
-              </div>
-            </div>
+            <input type="hidden" name="recurringDay" value="mon">
+            <input type="hidden" name="recurringTime" value="09:00">
+            <input type="hidden" name="durationMinutes" value="60">
+            <input type="hidden" name="totalSessions" value="8">
+            <input type="hidden" name="pricePerBlock" value="140">
+            <input type="hidden" name="capacity" value="10">
+            <input type="hidden" name="makeupCapacity" value="2">
+            <input type="hidden" name="maxCreditsPerEnrollment" value="2">
             <button type="submit" class="w-full bg-brand-500 text-white py-2.5 rounded-lg font-semibold hover:bg-brand-600 transition">Block erstellen</button>
           </form>
+        </div>
+      `
+    }
+
+    function autoFillBlock(activityId) {
+      const d = window._blockActData?.[activityId]
+      if (!d) return
+      const dayLabels = {mon:'Montag',tue:'Dienstag',wed:'Mittwoch',thu:'Donnerstag',fri:'Freitag',sat:'Samstag',sun:'Sonntag'}
+      // Set hidden fields
+      document.querySelector('[name=recurringDay]').value = d.day
+      document.querySelector('[name=recurringTime]').value = d.time
+      document.querySelector('[name=durationMinutes]').value = d.duration
+      document.querySelector('[name=totalSessions]').value = d.sessions
+      document.querySelector('[name=pricePerBlock]').value = d.price
+      document.querySelector('[name=capacity]').value = d.capacity
+      // Show summary
+      document.getElementById('blockAutoFields').innerHTML = `
+        <p class="text-xs text-gray-400 mb-2">Aus Kurs übernommen:</p>
+        <div class="grid grid-cols-2 gap-2">
+          <div>📅 <strong>${dayLabels[d.day] || d.day}</strong>, ${d.time}–${d.endTime}</div>
+          <div>⏱ ${d.duration} Minuten</div>
+          <div>📋 ${d.sessions} Termine</div>
+          <div>💰 ${d.price}€ pro Block</div>
+          <div>👥 ${d.capacity} Plätze</div>
+          <div>🔄 +2 Nachhol-Plätze</div>
         </div>
       `
     }
