@@ -77,50 +77,115 @@ function generateEmbedHtml(slug: string, type: string, _url: string): string {
 <html lang="de"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Kurskalender</title>
-<link href="https://cdn.jsdelivr.net/npm/tailwindcss@3/dist/tailwind.min.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  body{margin:0;font-family:Inter,system-ui,sans-serif;background:#fff}
-  .cal-slot{padding:8px 12px;border-left:4px solid ${brandColor};background:#FFF9F5;border-radius:8px;margin-bottom:8px}
-  .day-header{font-weight:700;color:#3C2225;font-size:14px;margin-bottom:6px;margin-top:16px}
-  .time{font-size:12px;color:#64748B}.title{font-weight:600;color:#1f2937;font-size:14px}
-  .meta{font-size:12px;color:#64748B;margin-top:2px}
-  .empty{text-align:center;padding:40px;color:#64748B}
-  .loading{text-align:center;padding:40px;color:#64748B}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter',system-ui,sans-serif;background:transparent;color:#1f2937}
+.cal-wrap{max-width:420px;margin:0 auto;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);background:#fff;border:1px solid #f0ebe8}
+.cal-header{display:flex;align-items:center;justify-content:space-between;padding:20px 24px 16px;background:linear-gradient(135deg,#3C2225 0%,#5a3538 100%)}
+.cal-header h2{font-size:17px;font-weight:700;color:#fff;letter-spacing:-0.3px}
+.cal-header button{width:32px;height:32px;border-radius:8px;border:none;background:rgba(255,255,255,0.15);color:#fff;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.2s}
+.cal-header button:hover{background:rgba(255,255,255,0.25)}
+.cal-days{display:grid;grid-template-columns:repeat(7,1fr);padding:12px 16px 4px;gap:0}
+.cal-days span{text-align:center;font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;padding:4px 0}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);padding:0 16px 12px;gap:4px}
+.cal-cell{position:relative;aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:12px;cursor:default;font-size:14px;font-weight:500;color:#64748b;transition:all 0.2s}
+.cal-cell.other{color:#d1d5db}
+.cal-cell.today{background:#FFF9F5;font-weight:700;color:#3C2225}
+.cal-cell.has-course{cursor:pointer;color:#1f2937;font-weight:600}
+.cal-cell.has-course:hover{background:${brandColor}12;transform:scale(1.08)}
+.cal-cell.has-course .dot{width:6px;height:6px;border-radius:50%;background:${brandColor};margin-top:3px}
+.cal-cell.selected{background:${brandColor};color:#fff;border-radius:12px;transform:scale(1.05);box-shadow:0 2px 8px ${brandColor}40}
+.cal-cell.selected .dot{background:#fff}
+.cal-cell.past{color:#d1d5db}
+.cal-cell.past .dot{background:#d1d5db}
+.slots-panel{padding:0 20px 20px;animation:slideUp 0.25s ease}
+@keyframes slideUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.slots-date{font-size:13px;font-weight:600;color:#64748b;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.3px}
+.slot-card{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;border:1px solid #f0ebe8;margin-bottom:8px;transition:all 0.2s;background:#fff}
+.slot-card:hover{border-color:${brandColor};background:#FFF9F5;transform:translateX(4px)}
+.slot-time{min-width:80px;font-size:13px;font-weight:700;color:${brandColor}}
+.slot-info{flex:1}
+.slot-title{font-size:14px;font-weight:600;color:#1f2937}
+.slot-meta{font-size:12px;color:#94a3b8;margin-top:2px}
+.slot-badge{display:inline-block;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:600;background:${brandColor}15;color:${brandColor}}
+.empty-state{text-align:center;padding:24px;color:#94a3b8;font-size:13px}
+.powered{text-align:center;padding:8px;font-size:10px;color:#c4b5ab}
+.powered a{color:#94a3b8;text-decoration:none}
 </style>
 </head><body>
-<div id="app" class="p-4"><div class="loading">Kalender wird geladen...</div></div>
+<div id="app"><div style="text-align:center;padding:60px;color:#94a3b8;font-size:13px">Wird geladen...</div></div>
 <script>
 (async()=>{
-  const slug='${slug}'
-  const app=document.getElementById('app')
-  try{
-    const r=await fetch('${apiBase}/api/providers/by-slug/'+slug+'/activities')
-    if(!r.ok){app.innerHTML='<div class="empty">Kein Anbieter gefunden.</div>';return}
-    const{data}=await r.json()
-    const published=data.filter(a=>a.status==='published'&&a.schedule)
-    if(!published.length){app.innerHTML='<div class="empty">Aktuell keine Kurse verf\\u00fcgbar.</div>';return}
-    const days=['MO','DI','MI','DO','FR','SA','SO']
-    const dayNames={MO:'Montag',DI:'Dienstag',MI:'Mittwoch',DO:'Donnerstag',FR:'Freitag',SA:'Samstag',SO:'Sonntag',
-      TU:'Dienstag',WE:'Mittwoch',TH:'Donnerstag',SU:'Sonntag'}
-    const byDay={}
-    published.forEach(a=>{
-      if(a.schedule.type==='recurring'&&a.schedule.slots){
-        a.schedule.slots.forEach(s=>{
-          const d=s.day;if(!byDay[d])byDay[d]=[]
-          byDay[d].push({title:a.title,start:s.startTime,end:s.endTime,cat:a.category,age:a.ageRange?.min+'-'+a.ageRange?.max+' J.',price:a.pricing?.[0]?.amount?((a.pricing[0].amount/100).toFixed(0)+'\\u20ac'):'',color:a.color||'${brandColor}'})
-        })
-      }
+const slug='${slug}',app=document.getElementById('app'),BC='${brandColor}'
+const DN={MO:1,TU:2,WE:3,TH:4,FR:5,SA:6,SU:0,DI:2,MI:3,DO:4,SO:0}
+const ML=['Januar','Februar','M\\u00e4rz','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember']
+const DL=['Mo','Di','Mi','Do','Fr','Sa','So']
+const DLong=['Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag','Sonntag']
+let courses=[],curMonth=new Date().getMonth(),curYear=new Date().getFullYear(),selDate=null
+
+try{
+  const r=await fetch('/api/providers/by-slug/'+slug+'/activities')
+  if(!r.ok){app.innerHTML='<div class="empty-state">Anbieter nicht gefunden.</div>';return}
+  const{data}=await r.json()
+  courses=data.filter(a=>a.status==='published'&&a.schedule?.slots)
+  if(!courses.length){app.innerHTML='<div class="empty-state">Aktuell keine Kurse verf\\u00fcgbar.</div>';return}
+  render()
+}catch(e){app.innerHTML='<div class="empty-state">Fehler beim Laden.</div>'}
+
+function fmtD(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+function getCoursesForDate(d){
+  const dow=d.getDay(),ds=fmtD(d),res=[]
+  courses.forEach(a=>{
+    if(a.schedule.type!=='recurring')return
+    const sd=a.schedule.startDate||'',ed=a.schedule.endDate||'9999-12-31'
+    if(ds<sd||ds>ed)return
+    a.schedule.slots.forEach(s=>{
+      if(DN[s.day]===dow)res.push({title:a.title,start:s.startTime,end:s.endTime,cat:a.category,age:(a.ageRange?.min||0)+'-'+(a.ageRange?.max||0)+' J.',price:a.pricing?.[0]?.amount?Math.round(a.pricing[0].amount/100)+'\\u20ac':'',color:a.color||BC,desc:a.description||''})
     })
-    let html=''
-    days.forEach(d=>{
-      if(!byDay[d]||!byDay[d].length)return
-      html+='<div class="day-header">'+(dayNames[d]||d)+'</div>'
-      byDay[d].sort((a,b)=>a.start.localeCompare(b.start)).forEach(ev=>{
-        html+='<div class="cal-slot" style="border-color:'+ev.color+'"><div class="title">'+ev.title+'</div><div class="time">'+ev.start+' \\u2013 '+ev.end+' Uhr</div><div class="meta">'+[ev.cat,ev.age,ev.price].filter(Boolean).join(' \\u00b7 ')+'</div></div>'
-      })
-    })
-    app.innerHTML=html||'<div class="empty">Aktuell keine Kurse verf\\u00fcgbar.</div>'
-  }catch(e){app.innerHTML='<div class="empty">Fehler beim Laden.</div>'}
+  })
+  return res.sort((a,b)=>a.start.localeCompare(b.start))
+}
+function render(){
+  const today=new Date(),todayStr=fmtD(today)
+  const first=new Date(curYear,curMonth,1)
+  const startDay=(first.getDay()+6)%7
+  const daysInMonth=new Date(curYear,curMonth+1,0).getDate()
+  const prevDays=new Date(curYear,curMonth,0).getDate()
+  let cells=''
+  for(let i=startDay-1;i>=0;i--){cells+='<div class="cal-cell other">'+(prevDays-i)+'</div>'}
+  for(let d=1;d<=daysInMonth;d++){
+    const dt=new Date(curYear,curMonth,d),ds=fmtD(dt)
+    const evts=getCoursesForDate(dt)
+    const isPast=ds<todayStr
+    const isToday=ds===todayStr
+    const isSel=selDate===ds
+    const cls=['cal-cell']
+    if(isPast)cls.push('past')
+    if(isToday)cls.push('today')
+    if(evts.length&&!isPast)cls.push('has-course')
+    if(isSel)cls.push('selected')
+    const dot=evts.length?'<div class="dot"></div>':''
+    const click=evts.length&&!isPast?' onclick="window._selectDay(\\'' +ds+ '\\')"':''
+    cells+='<div class="'+cls.join(' ')+'"'+click+'>'+d+dot+'</div>'
+  }
+  const remaining=7-((startDay+daysInMonth)%7)
+  if(remaining<7){for(let i=1;i<=remaining;i++){cells+='<div class="cal-cell other">'+i+'</div>'}}
+  let slotsHtml=''
+  if(selDate){
+    const sd=new Date(+selDate.split('-')[0],+selDate.split('-')[1]-1,+selDate.split('-')[2])
+    const dayName=DLong[(sd.getDay()+6)%7]
+    const evts=getCoursesForDate(sd)
+    slotsHtml='<div class="slots-panel"><div class="slots-date">'+dayName+', '+sd.getDate()+'. '+ML[sd.getMonth()]+'</div>'
+    if(evts.length){
+      slotsHtml+=evts.map(e=>'<div class="slot-card"><div class="slot-time">'+e.start+' Uhr</div><div class="slot-info"><div class="slot-title">'+e.title+'</div><div class="slot-meta">'+e.start+' \\u2013 '+e.end+' Uhr \\u00b7 <span class="slot-badge">'+e.cat+'</span> \\u00b7 '+e.age+(e.price?' \\u00b7 '+e.price:'')+'</div></div></div>').join('')
+    }else{slotsHtml+='<div class="empty-state">Keine Kurse an diesem Tag.</div>'}
+    slotsHtml+='</div>'
+  }
+  app.innerHTML='<div class="cal-wrap"><div class="cal-header"><button onclick="window._navMonth(-1)">\\u2039</button><h2>'+ML[curMonth]+' '+curYear+'</h2><button onclick="window._navMonth(1)">\\u203a</button></div><div class="cal-days">'+DL.map(d=>'<span>'+d+'</span>').join('')+'</div><div class="cal-grid">'+cells+'</div>'+slotsHtml+'<div class="powered">Powered by <a href="https://urbankids.club" target="_blank">Urban Kids Club</a></div></div>'
+}
+window._navMonth=function(dir){curMonth+=dir;if(curMonth>11){curMonth=0;curYear++}if(curMonth<0){curMonth=11;curYear--};selDate=null;render()}
+window._selectDay=function(ds){selDate=selDate===ds?null:ds;render()}
 })()
 </script></body></html>`
   }
