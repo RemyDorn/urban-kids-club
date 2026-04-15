@@ -307,7 +307,7 @@ window._bookCourse=async function(title,date,time){
       }
       detailLines+='<div style="font-weight:700;margin-top:6px">'+priceStr+'</div>'
       if(pkgSize>1){
-        detailLines+='<div style="color:#64748b;font-size:12px;margin-top:6px">Falls Sie einen Termin nicht wahrnehmen können, ist eine rechtzeitige Verschiebung auf einen anderen Termin möglich.</div>'
+        detailLines+='<div style="color:#64748b;font-size:12px;margin-top:6px">Falls du mal nicht kannst — kein Stress! Sag rechtzeitig Bescheid und wir verschieben deinen Termin.</div>'
       }
       html+='<div style="background:#f8fafc;border-radius:10px;padding:12px;margin-bottom:16px;font-size:13px;color:#374151">'+detailLines+'</div>'
       html+='<label style="display:flex;align-items:start;gap:8px;margin-bottom:10px;cursor:pointer"><input type="checkbox" id="agbCheck" style="margin-top:3px"><span style="font-size:12px;color:#374151">Ich stimme den <a href="#" style="color:${brandColor}">AGB</a> zu.</span></label>'
