@@ -62,7 +62,57 @@ export class CheckoutService {
 
     if (error) throw new Error(error.message)
 
-    // 3. Send confirmation email (non-blocking)
+    // 3. Auto-enroll in active course block (if exists)
+    try {
+      const { data: activeBlock } = await db.from('course_blocks')
+        .select('id, capacity, makeup_capacity')
+        .eq('activity_id', params.activityId)
+        .in('status', ['active', 'upcoming'])
+        .order('start_date', { ascending: true })
+        .limit(1)
+        .maybeSingle()
+
+      if (activeBlock) {
+        const fixedSlots = activeBlock.capacity - (activeBlock.makeup_capacity || 2)
+        const { count: enrolledCount } = await db.from('block_enrollments')
+          .select('*', { count: 'exact', head: true })
+          .eq('block_id', activeBlock.id)
+          .eq('status', 'active')
+
+        const currentCount = enrolledCount ?? 0
+        const childId = `${params.childFirstName}-${params.childLastName}-${params.childBirthYear}`
+        const childAge = new Date().getFullYear() - params.childBirthYear
+
+        if (currentCount < fixedSlots) {
+          // Auto-enroll: fixed slot available
+          await db.from('block_enrollments').insert({
+            block_id: activeBlock.id,
+            activity_type: 'course',
+            provider_id: params.providerId,
+            parent_id: parent.id,
+            child_id: childId,
+            child_name: `${params.childFirstName} ${params.childLastName}`,
+            child_age: childAge,
+            booking_id: booking.id,
+            status: 'active',
+            price_paid: params.amount > 0 ? params.amount / 100 : 0,
+            currency: params.currency || 'EUR',
+            credits_earned: 0,
+            credits_used: 0,
+          })
+          console.log(`[Checkout] Auto-enrolled ${params.childFirstName} in block ${activeBlock.id} (${currentCount + 1}/${fixedSlots} fixed slots)`)
+        } else {
+          // Makeup slots only — booking stays confirmed but no auto-enrollment
+          // Provider decides manually in dashboard
+          console.log(`[Checkout] Block ${activeBlock.id} fixed slots full (${currentCount}/${fixedSlots}). Booking ${booking.id} needs manual enrollment.`)
+        }
+      }
+    } catch (enrollErr) {
+      // Non-blocking: booking is already created, enrollment failure shouldn't break checkout
+      console.error('[Checkout] Auto-enrollment failed:', enrollErr)
+    }
+
+    // 4. Send confirmation email (non-blocking)
     try {
       const { EmailService } = await import('../../lib/email')
       const { data: activity } = await db.from('activities').select('title, pricing, schedule').eq('id', params.activityId).single()
