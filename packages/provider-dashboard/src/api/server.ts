@@ -69,6 +69,8 @@ registerRoutes(router)
 
 // Embed HTML generator for public iframe widgets
 function generateEmbedHtml(slug: string, type: string, _url: string): string {
+  // Sanitize slug to prevent XSS — only allow alphanumeric, hyphens, underscores
+  slug = slug.replace(/[^a-zA-Z0-9_-]/g, '')
   const apiBase = '' // relative to same origin
   const brandColor = '#B5533A'
 

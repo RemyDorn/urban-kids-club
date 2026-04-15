@@ -15,6 +15,7 @@ export interface ParsedRequest {
   params: Record<string, string>
   query: Record<string, string>
   body: any
+  rawBody?: Buffer
   raw: IncomingMessage
 }
 
@@ -77,9 +78,12 @@ export class Router {
 
     // Body parsen (für POST/PUT/PATCH)
     let body: unknown = undefined
+    let rawBody: Buffer | undefined = undefined
     if (['POST', 'PUT', 'PATCH'].includes(method)) {
       try {
-        body = await parseBody(req)
+        const result = await parseBody(req)
+        body = result.parsed
+        rawBody = result.rawBuffer
       } catch (err) {
         res.writeHead(413, { 'Content-Type': 'application/json' })
         res.end(JSON.stringify({ error: 'Request body too large (max 1MB)' }))
@@ -96,7 +100,7 @@ export class Router {
       const params: Record<string, string> = {}
       route.paramNames.forEach((name, i) => { params[name] = match[i + 1] })
 
-      const parsedReq: ParsedRequest = { method, path, params, query, body, raw: req }
+      const parsedReq: ParsedRequest = { method, path, params, query, body, rawBody, raw: req }
       let statusCode = 200
 
       const apiRes: ApiResponse = {
@@ -131,7 +135,7 @@ export class Router {
 
 const MAX_BODY_SIZE = 1024 * 1024 // 1 MB
 
-function parseBody(req: IncomingMessage): Promise<unknown> {
+function parseBody(req: IncomingMessage): Promise<{ parsed: unknown; rawBuffer: Buffer }> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = []
     let totalSize = 0
@@ -145,10 +149,11 @@ function parseBody(req: IncomingMessage): Promise<unknown> {
       chunks.push(chunk)
     })
     req.on('end', () => {
-      const raw = Buffer.concat(chunks).toString('utf-8')
-      if (!raw) { resolve(undefined); return }
-      try { resolve(JSON.parse(raw)) } catch { resolve(raw) }
+      const rawBuffer = Buffer.concat(chunks)
+      const raw = rawBuffer.toString('utf-8')
+      if (!raw) { resolve({ parsed: undefined, rawBuffer }); return }
+      try { resolve({ parsed: JSON.parse(raw), rawBuffer }) } catch { resolve({ parsed: raw, rawBuffer }) }
     })
-    req.on('error', () => resolve(undefined))
+    req.on('error', () => resolve({ parsed: undefined, rawBuffer: Buffer.alloc(0) }))
   })
 }

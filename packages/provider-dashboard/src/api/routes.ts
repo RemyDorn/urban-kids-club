@@ -1627,9 +1627,14 @@ export function registerRoutes(router: Router) {
 
   router.post('/api/checkout/create-session', async (req, res) => {
     const { slug, activityId, blockId, child, parent, paymentMethod } = req.body as any
-    if (!slug || !activityId || !child?.firstName || !parent?.email || !paymentMethod) {
-      return res.error(400, 'Pflichtfelder fehlen')
-    }
+
+    // Server-side validation
+    if (!slug || !activityId || !paymentMethod) return res.error(400, 'Pflichtfelder fehlen')
+    if (!child?.firstName?.trim() || !child?.lastName?.trim()) return res.error(400, 'Vor- und Nachname des Kindes erforderlich')
+    if (!child.birthYear || child.birthYear < 2005 || child.birthYear > 2026) return res.error(400, 'Ungültiges Geburtsjahr')
+    if (!parent?.firstName?.trim() || !parent?.lastName?.trim()) return res.error(400, 'Vor- und Nachname des Elternteils erforderlich')
+    if (!parent?.email?.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(parent.email)) return res.error(400, 'Ungültige E-Mail-Adresse')
+    if (!['stripe', 'paypal', 'onsite'].includes(paymentMethod)) return res.error(400, 'Ungültige Zahlungsart')
 
     const db = getServiceClient()
     const provider = await ProviderService.getBySlug(slug)
@@ -1637,6 +1642,28 @@ export function registerRoutes(router: Router) {
 
     const { data: activity } = await db.from('activities').select('*').eq('id', activityId).single()
     if (!activity) return res.error(404, 'Kurs nicht gefunden')
+
+    // Capacity check: count existing confirmed bookings
+    const maxCapacity = activity.max_participants || activity.pricing?.[0]?.packageSize || 12
+    const { count: bookingCount } = await db.from('bookings')
+      .select('id', { count: 'exact', head: true })
+      .eq('activity_id', activityId)
+      .neq('status', 'cancelled')
+    if (bookingCount !== null && bookingCount >= maxCapacity) {
+      return res.error(400, 'Dieser Kurs ist leider ausgebucht')
+    }
+
+    // Duplicate booking check: same child + same activity
+    const { data: duplicate } = await db.from('bookings')
+      .select('id')
+      .eq('activity_id', activityId)
+      .neq('status', 'cancelled')
+      .eq('child_info->>firstName', child.firstName.trim())
+      .eq('child_info->>lastName', child.lastName.trim())
+      .maybeSingle()
+    if (duplicate) {
+      return res.error(400, 'Dieses Kind ist bereits für diesen Kurs angemeldet')
+    }
 
     const price = activity.pricing?.[0]?.amount || 0
 
@@ -1694,7 +1721,8 @@ export function registerRoutes(router: Router) {
       const ppData = await ppRes.json() as any
       const approveUrl = ppData.links?.find((l: any) => l.rel === 'approve')?.href
       if (!approveUrl) return res.error(500, 'PayPal Order konnte nicht erstellt werden')
-      return res.json({ success: true, redirect: approveUrl })
+      // Store order metadata for capture callback — booking is NOT created yet
+      return res.json({ success: true, redirect: approveUrl, paypalOrderId: ppData.id })
     }
 
     res.error(400, 'Ungueltige Zahlungsart')
@@ -1702,10 +1730,38 @@ export function registerRoutes(router: Router) {
 
   // Stripe Webhook
   router.post('/api/webhooks/stripe', async (req, res) => {
-    const event = req.body
+    const { stripe: stripeClient } = await import('../lib/stripe')
+    if (!stripeClient) return res.error(500, 'Stripe not configured')
+
+    // 1. Verify webhook signature
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
+    let event: any
+    if (webhookSecret && req.rawBody) {
+      try {
+        const sig = req.raw.headers['stripe-signature'] as string
+        event = stripeClient.webhooks.constructEvent(req.rawBody, sig, webhookSecret)
+      } catch (err: any) {
+        console.error('Webhook signature verification failed:', err.message)
+        return res.error(400, 'Invalid signature')
+      }
+    } else {
+      // Fallback for dev/test without webhook secret
+      event = req.body
+    }
+
     if (event?.type === 'checkout.session.completed') {
       const session = event.data.object
       const meta = session.metadata || {}
+      const db = getServiceClient()
+
+      // 2. Idempotency: check if booking already exists for this session
+      const { data: existing } = await db.from('bookings')
+        .select('id').eq('stripe_session_id', session.id).maybeSingle()
+      if (existing) {
+        return res.json({ received: true, duplicate: true })
+      }
+
+      // 3. Create booking with correct status
       try {
         const { CheckoutService } = await import('../services/supabase/checkout.service')
         await CheckoutService.createBooking({
@@ -1718,7 +1774,9 @@ export function registerRoutes(router: Router) {
           currency: session.currency || 'eur', stripeSessionId: session.id,
         })
       } catch (err: any) {
+        // 4. Return 500 so Stripe retries
         console.error('Webhook booking creation failed:', err.message)
+        return res.error(500, 'Booking creation failed')
       }
     }
     res.json({ received: true })
@@ -1943,8 +2001,8 @@ export function registerRoutes(router: Router) {
     const state = req.query.state as string
     if (!code || !state) { res.error(400, 'Missing code or state'); return }
     try {
-      const { providerId } = JSON.parse(Buffer.from(state, 'base64').toString())
-      const { completeConnect } = await import('../lib/stripe')
+      const { verifyConnectState, completeConnect } = await import('../lib/stripe')
+      const { providerId } = verifyConnectState(state)
       const accountId = await completeConnect(code)
       const db = getServiceClient()
       await db.from('providers').update({
