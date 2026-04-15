@@ -17,7 +17,7 @@ export async function completeConnect(code: string): Promise<string> {
 }
 
 export async function createCheckoutSession(params: {
-  stripeAccountId: string
+  stripeAccountId?: string
   amount: number
   currency: string
   courseName: string
@@ -26,7 +26,7 @@ export async function createCheckoutSession(params: {
   metadata: Record<string, string>
 }): Promise<string> {
   if (!stripe) throw new Error('Stripe not configured')
-  const session = await stripe.checkout.sessions.create({
+  const sessionParams: any = {
     payment_method_types: ['card'],
     line_items: [{
       price_data: {
@@ -40,6 +40,10 @@ export async function createCheckoutSession(params: {
     success_url: params.successUrl,
     cancel_url: params.cancelUrl,
     metadata: params.metadata,
-  }, { stripeAccount: params.stripeAccountId })
+  }
+  // If provider has a connected account, use it; otherwise direct charge to platform
+  const session = params.stripeAccountId
+    ? await stripe.checkout.sessions.create(sessionParams, { stripeAccount: params.stripeAccountId })
+    : await stripe.checkout.sessions.create(sessionParams)
   return session.url!
 }

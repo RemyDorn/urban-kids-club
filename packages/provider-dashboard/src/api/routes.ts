@@ -1653,13 +1653,11 @@ export function registerRoutes(router: Router) {
     }
 
     if (paymentMethod === 'stripe') {
-      if (!provider.stripe_connected || !provider.stripe_account_id) {
-        return res.error(400, 'Stripe nicht verbunden')
-      }
-      const { createCheckoutSession } = await import('../lib/stripe')
+      const { stripe: stripeClient, createCheckoutSession } = await import('../lib/stripe')
+      if (!stripeClient) return res.error(500, 'Stripe ist nicht konfiguriert')
       const origin = req.raw.headers.origin || req.raw.headers.host ? `https://${req.raw.headers.host}` : 'https://app.urbankids.club'
       const url = await createCheckoutSession({
-        stripeAccountId: provider.stripe_account_id,
+        stripeAccountId: provider.stripe_account_id || undefined,
         amount: price, currency: 'EUR', courseName: activity.title,
         successUrl: `${origin}/embed/${slug}/booking-success?session_id={CHECKOUT_SESSION_ID}`,
         cancelUrl: `${origin}/embed/${slug}/calendar`,
@@ -1737,7 +1735,7 @@ export function registerRoutes(router: Router) {
     const { data: policy } = await db.from('cancellation_policies').select('*').eq('provider_id', activity.provider_id).single()
     res.json({
       activity: { id: activity.id, title: activity.title, category: activity.category, pricing: activity.pricing, paymentOnline: activity.payment_online, paymentOnsite: activity.payment_onsite },
-      provider: { stripeConnected: provider?.stripe_connected || false, paypalConnected: provider?.paypal_connected || false },
+      provider: { stripeConnected: provider?.stripe_connected || !!process.env.STRIPE_SECRET_KEY, paypalConnected: provider?.paypal_connected || false },
       cancellation: policy || { fee_type: 'fixed', fee_value: 0, deadline_hours: 48, custom_text: '' },
     })
   })
@@ -1992,7 +1990,9 @@ export function registerRoutes(router: Router) {
     if (auth.providerId !== req.params.id) return res.error(403, 'Zugriff verweigert')
     const db = getServiceClient()
     const { data } = await db.from('providers').select('stripe_account_id, stripe_connected, paypal_client_id, paypal_connected').eq('id', auth.providerId).single()
-    res.json({ data: { ...data, paypal_client_id: data?.paypal_client_id ? '***' + data.paypal_client_id.slice(-4) : null } })
+    // Stripe is available if provider has connected account OR platform has keys configured
+    const stripeAvailable = data?.stripe_connected || !!process.env.STRIPE_SECRET_KEY
+    res.json({ data: { ...data, stripe_connected: stripeAvailable, paypal_client_id: data?.paypal_client_id ? '***' + data.paypal_client_id.slice(-4) : null } })
   })
 
   // ============================================================
