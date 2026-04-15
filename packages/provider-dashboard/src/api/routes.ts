@@ -65,6 +65,15 @@ export function registerRoutes(router: Router) {
     })
   })
 
+  // Public config endpoint — frontend uses this to init Supabase client
+  router.get('/api/config', (_req, res) => {
+    res.json({
+      supabaseUrl: process.env.SUPABASE_URL || '',
+      supabaseAnonKey: process.env.SUPABASE_ANON_KEY || '',
+      environment: process.env.NODE_ENV || 'development',
+    })
+  })
+
   // ============================================================
   // PROVIDERS
   // ============================================================

@@ -303,10 +303,25 @@
     let providers = []
     let currentSession = null
 
-    // --- Supabase Auth ---
-    const SUPABASE_URL = 'https://yuilhiqnrjuuqoqggihm.supabase.co'
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl1aWxoaXFucmp1dXFvcWdnaWhtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxNzUxMDAsImV4cCI6MjA5MDc1MTEwMH0.8dnGBOapmuTwEUy0VG-VnSgIAgRf10F4L1wi9gcE0iw'
-    const sb = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null
+    // --- Supabase Auth (config from server so same HTML works on dev+live) ---
+    let SUPABASE_URL = ''
+    let SUPABASE_ANON_KEY = ''
+    let sb = null
+    async function initSupabase() {
+      try {
+        const r = await fetch('/api/config')
+        const cfg = await r.json()
+        SUPABASE_URL = cfg.supabaseUrl
+        SUPABASE_ANON_KEY = cfg.supabaseAnonKey
+      } catch (e) {
+        // Fallback to hardcoded live values
+        SUPABASE_URL = 'https://yuilhiqnrjuuqoqggihm.supabase.co'
+        SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl1aWxoaXFucmp1dXFvcWdnaWhtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxNzUxMDAsImV4cCI6MjA5MDc1MTEwMH0.8dnGBOapmuTwEUy0VG-VnSgIAgRf10F4L1wi9gcE0iw'
+      }
+      sb = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null
+    }
+    // Init immediately
+    initSupabase()
 
     function showLoginScreen() {
       document.getElementById('loginScreen').style.display = 'flex'
