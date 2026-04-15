@@ -90,9 +90,9 @@ p{color:#64748b;font-size:14px;line-height:1.6}
 </style>
 </head><body>
 <div class="success">
-  <div class="check">\\u2713</div>
-  <h2>Buchung best\\u00e4tigt!</h2>
-  <p>Vielen Dank f\\u00fcr Ihre Buchung. Sie erhalten in K\\u00fcrze eine Best\\u00e4tigung per E-Mail.</p>
+  <div class="check">✓</div>
+  <h2>Buchung bestätigt!</h2>
+  <p>Vielen Dank für Ihre Buchung. Sie erhalten in Kürze eine Bestätigung per E-Mail.</p>
 </div>
 <div id="conversion-pixels"></div>
 </body></html>`
@@ -159,7 +159,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:transparent;color:#1f29
 const slug='${slug}',app=document.getElementById('app'),BC='${brandColor}'
 function esc(s){if(!s)return'';const d=document.createElement('div');d.textContent=s;return d.innerHTML}
 const DN={MO:1,TU:2,WE:3,TH:4,FR:5,SA:6,SU:0,DI:2,MI:3,DO:4,SO:0}
-const ML=['Januar','Februar','M\\u00e4rz','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember']
+const ML=['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember']
 const DL=['Mo','Di','Mi','Do','Fr','Sa','So']
 const DLong=['Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag','Sonntag']
 let courses=[],curMonth=new Date().getMonth(),curYear=new Date().getFullYear(),selDate=null
@@ -169,7 +169,7 @@ try{
   if(!r.ok){app.innerHTML='<div class="empty-state">Anbieter nicht gefunden.</div>';return}
   const{data}=await r.json()
   courses=data.filter(a=>a.status==='published'&&a.schedule?.slots)
-  if(!courses.length){app.innerHTML='<div class="empty-state">Aktuell keine Kurse verf\\u00fcgbar.</div>';return}
+  if(!courses.length){app.innerHTML='<div class="empty-state">Aktuell keine Kurse verfügbar.</div>';return}
   render()
 }catch(e){app.innerHTML='<div class="empty-state">Fehler beim Laden.</div>'}
 
@@ -181,7 +181,7 @@ function getCoursesForDate(d){
     const sd=a.schedule.startDate||'',ed=a.schedule.endDate||'9999-12-31'
     if(ds<sd||ds>ed)return
     a.schedule.slots.forEach(s=>{
-      if(DN[s.day]===dow)res.push({title:a.title,start:s.startTime,end:s.endTime,cat:a.category,age:(a.ageRange?.min||0)+'-'+(a.ageRange?.max||0)+' J.',price:a.pricing?.[0]?.amount?a.pricing[0].amount+'\\u20ac':'',color:a.color||BC,desc:a.description||''})
+      if(DN[s.day]===dow)res.push({title:a.title,start:s.startTime,end:s.endTime,cat:a.category,age:(a.ageRange?.min||0)+'-'+(a.ageRange?.max||0)+' J.',price:a.pricing?.[0]?.amount?a.pricing[0].amount+'€':'',color:a.color||BC,desc:a.description||''})
     })
   })
   return res.sort((a,b)=>a.start.localeCompare(b.start))
@@ -218,11 +218,11 @@ function render(){
     const evts=getCoursesForDate(sd)
     slotsHtml='<div class="slots-panel"><div class="slots-date">'+dayName+', '+sd.getDate()+'. '+ML[sd.getMonth()]+'</div>'
     if(evts.length){
-      slotsHtml+=evts.map(e=>'<div class="slot-card"><div class="slot-time">'+esc(e.start)+' Uhr</div><div class="slot-info"><div class="slot-title">'+esc(e.title)+'</div><div class="slot-meta">'+esc(e.start)+' \\u2013 '+esc(e.end)+' Uhr \\u00b7 <span class="slot-badge">'+esc(e.cat)+'</span> \\u00b7 '+esc(e.age)+(e.price?' \\u00b7 '+esc(e.price):'')+'</div></div><button class="book-btn" data-title="'+esc(e.title)+'" data-date="'+selDate+'" data-time="'+esc(e.start)+'" onclick="window._bookCourse(this.dataset.title,this.dataset.date,this.dataset.time)">Buchen</button></div>').join('')
+      slotsHtml+=evts.map(e=>'<div class="slot-card"><div class="slot-time">'+esc(e.start)+' Uhr</div><div class="slot-info"><div class="slot-title">'+esc(e.title)+'</div><div class="slot-meta">'+esc(e.start)+' – '+esc(e.end)+' Uhr · <span class="slot-badge">'+esc(e.cat)+'</span> · '+esc(e.age)+(e.price?' · '+esc(e.price):'')+'</div></div><button class="book-btn" data-title="'+esc(e.title)+'" data-date="'+selDate+'" data-time="'+esc(e.start)+'" onclick="window._bookCourse(this.dataset.title,this.dataset.date,this.dataset.time)">Buchen</button></div>').join('')
     }else{slotsHtml+='<div class="empty-state">Keine Kurse an diesem Tag.</div>'}
     slotsHtml+='</div>'
   }
-  app.innerHTML='<div class="cal-wrap"><div class="cal-header"><button onclick="window._navMonth(-1)">\\u2039</button><h2>'+ML[curMonth]+' '+curYear+'</h2><button onclick="window._navMonth(1)">\\u203a</button></div><div class="cal-days">'+DL.map(d=>'<span>'+d+'</span>').join('')+'</div><div class="cal-grid">'+cells+'</div>'+slotsHtml+'<div class="powered">Powered by <a href="https://urbankids.club" target="_blank">Urban Kids Club</a></div></div>'
+  app.innerHTML='<div class="cal-wrap"><div class="cal-header"><button onclick="window._navMonth(-1)">‹</button><h2>'+ML[curMonth]+' '+curYear+'</h2><button onclick="window._navMonth(1)">›</button></div><div class="cal-days">'+DL.map(d=>'<span>'+d+'</span>').join('')+'</div><div class="cal-grid">'+cells+'</div>'+slotsHtml+'<div class="powered">Powered by <a href="https://urbankids.club" target="_blank">Urban Kids Club</a></div></div>'
 }
 window._navMonth=function(dir){curMonth+=dir;if(curMonth>11){curMonth=0;curYear++}if(curMonth<0){curMonth=11;curYear--};selDate=null;render()}
 window._selectDay=function(ds){selDate=selDate===ds?null:ds;render()}
@@ -245,7 +245,7 @@ window._bookCourse=async function(title,date,time){
   const prov=actData.provider
   const cancel=actData.cancellation
   const price=act.pricing?.[0]?.amount||0
-  const priceStr=price.toFixed(2).replace('.',',')+' \\u20ac'
+  const priceStr=price.toFixed(2).replace('.',',')+' €'
   const hasOnline=act.paymentOnline&&(prov.stripeConnected||prov.paypalConnected)
   const hasOnsite=act.paymentOnsite
 
@@ -255,8 +255,8 @@ window._bookCourse=async function(title,date,time){
 
   function renderStep(){
     let html='<div class="book-modal-inner" style="max-width:400px">'
-    html+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><h3 style="font-size:16px;font-weight:700;color:#1f2937;margin:0">'+esc(title)+'</h3><button onclick="this.closest(\\'.book-modal\\').remove()" style="background:none;border:none;font-size:20px;color:#94a3b8;cursor:pointer">\\u00d7</button></div>'
-    html+='<p style="font-size:13px;color:#64748b;margin-bottom:16px">'+dateStr+' um '+esc(time)+' Uhr \\u00b7 '+priceStr+'</p>'
+    html+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><h3 style="font-size:16px;font-weight:700;color:#1f2937;margin:0">'+esc(title)+'</h3><button onclick="this.closest(\\'.book-modal\\').remove()" style="background:none;border:none;font-size:20px;color:#94a3b8;cursor:pointer">×</button></div>'
+    html+='<p style="font-size:13px;color:#64748b;margin-bottom:16px">'+dateStr+' um '+esc(time)+' Uhr · '+priceStr+'</p>'
 
     // Progress bar
     const totalSteps=hasOnline&&hasOnsite?4:3
@@ -278,12 +278,12 @@ window._bookCourse=async function(title,date,time){
     }
 
     if(step===2&&hasOnline&&hasOnsite){
-      html+='<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:12px">Zahlungsart w\\u00e4hlen</div>'
+      html+='<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:12px">Zahlungsart wählen</div>'
       if(hasOnline){
-        html+='<button class="pay-opt" data-method="online" style="width:100%;padding:14px 16px;border:2px solid #e2e8f0;border-radius:12px;background:#fff;cursor:pointer;display:flex;align-items:center;gap:12px;margin-bottom:8px;transition:all 0.2s"><span style="font-size:24px">\\ud83d\\udcb3</span><div style="text-align:left"><div style="font-weight:600;font-size:14px;color:#1f2937">Jetzt online bezahlen</div><div style="font-size:12px;color:#64748b">'+(prov.stripeConnected?'Kreditkarte, Apple Pay':'')+(prov.stripeConnected&&prov.paypalConnected?' oder ':'')+(prov.paypalConnected?'PayPal':'')+'</div></div></button>'
+        html+='<button class="pay-opt" data-method="online" style="width:100%;padding:14px 16px;border:2px solid #e2e8f0;border-radius:12px;background:#fff;cursor:pointer;display:flex;align-items:center;gap:12px;margin-bottom:8px;transition:all 0.2s"><span style="font-size:24px">💳</span><div style="text-align:left"><div style="font-weight:600;font-size:14px;color:#1f2937">Jetzt online bezahlen</div><div style="font-size:12px;color:#64748b">'+(prov.stripeConnected?'Kreditkarte, Apple Pay':'')+(prov.stripeConnected&&prov.paypalConnected?' oder ':'')+(prov.paypalConnected?'PayPal':'')+'</div></div></button>'
       }
       if(hasOnsite){
-        html+='<button class="pay-opt" data-method="onsite" style="width:100%;padding:14px 16px;border:2px solid #e2e8f0;border-radius:12px;background:#fff;cursor:pointer;display:flex;align-items:center;gap:12px;margin-bottom:8px;transition:all 0.2s"><span style="font-size:24px">\\ud83c\\udfe0</span><div style="text-align:left"><div style="font-weight:600;font-size:14px;color:#1f2937">Vor Ort bezahlen</div><div style="font-size:12px;color:#64748b">Zahlung beim ersten Termin</div></div></button>'
+        html+='<button class="pay-opt" data-method="onsite" style="width:100%;padding:14px 16px;border:2px solid #e2e8f0;border-radius:12px;background:#fff;cursor:pointer;display:flex;align-items:center;gap:12px;margin-bottom:8px;transition:all 0.2s"><span style="font-size:24px">🏠</span><div style="text-align:left"><div style="font-weight:600;font-size:14px;color:#1f2937">Vor Ort bezahlen</div><div style="font-size:12px;color:#64748b">Zahlung beim ersten Termin</div></div></button>'
       }
     }
 
@@ -291,8 +291,8 @@ window._bookCourse=async function(title,date,time){
     const agbStep=hasOnline&&hasOnsite?3:2
     if(step===agbStep){
       const payLabel=window._checkoutPayMethod==='onsite'?'Vor Ort bezahlen':'Online bezahlen ('+priceStr+')'
-      html+='<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:12px">Best\\u00e4tigung</div>'
-      html+='<div style="background:#f8fafc;border-radius:10px;padding:12px;margin-bottom:16px;font-size:13px;color:#374151"><div>'+esc(title)+'</div><div style="color:#64748b">'+dateStr+' \\u00b7 '+esc(time)+' Uhr</div><div style="font-weight:700;margin-top:4px">'+priceStr+'</div></div>'
+      html+='<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:12px">Bestätigung</div>'
+      html+='<div style="background:#f8fafc;border-radius:10px;padding:12px;margin-bottom:16px;font-size:13px;color:#374151"><div>'+esc(title)+'</div><div style="color:#64748b">'+dateStr+' · '+esc(time)+' Uhr</div><div style="font-weight:700;margin-top:4px">'+priceStr+'</div></div>'
       html+='<label style="display:flex;align-items:start;gap:8px;margin-bottom:10px;cursor:pointer"><input type="checkbox" id="agbCheck" style="margin-top:3px"><span style="font-size:12px;color:#374151">Ich stimme den <a href="#" style="color:${brandColor}">AGB</a> zu.</span></label>'
       if(cancel.custom_text){
         html+='<label style="display:flex;align-items:start;gap:8px;margin-bottom:16px;cursor:pointer"><input type="checkbox" id="stornoCheck" style="margin-top:3px"><span style="font-size:12px;color:#374151">'+esc(cancel.custom_text)+'</span></label>'
@@ -313,7 +313,7 @@ window._bookCourse=async function(title,date,time){
         const cpL=m.querySelector('#cpLast').value.trim()
         const cpE=m.querySelector('#cpEmail').value.trim()
         const cpP=m.querySelector('#cpPhone').value.trim()
-        if(!ckF||!ckL||!ckY||!cpF||!cpL||!cpE||!cpP){alert('Bitte alle Felder ausf\\u00fcllen.');return}
+        if(!ckF||!ckL||!ckY||!cpF||!cpL||!cpE||!cpP){alert('Bitte alle Felder ausfüllen.');return}
         window._checkoutChild={firstName:ckF,lastName:ckL,birthYear:parseInt(ckY)}
         window._checkoutParent={firstName:cpF,lastName:cpL,email:cpE,phone:cpP}
         if(!hasOnline){window._checkoutPayMethod='onsite'}
@@ -342,7 +342,7 @@ window._bookCourse=async function(title,date,time){
           const data=await r.json()
           if(!r.ok){alert(data.error||'Fehler beim Buchen');this.textContent='Erneut versuchen';this.disabled=false;return}
           if(data.redirect){window.top.location.href=data.redirect}
-          else{m.querySelector('.book-modal-inner').innerHTML='<div style="text-align:center;padding:24px"><div style="width:56px;height:56px;border-radius:50%;background:#059669;color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto 16px">\\u2713</div><h3 style="font-size:18px;font-weight:700;color:#1f2937;margin-bottom:8px">Buchung best\\u00e4tigt!</h3><p style="font-size:13px;color:#64748b">Vielen Dank! Sie erhalten eine Best\\u00e4tigung per E-Mail.</p><button onclick="this.closest(\\'.book-modal\\').remove()" style="margin-top:16px;padding:10px 24px;border:1px solid #e2e8f0;border-radius:10px;background:#fff;color:#374151;font-size:13px;cursor:pointer">Schlie\\u00dfen</button></div>'}
+          else{m.querySelector('.book-modal-inner').innerHTML='<div style="text-align:center;padding:24px"><div style="width:56px;height:56px;border-radius:50%;background:#059669;color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto 16px">✓</div><h3 style="font-size:18px;font-weight:700;color:#1f2937;margin-bottom:8px">Buchung bestätigt!</h3><p style="font-size:13px;color:#64748b">Vielen Dank! Sie erhalten eine Bestätigung per E-Mail.</p><button onclick="this.closest(\\'.book-modal\\').remove()" style="margin-top:16px;padding:10px 24px;border:1px solid #e2e8f0;border-radius:10px;background:#fff;color:#374151;font-size:13px;cursor:pointer">Schließen</button></div>'}
         }catch(e){alert('Netzwerkfehler');this.textContent='Erneut versuchen';this.disabled=false}
       }
     }
@@ -385,7 +385,7 @@ if(params.get('font')){document.body.style.fontFamily=params.get('font')+',syste
     const{data}=await r.json()
     const published=data.filter(a=>a.status==='published')
     if(!published.length){app.innerHTML='<div class="empty">Aktuell keine Kurse.</div>';return}
-    app.innerHTML=published.map(a=>'<div class="course"><div class="course-title">'+a.title+'</div><div class="course-meta"><span class="badge">'+a.category+'</span> '+(a.ageRange?.min||'?')+'-'+(a.ageRange?.max||'?')+' Jahre \\u00b7 '+(a.duration||'?')+' Min.'+(a.pricing?.[0]?.amount?' \\u00b7 '+a.pricing[0].amount+'\\u20ac':'')+'</div>'+(a.description?'<p style="font-size:13px;color:#3C2225;margin-top:8px">'+a.description.substring(0,150)+(a.description.length>150?'...':'')+'</p>':'')+'</div>').join('')
+    app.innerHTML=published.map(a=>'<div class="course"><div class="course-title">'+a.title+'</div><div class="course-meta"><span class="badge">'+a.category+'</span> '+(a.ageRange?.min||'?')+'-'+(a.ageRange?.max||'?')+' Jahre · '+(a.duration||'?')+' Min.'+(a.pricing?.[0]?.amount?' · '+a.pricing[0].amount+'€':'')+'</div>'+(a.description?'<p style="font-size:13px;color:#3C2225;margin-top:8px">'+a.description.substring(0,150)+(a.description.length>150?'...':'')+'</p>':'')+'</div>').join('')
   }catch(e){app.innerHTML='<div class="empty">Fehler beim Laden.</div>'}
 })()
 </script></body></html>`
