@@ -3188,7 +3188,7 @@
           endTime: slot.endTime || '10:00',
           duration: slot.startTime && slot.endTime ? ((parseInt(slot.endTime)*60+parseInt(slot.endTime.split(':')[1]))-(parseInt(slot.startTime)*60+parseInt(slot.startTime.split(':')[1]))) : 60,
           price: pricing.amount || 140,
-          sessions: pricing.packageSize || 8,
+          sessions: pricing.packageSize || 1,
           capacity: a.capacity || 10,
           category: a.category || '',
           courseStartDate: a.schedule?.startDate || '',
