@@ -58,6 +58,29 @@ export class CheckoutService {
     }).select().single()
 
     if (error) throw new Error(error.message)
+
+    // 3. Send confirmation email (non-blocking)
+    try {
+      const { EmailService } = await import('../../lib/email')
+      const { data: activity } = await db.from('activities').select('title, pricing, schedule').eq('id', params.activityId).single()
+      const { data: provider } = await db.from('providers').select('company_name').eq('id', params.providerId).single()
+      const pkgSize = activity?.pricing?.[0]?.packageSize || 0
+      const slot = activity?.schedule?.slots?.[0]
+      const dayMap: Record<string, string> = { MO: 'Montags', TU: 'Dienstags', WE: 'Mittwochs', TH: 'Donnerstags', FR: 'Freitags', SA: 'Samstags', SU: 'Sonntags' }
+      await EmailService.sendBookingConfirmation(params.parentEmail, {
+        parentName: params.parentFirstName,
+        childName: `${params.childFirstName} ${params.childLastName}`,
+        courseName: activity?.title || 'Kurs',
+        date: activity?.schedule?.startDate || '',
+        time: slot ? `${slot.startTime}–${slot.endTime}` : '',
+        providerName: provider?.company_name || '',
+        packageInfo: pkgSize > 1 ? `${pkgSize} Termine · ${dayMap[slot?.day] || ''}` : undefined,
+        amount: params.amount > 0 ? `${(params.amount / 100).toFixed(2).replace('.', ',')} €` : undefined,
+      })
+    } catch (emailErr) {
+      console.error('Confirmation email failed:', emailErr)
+    }
+
     return booking
   }
 

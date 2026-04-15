@@ -108,29 +108,38 @@ export const EmailService = {
     date: string
     time: string
     providerName: string
+    packageInfo?: string
+    amount?: string
   }): Promise<EmailResult> {
+    const pkg = data.packageInfo ? `<div style="color:#64748b;font-size:13px;margin-top:4px">${data.packageInfo}</div>` : ''
+    const price = data.amount ? `<div style="font-weight:700;font-size:18px;margin-top:8px">${data.amount}</div>` : ''
     return this.send({
       to,
-      subject: `Buchungsbestätigung – ${data.courseName}`,
+      subject: `Buchung bestätigt – ${data.courseName} 🎉`,
       html: `
-        <div style="font-family: 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto;">
-          <div style="background: linear-gradient(135deg, #0ea5e9, #0284c7); padding: 24px; border-radius: 12px 12px 0 0;">
-            <h1 style="color: white; margin: 0; font-size: 24px;">✅ Buchung bestätigt!</h1>
+        <div style="font-family: 'Inter', 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; color: #3C2225;">
+          <div style="background: linear-gradient(135deg, #B5533A, #8B3A28); padding: 32px; border-radius: 16px 16px 0 0; text-align: center;">
+            <div style="font-size: 48px; margin-bottom: 8px;">🎉</div>
+            <h1 style="color: white; margin: 0; font-size: 24px; font-weight: 700;">Buchung bestätigt!</h1>
           </div>
-          <div style="padding: 24px; background: #f8fafc; border-radius: 0 0 12px 12px;">
-            <p>Hallo ${data.parentName},</p>
-            <p><strong>${data.childName}</strong> ist jetzt angemeldet für:</p>
-            <div style="background: white; padding: 16px; border-radius: 8px; border-left: 4px solid #0ea5e9;">
-              <strong>${data.courseName}</strong><br>
-              📅 ${data.date} um ${data.time}<br>
-              🏫 ${data.providerName}
+          <div style="padding: 32px; background: #FFF9F5; border-radius: 0 0 16px 16px;">
+            <p style="font-size: 16px;">Hey ${data.parentName},</p>
+            <p>Super, <strong>${data.childName}</strong> ist dabei! Hier nochmal alles auf einen Blick:</p>
+            <div style="background: white; padding: 20px; border-radius: 12px; border-left: 4px solid #B5533A; margin: 20px 0;">
+              <div style="font-weight: 700; font-size: 16px;">${data.courseName}</div>
+              <div style="color: #64748b; margin-top: 4px;">📅 ${data.date} · ${data.time} Uhr</div>
+              <div style="color: #64748b;">🏫 ${data.providerName}</div>
+              ${pkg}
+              ${price}
             </div>
-            <p style="margin-top: 16px;">Wir freuen uns auf ${data.childName}!</p>
-            <p style="color: #64748b; font-size: 12px;">Urban Kids Club – Kinderkurse entdecken & buchen</p>
+            <p>Falls du mal nicht kannst — kein Stress! Sag einfach rechtzeitig Bescheid und wir verschieben den Termin.</p>
+            <p style="margin-top: 24px;">Wir freuen uns auf ${data.childName}! 💪</p>
+            <hr style="border: none; border-top: 1px solid #F2E6E2; margin: 24px 0;">
+            <p style="color: #94a3b8; font-size: 12px; text-align: center;">Powered by Urban Kids Club – Kinderkurse entdecken & buchen</p>
           </div>
         </div>
       `,
-      text: `Buchung bestätigt: ${data.childName} für ${data.courseName} am ${data.date} um ${data.time} bei ${data.providerName}.`,
+      text: `Hey ${data.parentName}! Buchung bestätigt: ${data.childName} für ${data.courseName} am ${data.date} um ${data.time} bei ${data.providerName}. Wir freuen uns!`,
     })
   },
 
