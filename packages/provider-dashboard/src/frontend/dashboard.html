@@ -4561,6 +4561,17 @@
               <button onclick="saveCancellationPolicy()" class="bg-brand-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-brand-600">Stornierungsbedingungen speichern</button>
             </div>
           </div>
+
+          <div class="bg-white rounded-xl border border-brand-200 p-6 mt-6">
+            <h3 class="font-semibold text-gray-900 mb-4">Nach der Buchung</h3>
+            <p class="text-sm text-gray-500 mb-4">Leite Kunden nach einer erfolgreichen Buchung auf eine eigene Seite weiter (z.B. Danke-Seite, Willkommensseite oder WhatsApp-Gruppe).</p>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Weiterleitungs-URL (optional)</label>
+              <input id="bookingRedirectUrl" type="url" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="https://deine-seite.de/danke">
+              <div class="text-xs text-gray-400 mt-1">Leer lassen = Standard-Bestätigungsseite wird angezeigt</div>
+            </div>
+            <button onclick="saveBookingRedirect()" class="mt-3 bg-brand-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-brand-600">Weiterleitung speichern</button>
+          </div>
         </div>
       `
     }
@@ -4768,6 +4779,22 @@
         if (deadline) deadline.value = p.deadline_hours || 48
         if (text) text.value = p.custom_text || ''
       } catch(e) { console.warn('Cancellation policy not available:', e) }
+      // Load booking redirect URL
+      const redirectInput = document.getElementById('bookingRedirectUrl')
+      if (redirectInput) redirectInput.value = currentProvider.booking_redirect_url || ''
+    }
+
+    async function saveBookingRedirect() {
+      const url = document.getElementById('bookingRedirectUrl')?.value?.trim() || ''
+      if (url && !url.startsWith('https://') && !url.startsWith('http://')) {
+        alert('Bitte eine gültige URL eingeben (z.B. https://deine-seite.de/danke)')
+        return
+      }
+      try {
+        await api(`/providers/${currentProvider.id}`, 'PUT', { booking_redirect_url: url || null })
+        currentProvider.booking_redirect_url = url || null
+        alert('Weiterleitung gespeichert!')
+      } catch(e) { alert('Fehler: ' + (e.message || 'Speichern fehlgeschlagen')) }
     }
 
     async function connectStripe() {

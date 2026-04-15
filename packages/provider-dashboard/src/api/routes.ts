@@ -1678,17 +1678,19 @@ export function registerRoutes(router: Router) {
         parentEmail: parent.email, parentPhone: parent.phone || '',
         paymentMethod: 'onsite', amount: price, currency: 'EUR',
       })
-      return res.json({ success: true, bookingId: booking.id, redirect: null })
+      return res.json({ success: true, bookingId: booking.id, redirect: (provider as any).booking_redirect_url || null })
     }
 
     if (paymentMethod === 'stripe') {
       const { stripe: stripeClient, createCheckoutSession } = await import('../lib/stripe')
       if (!stripeClient) return res.error(500, 'Stripe ist nicht konfiguriert')
       const origin = req.raw.headers.origin || req.raw.headers.host ? `https://${req.raw.headers.host}` : 'https://app.urbankids.club'
+      const defaultSuccess = `${origin}/embed/${slug}/booking-success?session_id={CHECKOUT_SESSION_ID}`
+      const successUrl = (provider as any).booking_redirect_url || defaultSuccess
       const url = await createCheckoutSession({
         stripeAccountId: provider.stripe_account_id || undefined,
         amount: price, currency: 'EUR', courseName: activity.title,
-        successUrl: `${origin}/embed/${slug}/booking-success?session_id={CHECKOUT_SESSION_ID}`,
+        successUrl,
         cancelUrl: `${origin}/embed/${slug}/calendar`,
         metadata: {
           provider_id: provider.id, activity_id: activityId, block_id: blockId || '',
