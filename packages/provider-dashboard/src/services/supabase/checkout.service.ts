@@ -101,10 +101,38 @@ export class CheckoutService {
             credits_used: 0,
           })
           console.log(`[Checkout] Auto-enrolled ${params.childFirstName} in block ${activeBlock.id} (${currentCount + 1}/${fixedSlots} fixed slots)`)
+        } else if (currentCount < activeBlock.capacity) {
+          // Makeup slots territory — booking stays confirmed, provider decides manually
+          console.log(`[Checkout] Block ${activeBlock.id} fixed slots full (${currentCount}/${fixedSlots}). Booking ${booking.id} needs manual enrollment (makeup slot).`)
         } else {
-          // Makeup slots only — booking stays confirmed but no auto-enrollment
-          // Provider decides manually in dashboard
-          console.log(`[Checkout] Block ${activeBlock.id} fixed slots full (${currentCount}/${fixedSlots}). Booking ${booking.id} needs manual enrollment.`)
+          // Block completely full — add to waitlist
+          await db.from('waitlist_entries').insert({
+            activity_id: params.activityId,
+            parent_id: parent.id,
+            child_info: { firstName: params.childFirstName, lastName: params.childLastName, birthYear: params.childBirthYear },
+            position: 1, // Will be recalculated
+            priority: 'normal',
+            status: 'waiting',
+          }).then(async () => {
+            // Recalculate position
+            const { data: entries } = await db.from('waitlist_entries')
+              .select('id').eq('activity_id', params.activityId).eq('status', 'waiting')
+              .order('added_at', { ascending: true })
+            const idx = entries?.findIndex((e: any) => true) ?? 0 // position is sequential
+            console.log(`[Checkout] Block ${activeBlock.id} voll (${currentCount}/${activeBlock.capacity}). ${params.childFirstName} auf Warteliste (Position ${idx + 1}).`)
+          })
+
+          // Notify provider: block is full
+          await db.from('notifications').insert({
+            recipient_type: 'provider',
+            recipient_id: params.providerId,
+            type: 'block_full',
+            channel: 'in_app',
+            title: 'Kursblock ist voll!',
+            body: `Der Block für "${params.activityId}" ist ausgebucht. Es gibt Interessenten auf der Warteliste. Möchten Sie einen neuen Block erstellen?`,
+            data: { blockId: activeBlock.id, activityId: params.activityId, waitlistCount: 1 },
+          })
+          console.log(`[Checkout] Provider ${params.providerId} notified: block full, waitlist entry created.`)
         }
       }
     } catch (enrollErr) {

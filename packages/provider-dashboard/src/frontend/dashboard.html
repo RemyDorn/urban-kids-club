@@ -3027,7 +3027,33 @@
           </div>`
       }
 
+      // Check for full blocks with waitlist entries
+      let waitlistBannerHtml = ''
+      try {
+        for (const block of activeBlocks.concat(upcomingBlocks)) {
+          const act = actMap[block.activityId]
+          const [enrRes, wlRes] = await Promise.all([
+            api(`/course-blocks/${block.id}/enrollments`),
+            api(`/activities/${block.activityId}/waitlist`).catch(() => ({ data: [] })),
+          ])
+          const enrolledCount = ((enrRes.data || enrRes) || []).filter((e: any) => e.status === 'active').length
+          const waitlistCount = ((wlRes.data || wlRes) || []).length
+          if (enrolledCount >= block.capacity && waitlistCount > 0) {
+            const title = act ? act.title : block.activityType
+            waitlistBannerHtml += `
+              <div class="bg-amber-50 border border-amber-300 rounded-xl p-4 flex items-center justify-between">
+                <div>
+                  <div class="font-semibold text-amber-800">${escapeHtml(title)} — Block voll!</div>
+                  <div class="text-sm text-amber-700">${enrolledCount}/${block.capacity} Plätze belegt · ${waitlistCount} auf Warteliste</div>
+                </div>
+                <button onclick="createFollowUpBlock('${block.id}')" class="px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-semibold hover:bg-amber-600 transition">Neuen Folge-Block erstellen</button>
+              </div>`
+          }
+        }
+      } catch (e) { console.error('Waitlist banner check failed:', e) }
+
       cc.innerHTML = `
+        ${waitlistBannerHtml ? `<div class="space-y-3 mb-6">${waitlistBannerHtml}</div>` : ''}
         <!-- Stats -->
         <div class="grid grid-cols-3 gap-4 mb-6">
           <div class="stat-card bg-white rounded-xl p-5 shadow-sm border border-gray-100">
@@ -3213,6 +3239,66 @@
     }
 
     // --- Block erstellen ---
+    async function createFollowUpBlock(sourceBlockId) {
+      try {
+        const bRes = await api(`/course-blocks/${sourceBlockId}`)
+        const block = bRes.data || bRes
+        if (!block) { alert('Block nicht gefunden'); return }
+
+        // Calculate new start date: 1 week after source block ends
+        const endDate = new Date(block.endDate + 'T00:00:00Z')
+        endDate.setUTCDate(endDate.getUTCDate() + 7)
+        const newStartDate = endDate.toISOString().split('T')[0]
+
+        // Get activity title for label
+        let actTitle = block.activityType
+        try {
+          const aRes = await api(`/activities/${block.activityId}`)
+          actTitle = (aRes.data || aRes).title || actTitle
+        } catch (e) {}
+
+        // Auto-generate season label
+        const startMonth = endDate.toLocaleDateString('de-DE', { month: 'long' })
+        const endMonth = new Date(endDate.getTime() + block.totalSessions * 7 * 86400000).toLocaleDateString('de-DE', { month: 'long', year: 'numeric' })
+        const seasonLabel = `${actTitle} – ${startMonth}/${endMonth}`
+
+        if (!confirm(`Neuen Folge-Block erstellen?\n\n${seasonLabel}\nStart: ${newStartDate}\n${block.totalSessions} Termine, ${block.capacity} Plätze`)) return
+
+        const res = await api('/course-blocks', 'POST', {
+          activityId: block.activityId,
+          activityType: block.activityType,
+          seasonLabel,
+          totalSessions: block.totalSessions,
+          startDate: newStartDate,
+          recurringDay: block.recurringDay,
+          recurringTime: block.recurringTime,
+          durationMinutes: block.durationMinutes,
+          pricePerBlock: block.pricePerBlock,
+          currency: block.currency,
+          capacity: block.capacity,
+          makeupCapacity: block.makeupCapacity,
+          maxCreditsPerEnrollment: block.maxCreditsPerEnrollment,
+        })
+
+        // Notify waitlisted parents
+        try {
+          const wlRes = await api(`/activities/${block.activityId}/waitlist`)
+          const waitlist = (wlRes.data || wlRes) || []
+          if (waitlist.length > 0) {
+            alert(`Folge-Block erstellt! ${waitlist.length} Wartelisten-Einträge vorhanden.\n\nDie Eltern werden beim nächsten Buchungsversuch automatisch berücksichtigt.`)
+          } else {
+            alert('Folge-Block erfolgreich erstellt!')
+          }
+        } catch (e) {
+          alert('Folge-Block erstellt!')
+        }
+
+        renderCourseBlocks()
+      } catch (err) {
+        alert('Fehler beim Erstellen: ' + err.message)
+      }
+    }
+
     async function showCreateBlockForm() {
       const modal = document.getElementById('create-block-modal')
       let activities = []
