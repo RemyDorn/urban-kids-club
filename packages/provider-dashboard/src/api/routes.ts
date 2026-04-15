@@ -1647,21 +1647,21 @@ export function registerRoutes(router: Router) {
     if (!activity) return res.error(404, 'Kurs nicht gefunden')
     if (activity.provider_id !== provider.id) return res.error(400, 'Kurs gehört nicht zu diesem Provider')
 
-    // Capacity check: count existing confirmed bookings
+    // Capacity check: only count confirmed bookings (not pending/cancelled)
     const maxCapacity = activity.max_participants || activity.pricing?.[0]?.packageSize || 12
     const { count: bookingCount } = await db.from('bookings')
       .select('id', { count: 'exact', head: true })
       .eq('activity_id', activityId)
-      .neq('status', 'cancelled')
+      .eq('status', 'confirmed')
     if (bookingCount !== null && bookingCount >= maxCapacity) {
       return res.error(400, 'Dieser Kurs ist leider ausgebucht')
     }
 
-    // Duplicate booking check: same child + same activity
+    // Duplicate booking check: same child + same activity (confirmed only)
     const { data: duplicate } = await db.from('bookings')
       .select('id')
       .eq('activity_id', activityId)
-      .neq('status', 'cancelled')
+      .eq('status', 'confirmed')
       .eq('child_info->>firstName', child.firstName.trim())
       .eq('child_info->>lastName', child.lastName.trim())
       .maybeSingle()
@@ -1772,6 +1772,20 @@ export function registerRoutes(router: Router) {
         .select('id').eq('stripe_session_id', session.id).maybeSingle()
       if (existing) {
         return res.json({ received: true, duplicate: true })
+      }
+
+      // 2b. Re-check capacity at webhook time (race condition protection)
+      if (meta.activity_id) {
+        const { data: act } = await db.from('activities').select('max_participants, pricing').eq('id', meta.activity_id).single()
+        const maxCap = act?.max_participants || act?.pricing?.[0]?.packageSize || 12
+        const { count } = await db.from('bookings')
+          .select('id', { count: 'exact', head: true })
+          .eq('activity_id', meta.activity_id)
+          .eq('status', 'confirmed')
+        if (count !== null && count >= maxCap) {
+          console.warn(`Webhook: course ${meta.activity_id} full at payment time (${count}/${maxCap}). Booking created anyway — refund may be needed.`)
+          // Still create the booking but log warning — manual refund needed
+        }
       }
 
       // 3. Create booking with correct status
