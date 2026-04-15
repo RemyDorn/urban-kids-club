@@ -3,6 +3,23 @@ import { createHmac } from 'node:crypto'
 
 const STRIPE_SECRET = process.env.STRIPE_SECRET_KEY || ''
 const STRIPE_CONNECT_CLIENT_ID = process.env.STRIPE_CONNECT_CLIENT_ID || ''
+const IS_PRODUCTION = process.env.NODE_ENV === 'production'
+
+// Validate Stripe key matches environment
+if (STRIPE_SECRET) {
+  const isLiveKey = STRIPE_SECRET.startsWith('sk_live_')
+  const isTestKey = STRIPE_SECRET.startsWith('sk_test_')
+  if (IS_PRODUCTION && isTestKey) {
+    console.warn('⚠️  WARNUNG: Stripe TEST-Key im Production-Modus! Zahlungen werden NICHT echt verarbeitet.')
+  }
+  if (!IS_PRODUCTION && isLiveKey) {
+    console.warn('⚠️  WARNUNG: Stripe LIVE-Key im Development-Modus! Echte Zahlungen möglich!')
+  }
+}
+
+if (IS_PRODUCTION && !process.env.STRIPE_WEBHOOK_SECRET) {
+  console.warn('⚠️  WARNUNG: STRIPE_WEBHOOK_SECRET nicht gesetzt — Webhooks werden in Production abgelehnt!')
+}
 
 export const stripe = STRIPE_SECRET ? new Stripe(STRIPE_SECRET) : null
 

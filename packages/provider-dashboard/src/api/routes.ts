@@ -1647,8 +1647,16 @@ export function registerRoutes(router: Router) {
     if (!activity) return res.error(404, 'Kurs nicht gefunden')
     if (activity.provider_id !== provider.id) return res.error(400, 'Kurs gehört nicht zu diesem Provider')
 
+    // Validate payment method is enabled for this activity
+    if (paymentMethod === 'onsite' && activity.payment_onsite === false) {
+      return res.error(400, 'Vor-Ort-Zahlung ist für diesen Kurs nicht aktiviert')
+    }
+    if ((paymentMethod === 'stripe' || paymentMethod === 'paypal') && activity.payment_online === false) {
+      return res.error(400, 'Online-Zahlung ist für diesen Kurs nicht aktiviert')
+    }
+
     // Capacity check: only count confirmed bookings (not pending/cancelled)
-    const maxCapacity = activity.capacity || activity.max_participants || activity.pricing?.[0]?.packageSize || 12
+    const maxCapacity = activity.capacity || 12
     const { count: bookingCount } = await db.from('provider_bookings')
       .select('id', { count: 'exact', head: true })
       .eq('activity_id', activityId)
@@ -1776,8 +1784,8 @@ export function registerRoutes(router: Router) {
 
       // 2b. Re-check capacity at webhook time (race condition protection)
       if (meta.activity_id) {
-        const { data: act } = await db.from('activities').select('capacity, max_participants, pricing').eq('id', meta.activity_id).single()
-        const maxCap = act?.capacity || act?.max_participants || act?.pricing?.[0]?.packageSize || 12
+        const { data: act } = await db.from('activities').select('capacity').eq('id', meta.activity_id).single()
+        const maxCap = act?.capacity || 12
         const { count } = await db.from('provider_bookings')
           .select('id', { count: 'exact', head: true })
           .eq('activity_id', meta.activity_id)
