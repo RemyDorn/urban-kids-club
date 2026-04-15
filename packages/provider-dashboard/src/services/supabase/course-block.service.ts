@@ -164,15 +164,64 @@ export const SupabaseCourseBlockService = {
     return data ? blockSessionFromDb(data) : undefined
   },
 
-  async cancelSession(input: { sessionId: ID; reason?: string } | ID, reason?: string): Promise<BlockSession | { affected: number } | undefined> {
+  async cancelSession(input: { sessionId: ID; reason?: string; compensation?: string; cancelledBy?: string } | ID, reason?: string): Promise<BlockSession | { affected: number; creditsIssued?: number } | undefined> {
     const sb = getServiceClient()
     const sessionId = typeof input === 'object' ? input.sessionId : input
     const cancelReason = typeof input === 'object' ? (input.reason ?? reason ?? '') : (reason ?? '')
+    const compensation = typeof input === 'object' ? input.compensation : undefined
+
     const { data, error } = await sb.from(SESSION_TABLE)
       .update({ status: 'cancelled_by_provider', cancellation_reason: cancelReason })
       .eq('id', sessionId).select().maybeSingle()
     if (error) throw error
-    return data ? blockSessionFromDb(data) : undefined
+    if (!data) return undefined
+
+    const session = blockSessionFromDb(data)
+
+    // Auto-issue credits to all active enrollments if compensation requested
+    if (compensation === 'credit') {
+      const { data: enrollments } = await sb.from(ENROLLMENT_TABLE)
+        .select('id, block_id, parent_id, child_id, credits_earned')
+        .eq('block_id', data.block_id)
+        .eq('status', 'active')
+
+      let creditsIssued = 0
+      for (const enr of enrollments ?? []) {
+        try {
+          const { data: block } = await sb.from(BLOCK_TABLE).select('provider_id, activity_type, end_date, extended_end_date').eq('id', enr.block_id).single()
+          const validUntil = block?.extended_end_date ?? block?.end_date ?? data.date
+
+          await sb.from('session_credits').insert({
+            enrollment_id: enr.id,
+            block_id: enr.block_id,
+            provider_id: block?.provider_id,
+            parent_id: enr.parent_id,
+            child_id: enr.child_id,
+            activity_type: block?.activity_type ?? 'course',
+            reason: 'provider_cancellation',
+            is_provider_cancellation: true,
+            original_session_id: sessionId,
+            original_session_date: data.date,
+            status: 'available',
+            valid_until: validUntil,
+          })
+
+          // Update enrollment credits_earned
+          await sb.from(ENROLLMENT_TABLE)
+            .update({ credits_earned: (enr.credits_earned ?? 0) + 1, updated_at: new Date().toISOString() })
+            .eq('id', enr.id)
+
+          creditsIssued++
+        } catch (creditErr) {
+          console.error(`[CourseBlock] Credit issue failed for enrollment ${enr.id}:`, creditErr)
+        }
+      }
+
+      console.log(`[CourseBlock] Session ${sessionId} cancelled. ${creditsIssued} credits issued to enrollments.`)
+      return { ...session, affected: 1, creditsIssued } as any
+    }
+
+    return session
   },
 
   // Routes compatibility aliases
