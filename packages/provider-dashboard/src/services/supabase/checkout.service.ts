@@ -22,23 +22,23 @@ export class CheckoutService {
 
     // 1. Find or create parent
     let { data: parent } = await db.from('parents')
-      .select('id').eq('email', params.parentEmail).eq('provider_id', params.providerId).single()
+      .select('id').eq('email', params.parentEmail).maybeSingle()
 
     if (!parent) {
-      const { data: newParent } = await db.from('parents').insert({
-        provider_id: params.providerId,
-        first_name: params.parentFirstName,
-        last_name: params.parentLastName,
+      const { data: newParent, error: parentErr } = await db.from('parents').insert({
+        name: `${params.parentFirstName} ${params.parentLastName}`.trim(),
         email: params.parentEmail,
-        phone: params.parentPhone,
+        phone: params.parentPhone || null,
       }).select('id').single()
+      if (parentErr) throw new Error('Parent-Erstellung fehlgeschlagen: ' + parentErr.message)
       parent = newParent
     }
 
     if (!parent) throw new Error('Parent konnte nicht erstellt werden')
 
-    // 2. Create booking
-    const { data: booking, error } = await db.from('bookings').insert({
+    // 2. Create booking in provider_bookings
+    const now = new Date().toISOString()
+    const { data: booking, error } = await db.from('provider_bookings').insert({
       provider_id: params.providerId,
       activity_id: params.activityId,
       parent_id: parent.id,
@@ -47,14 +47,17 @@ export class CheckoutService {
         lastName: params.childLastName,
         birthYear: params.childBirthYear,
       },
+      pricing_option_id: 'default',
       status: 'confirmed',
       payment_status: params.paymentMethod === 'onsite' ? 'unpaid' : 'paid',
       payment_method: params.paymentMethod,
-      amount_paid: params.paymentMethod !== 'onsite' ? params.amount : 0,
+      amount_paid: params.paymentMethod !== 'onsite' ? params.amount / 100 : 0,
       currency: params.currency,
-      source: 'platform',
+      source: 'widget',
       stripe_session_id: params.stripeSessionId || null,
       paypal_order_id: params.paypalOrderId || null,
+      created_at: now,
+      updated_at: now,
     }).select().single()
 
     if (error) throw new Error(error.message)
@@ -87,7 +90,7 @@ export class CheckoutService {
   static async confirmPayment(sessionId: string, method: 'stripe' | 'paypal') {
     const db = getServiceClient()
     const col = method === 'stripe' ? 'stripe_session_id' : 'paypal_order_id'
-    const { data, error } = await db.from('bookings')
+    const { data, error } = await db.from('provider_bookings')
       .update({ status: 'confirmed', payment_status: 'paid', updated_at: new Date().toISOString() })
       .eq(col, sessionId)
       .select().single()

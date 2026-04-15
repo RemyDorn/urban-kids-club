@@ -14,28 +14,43 @@ export const SupabaseReportingService = {
   }> {
     const sb = getServiceClient()
 
-    const [actRes, bookRes] = await Promise.all([
-      sb.from('activities').select('status').eq('provider_id', providerId),
-      sb.from('provider_bookings').select('status, payment_status, amount_paid').eq('provider_id', providerId),
-    ])
+    const { data: activities } = await sb.from('activities').select('id, status').eq('provider_id', providerId)
+    const activityIds = (activities ?? []).filter((a: { status: string }) => a.status === 'published').map((a: { id: string }) => a.id)
 
-    const activities = actRes.data ?? []
-    const bookings = bookRes.data ?? []
+    // Get bookings via activity_slots → bookings
+    let allBookings: Array<{ status: string; payment_method: string }> = []
+    if (activityIds.length > 0) {
+      const { data: slots } = await sb.from('activity_slots').select('id').in('activity_id', activityIds)
+      const slotIds = (slots ?? []).map((s: { id: string }) => s.id)
+      if (slotIds.length > 0) {
+        const { data: bookings } = await sb.from('bookings').select('status, payment_method').in('activity_slot_id', slotIds)
+        allBookings = bookings ?? []
+      }
+    }
+
+    // Also check provider_bookings as fallback
+    const { data: provBookings } = await sb.from('provider_bookings').select('status, payment_status, amount_paid').eq('provider_id', providerId)
 
     let totalRevenue = 0
     let unpaidBookings = 0
     let confirmedBookings = 0
 
-    for (const b of bookings) {
+    // Count from bookings table
+    for (const b of allBookings) {
+      if (b.status === 'confirmed') confirmedBookings++
+    }
+
+    // Count from provider_bookings (fallback)
+    for (const b of provBookings ?? []) {
       if (b.payment_status === 'paid') totalRevenue += b.amount_paid ?? 0
       if (b.payment_status === 'unpaid' && b.status === 'confirmed') unpaidBookings++
       if (b.status === 'confirmed') confirmedBookings++
     }
 
     return {
-      totalActivities: activities.length,
-      publishedActivities: activities.filter((a: { status: string }) => a.status === 'published').length,
-      totalBookings: bookings.length,
+      totalActivities: (activities ?? []).length,
+      publishedActivities: activityIds.length,
+      totalBookings: allBookings.length + (provBookings ?? []).length,
       confirmedBookings,
       totalRevenue: Math.round(totalRevenue * 100) / 100,
       unpaidBookings,
@@ -48,10 +63,31 @@ export const SupabaseReportingService = {
   }>> {
     const sb = getServiceClient()
     const { data: activities } = await sb.from('activities').select('id, title, capacity, status').eq('provider_id', providerId).eq('status', 'published')
-    const { data: bookings } = await sb.from('provider_bookings').select('activity_id, status').eq('provider_id', providerId)
+
+    // Get activity IDs for this provider
+    const activityIds = (activities ?? []).map((a: { id: string }) => a.id)
+    if (activityIds.length === 0) return []
+
+    // Count bookings via activity_slots → bookings (the booking widget's tables)
+    const { data: slots } = await sb.from('activity_slots').select('id, activity_id').in('activity_id', activityIds)
+    const slotIds = (slots ?? []).map((s: { id: string }) => s.id)
+    const slotToActivity = new Map<string, string>()
+    for (const s of slots ?? []) slotToActivity.set(s.id, s.activity_id)
 
     const bookingCounts = new Map<string, number>()
-    for (const b of bookings ?? []) {
+    if (slotIds.length > 0) {
+      const { data: bookings } = await sb.from('bookings').select('activity_slot_id, status').in('activity_slot_id', slotIds)
+      for (const b of bookings ?? []) {
+        if (b.status === 'confirmed' || b.status === 'pending') {
+          const actId = slotToActivity.get(b.activity_slot_id)
+          if (actId) bookingCounts.set(actId, (bookingCounts.get(actId) ?? 0) + 1)
+        }
+      }
+    }
+
+    // Also check provider_bookings as fallback
+    const { data: provBookings } = await sb.from('provider_bookings').select('activity_id, status').eq('provider_id', providerId)
+    for (const b of provBookings ?? []) {
       if (b.status === 'confirmed' || b.status === 'pending') {
         bookingCounts.set(b.activity_id, (bookingCounts.get(b.activity_id) ?? 0) + 1)
       }

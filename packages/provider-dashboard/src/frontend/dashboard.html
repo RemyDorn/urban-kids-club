@@ -938,11 +938,18 @@
       // Parse event date (YYYY-MM-DD string from fmtDate)
       const evDate = ev.date
       let eventDateStr = evDate || 'Unbekannt'
+      let isPast = false
       if (typeof evDate === 'string' && evDate.includes('-')) {
         const [y, m, d] = evDate.split('-')
         const dt = new Date(parseInt(y), parseInt(m) - 1, parseInt(d))
         if (!isNaN(dt.getTime())) {
           eventDateStr = dt.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+          // Check if event start time has passed
+          if (ev.startTime) {
+            const [sh, sm] = ev.startTime.split(':').map(Number)
+            dt.setHours(sh, sm, 0, 0)
+          }
+          isPast = dt.getTime() < Date.now()
         }
       }
       const modal = document.getElementById('calModal')
@@ -1006,7 +1013,11 @@
               </div>
             ` : ''}
 
-            ${occ && (occ.capacity - occ.booked) > 0 ? `
+            ${isPast ? `
+            <div class="bg-gray-50 border border-gray-200 rounded-lg p-3 text-center">
+              <div class="text-sm text-gray-500">Dieser Termin hat bereits stattgefunden.</div>
+            </div>
+            ` : occ && (occ.capacity - occ.booked) > 0 ? `
             <!-- Last-Minute Kids Club Freigabe -->
             <div class="border-2 border-brand-200 rounded-lg p-4 bg-brand-50/30">
               <div class="flex items-center gap-2 mb-2">
@@ -1027,7 +1038,7 @@
 
             <div class="flex gap-3">
               <button onclick="filterBookingsByActivity('${activity?.id || ''}'); document.getElementById('calModal').className='hidden'" class="flex-1 bg-brand-500 text-white py-2 rounded-lg font-medium hover:bg-brand-600 transition-colors text-sm">Buchungen anzeigen</button>
-              <button onclick="navigate('activities'); document.getElementById('calModal').className='hidden'" class="flex-1 bg-gray-100 text-gray-700 py-2 rounded-lg font-medium hover:bg-gray-200 transition-colors text-sm">Kurs bearbeiten</button>
+              ${!isPast ? `<button onclick="navigate('activities'); document.getElementById('calModal').className='hidden'" class="flex-1 bg-gray-100 text-gray-700 py-2 rounded-lg font-medium hover:bg-gray-200 transition-colors text-sm">Kurs bearbeiten</button>` : ''}
             </div>
           </div>
         </div>

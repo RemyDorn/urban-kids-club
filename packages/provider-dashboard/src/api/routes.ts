@@ -1648,8 +1648,8 @@ export function registerRoutes(router: Router) {
     if (activity.provider_id !== provider.id) return res.error(400, 'Kurs gehört nicht zu diesem Provider')
 
     // Capacity check: only count confirmed bookings (not pending/cancelled)
-    const maxCapacity = activity.max_participants || activity.pricing?.[0]?.packageSize || 12
-    const { count: bookingCount } = await db.from('bookings')
+    const maxCapacity = activity.capacity || activity.max_participants || activity.pricing?.[0]?.packageSize || 12
+    const { count: bookingCount } = await db.from('provider_bookings')
       .select('id', { count: 'exact', head: true })
       .eq('activity_id', activityId)
       .eq('status', 'confirmed')
@@ -1658,7 +1658,7 @@ export function registerRoutes(router: Router) {
     }
 
     // Duplicate booking check: same child + same activity (confirmed only)
-    const { data: duplicate } = await db.from('bookings')
+    const { data: duplicate } = await db.from('provider_bookings')
       .select('id')
       .eq('activity_id', activityId)
       .eq('status', 'confirmed')
@@ -1768,7 +1768,7 @@ export function registerRoutes(router: Router) {
       const db = getServiceClient()
 
       // 2. Idempotency: check if booking already exists for this session
-      const { data: existing } = await db.from('bookings')
+      const { data: existing } = await db.from('provider_bookings')
         .select('id').eq('stripe_session_id', session.id).maybeSingle()
       if (existing) {
         return res.json({ received: true, duplicate: true })
@@ -1776,9 +1776,9 @@ export function registerRoutes(router: Router) {
 
       // 2b. Re-check capacity at webhook time (race condition protection)
       if (meta.activity_id) {
-        const { data: act } = await db.from('activities').select('max_participants, pricing').eq('id', meta.activity_id).single()
-        const maxCap = act?.max_participants || act?.pricing?.[0]?.packageSize || 12
-        const { count } = await db.from('bookings')
+        const { data: act } = await db.from('activities').select('capacity, max_participants, pricing').eq('id', meta.activity_id).single()
+        const maxCap = act?.capacity || act?.max_participants || act?.pricing?.[0]?.packageSize || 12
+        const { count } = await db.from('provider_bookings')
           .select('id', { count: 'exact', head: true })
           .eq('activity_id', meta.activity_id)
           .eq('status', 'confirmed')
