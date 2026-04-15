@@ -3104,7 +3104,11 @@
       const sessStatusLabels = { scheduled: 'Geplant', completed: 'Abgeschlossen', cancelled_by_provider: 'Ausgefallen (Provider)', cancelled_by_holiday: 'Feiertag' }
 
       const totalSess = block.totalSessions || 0
-      const canCancelBlock = block.status === 'active' || block.status === 'upcoming'
+      const today = fmtDate(new Date())
+      const futureSessions = sessions.filter(s => s.date >= today && s.status === 'scheduled')
+      const allSessionsPast = futureSessions.length === 0 && sessions.length > 0
+      const blockIsLocked = allSessionsPast || block.status === 'completed' || block.status === 'cancelled'
+      const canCancelBlock = (block.status === 'active' || block.status === 'upcoming') && !blockIsLocked
 
       modal.className = 'fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4'
       modal.innerHTML = `
@@ -3190,11 +3194,19 @@
             </div>
 
             <!-- Block-Aktionen -->
+            ${blockIsLocked ? `
+            <div class="mt-4 pt-4 border-t border-gray-100">
+              <div class="bg-gray-50 border border-gray-200 rounded-lg p-3 text-center">
+                <div class="text-sm text-gray-500">Dieser Kursblock ist abgeschlossen. Keine Änderungen mehr möglich.</div>
+              </div>
+            </div>
+            ` : `
             <div class="flex gap-2 mt-4 pt-4 border-t border-gray-100">
               <button onclick="extendBlock('${blockId}')" class="text-sm px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 font-medium">+ Termin anhängen</button>
               <button onclick="runBlockCronjobs()" class="text-sm px-3 py-1.5 bg-gray-50 text-gray-600 rounded-lg hover:bg-gray-100 font-medium">Status aktualisieren</button>
-              ${canCancelBlock ? `<button onclick="cancelBlock('${blockId}')" class="text-sm px-3 py-1.5 bg-red-50 text-red-700 rounded-lg hover:bg-red-100 font-medium">Block abbrechen</button>` : ''}
+              ${canCancelBlock ? \`<button onclick="cancelBlock('${blockId}')" class="text-sm px-3 py-1.5 bg-red-50 text-red-700 rounded-lg hover:bg-red-100 font-medium">Block abbrechen</button>\` : ''}
             </div>
+            `}
           </div>
         </div>
       `
