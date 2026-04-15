@@ -1665,7 +1665,9 @@ export function registerRoutes(router: Router) {
       return res.error(400, 'Dieses Kind ist bereits für diesen Kurs angemeldet')
     }
 
-    const price = activity.pricing?.[0]?.amount || 0
+    // Price is stored in euros (e.g. 140), Stripe expects cents (14000)
+    const priceEur = activity.pricing?.[0]?.amount || 0
+    const price = Math.round(priceEur * 100)
 
     if (paymentMethod === 'onsite') {
       const { CheckoutService } = await import('../services/supabase/checkout.service')
