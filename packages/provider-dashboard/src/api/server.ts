@@ -181,7 +181,7 @@ function getCoursesForDate(d){
     const sd=a.schedule.startDate||'',ed=a.schedule.endDate||'9999-12-31'
     if(ds<sd||ds>ed)return
     a.schedule.slots.forEach(s=>{
-      if(DN[s.day]===dow)res.push({title:a.title,start:s.startTime,end:s.endTime,cat:a.category,age:(a.ageRange?.min||0)+'-'+(a.ageRange?.max||0)+' J.',price:a.pricing?.[0]?.amount?Math.round(a.pricing[0].amount/100)+'\\u20ac':'',color:a.color||BC,desc:a.description||''})
+      if(DN[s.day]===dow)res.push({title:a.title,start:s.startTime,end:s.endTime,cat:a.category,age:(a.ageRange?.min||0)+'-'+(a.ageRange?.max||0)+' J.',price:a.pricing?.[0]?.amount?a.pricing[0].amount+'\\u20ac':'',color:a.color||BC,desc:a.description||''})
     })
   })
   return res.sort((a,b)=>a.start.localeCompare(b.start))
@@ -245,7 +245,7 @@ window._bookCourse=async function(title,date,time){
   const prov=actData.provider
   const cancel=actData.cancellation
   const price=act.pricing?.[0]?.amount||0
-  const priceStr=(price/100).toFixed(2).replace('.',',')+' \\u20ac'
+  const priceStr=price.toFixed(2).replace('.',',')+' \\u20ac'
   const hasOnline=act.paymentOnline&&(prov.stripeConnected||prov.paypalConnected)
   const hasOnsite=act.paymentOnsite
 
@@ -385,7 +385,7 @@ if(params.get('font')){document.body.style.fontFamily=params.get('font')+',syste
     const{data}=await r.json()
     const published=data.filter(a=>a.status==='published')
     if(!published.length){app.innerHTML='<div class="empty">Aktuell keine Kurse.</div>';return}
-    app.innerHTML=published.map(a=>'<div class="course"><div class="course-title">'+a.title+'</div><div class="course-meta"><span class="badge">'+a.category+'</span> '+(a.ageRange?.min||'?')+'-'+(a.ageRange?.max||'?')+' Jahre \\u00b7 '+(a.duration||'?')+' Min.'+(a.pricing?.[0]?.amount?' \\u00b7 '+(a.pricing[0].amount/100).toFixed(0)+'\\u20ac':'')+'</div>'+(a.description?'<p style="font-size:13px;color:#3C2225;margin-top:8px">'+a.description.substring(0,150)+(a.description.length>150?'...':'')+'</p>':'')+'</div>').join('')
+    app.innerHTML=published.map(a=>'<div class="course"><div class="course-title">'+a.title+'</div><div class="course-meta"><span class="badge">'+a.category+'</span> '+(a.ageRange?.min||'?')+'-'+(a.ageRange?.max||'?')+' Jahre \\u00b7 '+(a.duration||'?')+' Min.'+(a.pricing?.[0]?.amount?' \\u00b7 '+a.pricing[0].amount+'\\u20ac':'')+'</div>'+(a.description?'<p style="font-size:13px;color:#3C2225;margin-top:8px">'+a.description.substring(0,150)+(a.description.length>150?'...':'')+'</p>':'')+'</div>').join('')
   }catch(e){app.innerHTML='<div class="empty">Fehler beim Laden.</div>'}
 })()
 </script></body></html>`
