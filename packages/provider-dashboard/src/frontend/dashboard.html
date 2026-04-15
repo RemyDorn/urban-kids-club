@@ -320,8 +320,8 @@
       }
       sb = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null
     }
-    // Init immediately
-    initSupabase()
+    // Init immediately — must complete before any sb usage
+    const _supabaseReady = initSupabase()
 
     function showLoginScreen() {
       document.getElementById('loginScreen').style.display = 'flex'
@@ -359,6 +359,7 @@
     }
 
     async function checkAuth() {
+      await _supabaseReady
       if (!sb) { showLoginScreen(); return }
       try {
         const { data: { session } } = await sb.auth.getSession()
@@ -401,6 +402,7 @@
     }
 
     async function handleLogin() {
+      await _supabaseReady
       if (!sb) { showLoginError('Verbindungsfehler — bitte Seite neu laden'); return }
       const email = document.getElementById('loginEmail').value.trim()
       const password = document.getElementById('loginPassword').value
@@ -546,12 +548,14 @@
     // Listen for auth state changes (only handle sign-out;
     // sign-in is handled by handleLogin/checkAuth to avoid race conditions)
     let loginInProgress = false
+    _supabaseReady.then(() => { if (!sb) return
     sb.auth.onAuthStateChange((event, session) => {
       currentSession = session
       if (event === 'SIGNED_OUT') {
         document.getElementById('pendingScreen').style.display = 'none'
         showLoginScreen()
       }
+    })
     })
 
     // --- Security Helpers ---
