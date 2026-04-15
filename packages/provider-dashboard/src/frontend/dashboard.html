@@ -3071,7 +3071,7 @@
             api(`/course-blocks/${block.id}/enrollments`),
             api(`/activities/${block.activityId}/waitlist`).catch(() => ({ data: [] })),
           ])
-          const enrolledCount = ((enrRes.data || enrRes) || []).filter((e: any) => e.status === 'active').length
+          const enrolledCount = ((enrRes.data || enrRes) || []).filter(e => e.status === 'active').length
           const waitlistCount = ((wlRes.data || wlRes) || []).length
           if (enrolledCount >= block.capacity && waitlistCount > 0) {
             const title = act ? act.title : block.activityType
@@ -3255,19 +3255,12 @@
             </div>
 
             <!-- Block-Aktionen -->
-            ${blockIsLocked ? `
-            <div class="mt-4 pt-4 border-t border-gray-100">
-              <div class="bg-gray-50 border border-gray-200 rounded-lg p-3 text-center">
-                <div class="text-sm text-gray-500">Dieser Kursblock ist abgeschlossen. Keine Änderungen mehr möglich.</div>
-              </div>
-            </div>
-            ` : `
-            <div class="flex gap-2 mt-4 pt-4 border-t border-gray-100">
-              <button onclick="extendBlock('${blockId}')" class="text-sm px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 font-medium">+ Termin anhängen</button>
-              <button onclick="runBlockCronjobs()" class="text-sm px-3 py-1.5 bg-gray-50 text-gray-600 rounded-lg hover:bg-gray-100 font-medium">Status aktualisieren</button>
-              ${canCancelBlock ? \`<button onclick="cancelBlock('${blockId}')" class="text-sm px-3 py-1.5 bg-red-50 text-red-700 rounded-lg hover:bg-red-100 font-medium">Block abbrechen</button>\` : ''}
-            </div>
-            `}
+            ${blockIsLocked ? '<div class="mt-4 pt-4 border-t border-gray-100"><div class="bg-gray-50 border border-gray-200 rounded-lg p-3 text-center"><div class="text-sm text-gray-500">Dieser Kursblock ist abgeschlossen. Keine Änderungen mehr möglich.</div></div></div>'
+            : '<div class="flex gap-2 mt-4 pt-4 border-t border-gray-100">' +
+              '<button onclick="extendBlock(\'' + blockId + '\')" class="text-sm px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 font-medium">+ Termin anhängen</button>' +
+              '<button onclick="runBlockCronjobs()" class="text-sm px-3 py-1.5 bg-gray-50 text-gray-600 rounded-lg hover:bg-gray-100 font-medium">Status aktualisieren</button>' +
+              (canCancelBlock ? '<button onclick="cancelBlock(\'' + blockId + '\')" class="text-sm px-3 py-1.5 bg-red-50 text-red-700 rounded-lg hover:bg-red-100 font-medium">Block abbrechen</button>' : '') +
+            '</div>'}
           </div>
         </div>
       `
