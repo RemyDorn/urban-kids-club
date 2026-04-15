@@ -114,6 +114,29 @@ export const SupabaseCourseBlockService = {
     const { error: sessErr } = await sb.from(SESSION_TABLE).insert(sessionRows)
     if (sessErr) throw sessErr
 
+    // Notify waitlisted parents that a new block is available
+    try {
+      const { data: waitlist } = await sb.from('waitlist_entries')
+        .select('id, parent_id').eq('activity_id', input.activityId).eq('status', 'waiting')
+      if (waitlist?.length) {
+        const { data: activity } = await sb.from('activities').select('title').eq('id', input.activityId).single()
+        for (const entry of waitlist) {
+          await sb.from('notifications').insert({
+            recipient_type: 'parent',
+            recipient_id: entry.parent_id,
+            type: 'new_block_available',
+            channel: 'in_app',
+            title: 'Neuer Kursblock verfügbar!',
+            body: `Für "${activity?.title || input.activityType}" gibt es jetzt einen neuen Block: ${input.seasonLabel}. Jetzt buchen!`,
+            data: { blockId: block.id, activityId: input.activityId },
+          })
+        }
+        console.log(`[CourseBlock] ${waitlist.length} waitlisted parents notified about new block ${block.id}`)
+      }
+    } catch (notifyErr) {
+      console.error('[CourseBlock] Waitlist notification failed:', notifyErr)
+    }
+
     return block
   },
 
