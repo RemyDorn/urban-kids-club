@@ -434,6 +434,8 @@
     }
 
     async function handleMagicLink() {
+      await _supabaseReady
+      if (!sb) { showLoginError('Verbindungsfehler — bitte Seite neu laden'); return }
       const email = document.getElementById('loginEmail').value.trim()
       if (!email) {
         showLoginError('Bitte geben Sie Ihre E-Mail-Adresse ein.')
@@ -482,6 +484,7 @@
     }
 
     async function handleRegister() {
+      await _supabaseReady
       if (!sb) { showLoginError('Verbindungsfehler — bitte Seite neu laden'); return }
       const displayName = document.getElementById('regDisplayName').value.trim()
       const companyName = document.getElementById('regCompanyName').value.trim()
@@ -538,7 +541,8 @@
     }
 
     async function logout() {
-      await sb.auth.signOut()
+      await _supabaseReady
+      if (sb) await sb.auth.signOut()
       currentSession = null
       currentProvider = null
       providers = []
