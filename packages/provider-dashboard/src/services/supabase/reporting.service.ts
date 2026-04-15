@@ -20,6 +20,9 @@ export const SupabaseReportingService = {
       sb.from('provider_bookings').select('status, payment_status, amount_paid').eq('provider_id', providerId),
     ])
 
+    if (actRes.error) throw new Error('Aktivitäten konnten nicht geladen werden: ' + actRes.error.message)
+    if (bookRes.error) throw new Error('Buchungen konnten nicht geladen werden: ' + bookRes.error.message)
+
     const activities = actRes.data ?? []
     const bookings = bookRes.data ?? []
 
@@ -48,12 +51,14 @@ export const SupabaseReportingService = {
     booked: number; occupancy: number;
   }>> {
     const sb = getServiceClient()
-    const { data: activities } = await sb.from('activities').select('id, title, capacity, status').eq('provider_id', providerId).eq('status', 'published')
+    const { data: activities, error: actErr } = await sb.from('activities').select('id, title, capacity, status').eq('provider_id', providerId).eq('status', 'published')
+    if (actErr) throw new Error('Kurse konnten nicht geladen werden: ' + actErr.message)
 
     const activityIds = (activities ?? []).map((a: { id: string }) => a.id)
     if (activityIds.length === 0) return []
 
-    const { data: bookings } = await sb.from('provider_bookings').select('activity_id, status').eq('provider_id', providerId)
+    const { data: bookings, error: bookErr } = await sb.from('provider_bookings').select('activity_id, status').eq('provider_id', providerId)
+    if (bookErr) throw new Error('Buchungen konnten nicht geladen werden: ' + bookErr.message)
 
     const bookingCounts = new Map<string, number>()
     for (const b of bookings ?? []) {

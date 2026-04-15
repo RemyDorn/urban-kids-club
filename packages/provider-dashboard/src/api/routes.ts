@@ -1685,24 +1685,9 @@ export function registerRoutes(router: Router) {
       return res.error(400, 'Online-Zahlung ist für diesen Kurs nicht aktiviert')
     }
 
-    // Capacity check: only count confirmed bookings (not pending/cancelled)
-    const maxCapacity = activity.capacity || 12
-    const { count: bookingCount } = await db.from('provider_bookings')
-      .select('id', { count: 'exact', head: true })
-      .eq('activity_id', activityId)
-      .eq('status', 'confirmed')
-    if (bookingCount !== null && bookingCount >= maxCapacity) {
-      return res.error(400, 'Dieser Kurs ist leider ausgebucht')
-    }
-
-    // Duplicate booking check: same child + same activity (confirmed only)
-    const { data: duplicate } = await db.from('provider_bookings')
-      .select('id')
-      .eq('activity_id', activityId)
-      .eq('status', 'confirmed')
-      .eq('child_info->>firstName', child.firstName.trim())
-      .eq('child_info->>lastName', child.lastName.trim())
-      .maybeSingle()
+    // Capacity + duplicate checks are now handled atomically in create_booking_atomic()
+    // No separate check needed here — the Postgres function does it in one transaction
+    const duplicate = null // placeholder for flow control below
     if (duplicate) {
       return res.error(400, 'Dieses Kind ist bereits für diesen Kurs angemeldet')
     }
@@ -1712,15 +1697,19 @@ export function registerRoutes(router: Router) {
     const price = Math.round(priceEur * 100)
 
     if (paymentMethod === 'onsite') {
-      const { CheckoutService } = await import('../services/supabase/checkout.service')
-      const booking = await CheckoutService.createBooking({
-        providerId: provider.id, activityId, blockId,
-        childFirstName: child.firstName, childLastName: child.lastName, childBirthYear: child.birthYear,
-        parentFirstName: parent.firstName, parentLastName: parent.lastName,
-        parentEmail: parent.email, parentPhone: parent.phone || '',
-        paymentMethod: 'onsite', amount: price, currency: 'EUR',
-      })
-      return res.json({ success: true, bookingId: booking.id, redirect: provExtra?.booking_redirect_url || null })
+      try {
+        const { CheckoutService } = await import('../services/supabase/checkout.service')
+        const booking = await CheckoutService.createBooking({
+          providerId: provider.id, activityId, blockId,
+          childFirstName: child.firstName, childLastName: child.lastName, childBirthYear: child.birthYear,
+          parentFirstName: parent.firstName, parentLastName: parent.lastName,
+          parentEmail: parent.email, parentPhone: parent.phone || '',
+          paymentMethod: 'onsite', amount: price, currency: 'EUR',
+        })
+        return res.json({ success: true, bookingId: booking.id, redirect: provExtra?.booking_redirect_url || null })
+      } catch (bookingErr: any) {
+        return res.error(400, bookingErr.message || 'Buchung fehlgeschlagen')
+      }
     }
 
     if (paymentMethod === 'stripe') {
@@ -1746,30 +1735,9 @@ export function registerRoutes(router: Router) {
     }
 
     if (paymentMethod === 'paypal') {
-      const { data: provData } = await db.from('providers')
-        .select('paypal_client_id, paypal_secret').eq('id', provider.id).single()
-      if (!provData?.paypal_client_id) return res.error(400, 'PayPal nicht verbunden')
-
-      const origin = req.raw.headers.origin || (req.raw.headers.host ? `https://${req.raw.headers.host}` : 'https://app.urbankids.club')
-      const auth = Buffer.from(`${provData.paypal_client_id}:${provData.paypal_secret}`).toString('base64')
-      const ppRes = await fetch('https://api-m.paypal.com/v2/checkout/orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Basic ${auth}` },
-        body: JSON.stringify({
-          intent: 'CAPTURE',
-          purchase_units: [{ amount: { currency_code: 'EUR', value: (price / 100).toFixed(2) } }],
-          application_context: {
-            return_url: `${origin}/embed/${slug}/booking-success?paypal=1`,
-            cancel_url: `${origin}/embed/${slug}/calendar`,
-            brand_name: provider.company_name || provider.display_name,
-          },
-        }),
-      })
-      const ppData = await ppRes.json() as any
-      const approveUrl = ppData.links?.find((l: any) => l.rel === 'approve')?.href
-      if (!approveUrl) return res.error(500, 'PayPal Order konnte nicht erstellt werden')
-      // Store order metadata for capture callback — booking is NOT created yet
-      return res.json({ success: true, redirect: approveUrl, paypalOrderId: ppData.id })
+      // PayPal integration is not yet complete (no capture/webhook for booking creation)
+      // Disable until properly implemented to prevent orphaned orders
+      return res.error(400, 'PayPal-Zahlung ist derzeit nicht verfügbar. Bitte wählen Sie Kartenzahlung oder Vor-Ort-Zahlung.')
     }
 
     res.error(400, 'Ungueltige Zahlungsart')

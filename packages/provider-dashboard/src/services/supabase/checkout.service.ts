@@ -36,31 +36,29 @@ export class CheckoutService {
 
     if (!parent) throw new Error('Parent konnte nicht erstellt werden')
 
-    // 2. Create booking in provider_bookings
-    const now = new Date().toISOString()
-    const { data: booking, error } = await db.from('provider_bookings').insert({
-      provider_id: params.providerId,
-      activity_id: params.activityId,
-      parent_id: parent.id,
-      child_info: {
-        firstName: params.childFirstName,
-        lastName: params.childLastName,
-        birthYear: params.childBirthYear,
-      },
-      pricing_option_id: 'default',
-      status: 'confirmed',
-      payment_status: params.paymentMethod === 'onsite' ? 'unpaid' : 'paid',
-      payment_method: params.paymentMethod,
-      amount_paid: params.paymentMethod !== 'onsite' ? params.amount / 100 : 0,
-      currency: params.currency,
-      source: 'widget',
-      stripe_session_id: params.stripeSessionId || null,
-      paypal_order_id: params.paypalOrderId || null,
-      created_at: now,
-      updated_at: now,
-    }).select().single()
+    // 2. Create booking atomically (capacity + duplicate check in one transaction)
+    const childInfo = {
+      firstName: params.childFirstName,
+      lastName: params.childLastName,
+      birthYear: params.childBirthYear,
+    }
+    const { data: rpcResult, error: rpcError } = await db.rpc('create_booking_atomic', {
+      p_provider_id: params.providerId,
+      p_activity_id: params.activityId,
+      p_parent_id: parent.id,
+      p_child_info: childInfo,
+      p_payment_method: params.paymentMethod,
+      p_amount: params.paymentMethod !== 'onsite' ? params.amount / 100 : 0,
+      p_currency: params.currency || 'EUR',
+      p_source: 'widget',
+      p_stripe_session_id: params.stripeSessionId || null,
+      p_paypal_order_id: params.paypalOrderId || null,
+    })
 
-    if (error) throw new Error(error.message)
+    if (rpcError) throw new Error(rpcError.message)
+    if (rpcResult?.error) throw new Error(rpcResult.error)
+
+    const booking = { id: rpcResult.id, ...rpcResult }
 
     // 3. Auto-enroll in active course block (if exists)
     try {
