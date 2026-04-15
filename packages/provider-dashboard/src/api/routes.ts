@@ -1337,6 +1337,12 @@ export function registerRoutes(router: Router) {
   router.post('/api/sessions/:id/cancel', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
+    // Ownership check: verify session belongs to provider's block
+    const db = getServiceClient()
+    const { data: sess } = await db.from('block_sessions').select('block_id').eq('id', req.params.id).maybeSingle()
+    if (!sess) return res.error(404, 'Session nicht gefunden')
+    const { data: block } = await db.from('course_blocks').select('provider_id').eq('id', sess.block_id).maybeSingle()
+    if (!block || block.provider_id !== auth.providerId) return res.error(403, 'Zugriff verweigert')
     const result = await CourseBlockService.cancelSession({
       sessionId: req.params.id,
       reason: req.body.reason,
@@ -1395,6 +1401,9 @@ export function registerRoutes(router: Router) {
   router.post('/api/course-blocks/:id/enroll', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
+    const db = getServiceClient()
+    const { data: block } = await db.from('course_blocks').select('provider_id').eq('id', req.params.id).maybeSingle()
+    if (!block || block.provider_id !== auth.providerId) return res.error(403, 'Zugriff verweigert')
     const result = await CourseBlockService.enrollChild({
       blockId: req.params.id,
       ...req.body,
@@ -1406,6 +1415,9 @@ export function registerRoutes(router: Router) {
   router.get('/api/course-blocks/:id/enrollments', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
+    const db = getServiceClient()
+    const { data: block } = await db.from('course_blocks').select('provider_id').eq('id', req.params.id).maybeSingle()
+    if (!block || block.provider_id !== auth.providerId) return res.error(403, 'Zugriff verweigert')
     const enrollments = await CourseBlockService.getEnrollmentsByBlock(req.params.id)
     res.json({ data: enrollments, count: enrollments.length })
   })

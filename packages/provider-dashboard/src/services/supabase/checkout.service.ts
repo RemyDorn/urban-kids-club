@@ -114,21 +114,21 @@ export class CheckoutService {
           console.log(`[Checkout] Block ${activeBlock.id} fixed slots full (${currentCount}/${fixedSlots}). Booking ${booking.id} needs manual enrollment (makeup slot).`)
         } else {
           // Block completely full — add to waitlist
+          const { count: existingWaitlist } = await db.from('waitlist_entries')
+            .select('*', { count: 'exact', head: true })
+            .eq('activity_id', params.activityId)
+            .in('status', ['waiting', 'offered'])
+          const nextPosition = (existingWaitlist ?? 0) + 1
+
           await db.from('waitlist_entries').insert({
             activity_id: params.activityId,
             parent_id: parent.id,
             child_info: { firstName: params.childFirstName, lastName: params.childLastName, birthYear: params.childBirthYear },
-            position: 1, // Will be recalculated
+            position: nextPosition,
             priority: 'normal',
             status: 'waiting',
-          }).then(async () => {
-            // Recalculate position
-            const { data: entries } = await db.from('waitlist_entries')
-              .select('id').eq('activity_id', params.activityId).eq('status', 'waiting')
-              .order('added_at', { ascending: true })
-            const idx = entries?.findIndex((e: any) => true) ?? 0 // position is sequential
-            console.log(`[Checkout] Block ${activeBlock.id} voll (${currentCount}/${activeBlock.capacity}). ${params.childFirstName} auf Warteliste (Position ${idx + 1}).`)
           })
+          console.log(`[Checkout] Block ${activeBlock.id} voll (${currentCount}/${activeBlock.capacity}). ${params.childFirstName} auf Warteliste (Position ${nextPosition}).`)
 
           // Notify provider: block is full
           await db.from('notifications').insert({

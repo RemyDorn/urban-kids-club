@@ -170,11 +170,13 @@ export const SupabaseCourseBlockService = {
     const cancelReason = typeof input === 'object' ? (input.reason ?? reason ?? '') : (reason ?? '')
     const compensation = typeof input === 'object' ? input.compensation : undefined
 
+    // Only cancel scheduled sessions (idempotency: already cancelled = no-op)
     const { data, error } = await sb.from(SESSION_TABLE)
       .update({ status: 'cancelled_by_provider', cancellation_reason: cancelReason })
-      .eq('id', sessionId).select().maybeSingle()
+      .eq('id', sessionId).eq('status', 'scheduled')
+      .select().maybeSingle()
     if (error) throw error
-    if (!data) return undefined
+    if (!data) return { affected: 0 } as any // Already cancelled or not found
 
     const session = blockSessionFromDb(data)
 

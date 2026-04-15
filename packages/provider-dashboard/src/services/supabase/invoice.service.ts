@@ -31,8 +31,8 @@ export const SupabaseInvoiceService = {
   async createFromBooking(bookingId: ID, providerId: ID, customVatRate?: number): Promise<Invoice | { error: string }> {
     const sb = getServiceClient()
 
-    // Fetch booking
-    const { data: booking, error: bErr } = await sb.from('provider_bookings').select('*').eq('id', bookingId).maybeSingle()
+    // Fetch booking (with provider ownership check)
+    const { data: booking, error: bErr } = await sb.from('provider_bookings').select('*').eq('id', bookingId).eq('provider_id', providerId).maybeSingle()
     if (bErr) throw bErr
     if (!booking) return { error: 'Buchung nicht gefunden' }
 
@@ -94,36 +94,41 @@ export const SupabaseInvoiceService = {
 
   async send(id: ID, providerId?: ID): Promise<Invoice | undefined> {
     const sb = getServiceClient()
-    let query = sb.from(TABLE)
-      .update({ status: 'sent' })
-      .eq('id', id).eq('status', 'draft')
-    if (providerId) query = query.eq('provider_id', providerId)
-    const { data, error } = await query.select().maybeSingle()
-    if (error) throw error
-    if (!data) return undefined
 
-    const invoice = invoiceFromDb(data)
+    // Fetch invoice first (don't update status yet)
+    let fetchQuery = sb.from(TABLE).select('*').eq('id', id).eq('status', 'draft')
+    if (providerId) fetchQuery = fetchQuery.eq('provider_id', providerId)
+    const { data: invoiceRow, error: fetchErr } = await fetchQuery.maybeSingle()
+    if (fetchErr) throw fetchErr
+    if (!invoiceRow) return undefined
 
-    // Send email to parent (non-blocking)
+    // Send email BEFORE updating status
     try {
-      const { data: parent } = await sb.from('parents').select('name, email').eq('id', data.parent_id).single()
-      const { data: provider } = await sb.from('providers').select('company_name').eq('id', data.provider_id).single()
+      const { data: parent } = await sb.from('parents').select('name, email').eq('id', invoiceRow.parent_id).single()
+      const { data: provider } = await sb.from('providers').select('company_name').eq('id', invoiceRow.provider_id).single()
       if (parent?.email) {
         const { EmailService } = await import('../../lib/email')
         await EmailService.sendInvoice(parent.email, {
           parentName: parent.name,
-          invoiceNumber: data.number,
-          amount: `${Number(data.total).toFixed(2).replace('.', ',')} €`,
-          dueDate: new Date(data.due_date).toLocaleDateString('de-DE'),
+          invoiceNumber: invoiceRow.number,
+          amount: `${Number(invoiceRow.total).toFixed(2).replace('.', ',')} €`,
+          dueDate: new Date(invoiceRow.due_date).toLocaleDateString('de-DE'),
           providerName: provider?.company_name || '',
         })
-        console.log(`[Invoice] Email sent to ${parent.email} for invoice ${data.number}`)
+        console.log(`[Invoice] Email sent to ${parent.email} for invoice ${invoiceRow.number}`)
       }
     } catch (emailErr) {
       console.error('[Invoice] Email send failed:', emailErr)
+      throw new Error('E-Mail konnte nicht gesendet werden. Rechnung bleibt als Entwurf.')
     }
 
-    return invoice
+    // Email sent successfully — now update status
+    const { data, error } = await sb.from(TABLE)
+      .update({ status: 'sent' })
+      .eq('id', id)
+      .select().maybeSingle()
+    if (error) throw error
+    return data ? invoiceFromDb(data) : undefined
   },
 
   async markPaid(id: ID, providerId?: ID): Promise<Invoice | undefined> {

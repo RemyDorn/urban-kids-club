@@ -50,6 +50,14 @@ export const UpdateProviderSchema = z.object({
   categories: z.array(z.string()).optional(),
   logo: z.string().optional(),
   booking_redirect_url: z.string().url().nullable().optional(),
+  tax_id: z.string().nullable().optional(),
+  vat_id: z.string().nullable().optional(),
+  kleinunternehmer: z.boolean().optional(),
+  vat_rate: z.number().min(0).max(100).optional(),
+  bank_holder: z.string().nullable().optional(),
+  bank_iban: z.string().nullable().optional(),
+  bank_bic: z.string().nullable().optional(),
+  makeup_enabled: z.boolean().optional(),
 })
 
 // --- Activity ---
