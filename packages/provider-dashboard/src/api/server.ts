@@ -292,7 +292,22 @@ window._bookCourse=async function(title,date,time){
     if(step===agbStep){
       const payLabel=window._checkoutPayMethod==='onsite'?'Vor Ort bezahlen':'Online bezahlen ('+priceStr+')'
       html+='<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:12px">Bestätigung</div>'
-      html+='<div style="background:#f8fafc;border-radius:10px;padding:12px;margin-bottom:16px;font-size:13px;color:#374151"><div>'+esc(title)+'</div><div style="color:#64748b">'+dateStr+' · '+esc(time)+' Uhr</div><div style="font-weight:700;margin-top:4px">'+priceStr+'</div></div>'
+      const pkg=act.pricing?.[0]
+      const pkgSize=pkg?.packageSize||0
+      const pkgLabel=pkg?.label||''
+      const slot=act.schedule?.slots?.[0]
+      const dayMap={MO:'Montags',TU:'Dienstags',WE:'Mittwochs',TH:'Donnerstags',FR:'Freitags',SA:'Samstags',SU:'Sonntags'}
+      const dayName=slot?dayMap[slot.day]||slot.day:''
+      const duration=slot?(parseInt(slot.endTime)-parseInt(slot.startTime))*60+((parseInt(slot.endTime.split(':')[1])||0)-(parseInt(slot.startTime.split(':')[1])||0)):0
+      let detailLines='<div>'+esc(title)+'</div>'
+      detailLines+='<div style="color:#64748b">'+dateStr+' · '+esc(time)+' Uhr</div>'
+      if(pkgSize>1){
+        detailLines+='<div style="color:#64748b;margin-top:4px">'+pkgSize+' Termine · '+(dayName?dayName+' · ':'')+(slot?slot.startTime+'–'+slot.endTime+' Uhr':'')+'</div>'
+        detailLines+='<div style="background:#FFF9F5;border:1px solid #F2E6E2;border-radius:8px;padding:8px 10px;margin-top:6px;font-size:12px;color:#92400e">Dieser Kurs umfasst <strong>'+pkgSize+' Termine</strong>'+(pkgLabel?' ('+esc(pkgLabel)+')':'')+ '. Der Gesamtpreis von <strong>'+priceStr+'</strong> gilt für alle '+pkgSize+' Termine.</div>'
+      }
+            const perSession=pkgSize>1?(price/pkgSize).toFixed(2).replace('.',','):''
+      detailLines+='<div style="font-weight:700;margin-top:6px">'+priceStr+(pkgSize>1?' ('+perSession+' € pro Termin)':'')+'</div>'
+      html+='<div style="background:#f8fafc;border-radius:10px;padding:12px;margin-bottom:16px;font-size:13px;color:#374151">'+detailLines+'</div>'
       html+='<label style="display:flex;align-items:start;gap:8px;margin-bottom:10px;cursor:pointer"><input type="checkbox" id="agbCheck" style="margin-top:3px"><span style="font-size:12px;color:#374151">Ich stimme den <a href="#" style="color:${brandColor}">AGB</a> zu.</span></label>'
       if(cancel.custom_text){
         html+='<label style="display:flex;align-items:start;gap:8px;margin-bottom:16px;cursor:pointer"><input type="checkbox" id="stornoCheck" style="margin-top:3px"><span style="font-size:12px;color:#374151">'+esc(cancel.custom_text)+'</span></label>'
