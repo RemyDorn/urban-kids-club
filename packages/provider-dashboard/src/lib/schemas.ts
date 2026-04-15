@@ -118,6 +118,8 @@ export const CreateActivitySchema = z.object({
   images: z.array(z.string()).optional(),
   media: z.array(z.string()).optional(),
   tags: z.array(z.string()).optional(),
+  paymentOnline: z.boolean().optional(),
+  paymentOnsite: z.boolean().optional(),
 })
 
 // --- Booking ---
