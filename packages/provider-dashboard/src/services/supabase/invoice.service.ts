@@ -28,7 +28,7 @@ export const SupabaseInvoiceService = {
     return data ? invoiceFromDb(data) : undefined
   },
 
-  async createFromBooking(bookingId: ID, providerId: ID): Promise<Invoice | { error: string }> {
+  async createFromBooking(bookingId: ID, providerId: ID, customVatRate?: number): Promise<Invoice | { error: string }> {
     const sb = getServiceClient()
 
     // Fetch booking
@@ -41,9 +41,9 @@ export const SupabaseInvoiceService = {
     if (aErr) throw aErr
     if (!activity) return { error: 'Aktivität nicht gefunden' }
 
-    const pricing = (activity.pricing as Array<{ id: string; label: string; amount: number }>) ?? []
-    const option = pricing.find((p: { id: string }) => p.id === booking.pricing_option_id)
-    const amount = option?.amount ?? 0
+    const pricing = (activity.pricing as Array<{ id?: string; label: string; amount: number }>) ?? []
+    const option = pricing.find((p: { id?: string }) => p.id === booking.pricing_option_id) ?? pricing[0]
+    const amount = option?.amount ?? booking.amount_paid ?? 0
     const label = option?.label ?? 'Kurs'
 
     // Generate invoice number
@@ -57,7 +57,7 @@ export const SupabaseInvoiceService = {
     const year = new Date().getFullYear()
     const invoiceNumber = `INV-${year}-${nextNum.toString().padStart(4, '0')}`
 
-    const vatRate = 0.19
+    const vatRate = customVatRate !== undefined ? customVatRate : 0.19
     const subtotal = Math.round(amount * 100) / 100
     const tax = Math.round(subtotal * vatRate * 100) / 100
     const total = Math.round((subtotal + tax) * 100) / 100
@@ -100,7 +100,30 @@ export const SupabaseInvoiceService = {
     if (providerId) query = query.eq('provider_id', providerId)
     const { data, error } = await query.select().maybeSingle()
     if (error) throw error
-    return data ? invoiceFromDb(data) : undefined
+    if (!data) return undefined
+
+    const invoice = invoiceFromDb(data)
+
+    // Send email to parent (non-blocking)
+    try {
+      const { data: parent } = await sb.from('parents').select('name, email').eq('id', data.parent_id).single()
+      const { data: provider } = await sb.from('providers').select('company_name').eq('id', data.provider_id).single()
+      if (parent?.email) {
+        const { EmailService } = await import('../../lib/email')
+        await EmailService.sendInvoice(parent.email, {
+          parentName: parent.name,
+          invoiceNumber: data.number,
+          amount: `${Number(data.total).toFixed(2).replace('.', ',')} €`,
+          dueDate: new Date(data.due_date).toLocaleDateString('de-DE'),
+          providerName: provider?.company_name || '',
+        })
+        console.log(`[Invoice] Email sent to ${parent.email} for invoice ${data.number}`)
+      }
+    } catch (emailErr) {
+      console.error('[Invoice] Email send failed:', emailErr)
+    }
+
+    return invoice
   },
 
   async markPaid(id: ID, providerId?: ID): Promise<Invoice | undefined> {

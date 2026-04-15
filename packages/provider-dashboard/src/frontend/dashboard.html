@@ -4924,7 +4924,7 @@
       alert('Unternehmensdaten gespeichert!')
     }
 
-    function saveFinanceSettings() {
+    async function saveFinanceSettings() {
       const s = getProviderSettings()
       s.taxId = document.getElementById('sTaxId')?.value
       s.vatId = document.getElementById('sVatId')?.value
@@ -4939,6 +4939,23 @@
       s.invoicePrefix = document.getElementById('sInvoicePrefix')?.value
       s.eInvoiceFormat = document.getElementById('sEInvoiceFormat')?.value
       saveProviderSettings(s)
+
+      // Persist critical finance fields to database (not just localStorage)
+      try {
+        await api('/providers/' + currentProvider.id, 'PUT', {
+          tax_id: s.taxId || null,
+          vat_id: s.vatId || null,
+          kleinunternehmer: s.kleinunternehmer || false,
+          vat_rate: s.kleinunternehmer ? 0 : parseFloat(s.vatRate || '19'),
+          bank_holder: s.bankHolder || null,
+          bank_iban: s.iban || null,
+          bank_bic: s.bic || null,
+        })
+        currentProvider.kleinunternehmer = s.kleinunternehmer
+        currentProvider.vat_rate = s.kleinunternehmer ? 0 : parseFloat(s.vatRate || '19')
+      } catch (e) {
+        console.error('DB save failed:', e)
+      }
       alert('Finanzdaten gespeichert!')
     }
 

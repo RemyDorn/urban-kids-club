@@ -692,7 +692,8 @@ export function registerRoutes(router: Router) {
   router.post('/api/invoices/from-booking/:bookingId', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const result = await InvoiceService.createFromBooking(req.params.bookingId, auth.providerId)
+    const vatRate = req.body?.vatRate !== undefined ? Number(req.body.vatRate) : undefined
+    const result = await InvoiceService.createFromBooking(req.params.bookingId, auth.providerId, vatRate)
     if ('error' in result) return res.error(400, result.error)
     res.status(201).json({ data: result })
   })
@@ -710,6 +711,14 @@ export function registerRoutes(router: Router) {
     if (!auth) return
     const invoice = await InvoiceService.markPaid(req.params.id, auth.providerId)
     if (!invoice) return res.error(404, 'Rechnung nicht gefunden')
+    res.json({ data: invoice })
+  })
+
+  router.post('/api/invoices/:id/cancel', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    const invoice = await InvoiceService.cancel(req.params.id, auth.providerId)
+    if (!invoice) return res.error(400, 'Rechnung konnte nicht storniert werden (bereits bezahlt oder nicht gefunden)')
     res.json({ data: invoice })
   })
 
