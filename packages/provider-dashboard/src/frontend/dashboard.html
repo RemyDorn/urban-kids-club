@@ -944,11 +944,9 @@
             `
             eventEl.onclick = () => showEventDetail(ev, activity, occ)
 
-            const showOcc = height > 40
             eventEl.innerHTML = `
               <div class="font-semibold truncate" style="font-size:11px;line-height:1.3;color:#1f2937;">${escapeHtml(ev.title)}</div>
-              <div class="truncate" style="font-size:10px;color:#6b7280;">${ev.startTime}–${ev.endTime}</div>
-              ${showOcc && occ ? `<div style="font-size:9px;font-weight:600;color:${clr};margin-top:2px;">${occText} (${occPct}%)</div>` : ''}
+              ${occ ? '<div style="font-size:9px;font-weight:600;color:' + clr + ';margin-top:1px;">' + occText + ' (' + occPct + '%)</div>' : ''}
             `
             firstCell.appendChild(eventEl)
           }
@@ -1109,6 +1107,12 @@
       const d = dash.data
       const s = stats.data
 
+      // Calculate weekly occupancy from occupancy data
+      const occData = (occupancy.data || [])
+      let totalBooked = 0, totalCapacity = 0
+      occData.forEach(o => { totalBooked += o.booked || 0; totalCapacity += o.capacity || 0 })
+      const weeklyOccPct = totalCapacity > 0 ? Math.round((totalBooked / totalCapacity) * 100) : 0
+
       document.getElementById('content').innerHTML = `
         <!-- Kalender oben -->
         <div id="dashboardCalendar" class="mb-8"></div>
@@ -1118,7 +1122,7 @@
           ${kpiCard('Aktive Kurse', d.publishedActivities, d.totalActivities + ' gesamt', 'bg-brand-100 text-brand-500', '📚')}
           ${kpiCard('Buchungen', d.confirmedBookings, s.total + ' gesamt', 'bg-green-50 text-green-600', '✅')}
           ${kpiCard('Unbezahlt', d.unpaidBookings, 'offene Zahlungen', 'bg-amber-50 text-amber-600', '💰')}
-          ${kpiCard('Auslastung', Math.round(d.averageOccupancy * 100) + '%', 'Durchschnitt', 'bg-brand-100 text-brand-400', '📊')}
+          ${kpiCard('Auslastung', weeklyOccPct + '%', totalBooked + '/' + totalCapacity + ' Plätze', 'bg-brand-100 text-brand-400', '📊')}
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">

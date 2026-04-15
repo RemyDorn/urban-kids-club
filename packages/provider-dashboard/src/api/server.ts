@@ -181,7 +181,7 @@ function getCoursesForDate(d){
     const sd=a.schedule.startDate||'',ed=a.schedule.endDate||'9999-12-31'
     if(ds<sd||ds>ed)return
     a.schedule.slots.forEach(s=>{
-      if(DN[s.day]===dow)res.push({title:a.title,start:s.startTime,end:s.endTime,cat:a.category,age:(a.ageRange?.min||0)+'-'+(a.ageRange?.max||0)+' J.',price:a.pricing?.[0]?.amount?a.pricing[0].amount.toFixed(0)+'€':'',color:a.color||BC,desc:a.description||''})
+      if(DN[s.day]===dow)res.push({title:a.title,start:s.startTime,end:s.endTime,cat:a.category,age:(a.ageRange?.min||0)+'-'+(a.ageRange?.max||0)+' J.',price:a.pricing?.[0]?.amount?a.pricing[0].amount.toFixed(0)+'€':'',color:a.color||BC,desc:a.description||'',hasActiveBlock:a.hasActiveBlock||false})
     })
   })
   return res.sort((a,b)=>a.start.localeCompare(b.start))
@@ -218,7 +218,12 @@ function render(){
     const evts=getCoursesForDate(sd)
     slotsHtml='<div class="slots-panel"><div class="slots-date">'+dayName+', '+sd.getDate()+'. '+ML[sd.getMonth()]+'</div>'
     if(evts.length){
-      slotsHtml+=evts.map(e=>'<div class="slot-card"><div class="slot-time">'+esc(e.start)+' Uhr</div><div class="slot-info"><div class="slot-title">'+esc(e.title)+'</div><div class="slot-meta">'+esc(e.start)+' – '+esc(e.end)+' Uhr · <span class="slot-badge">'+esc(e.cat)+'</span> · '+esc(e.age)+(e.price?' · '+esc(e.price):'')+'</div></div><button class="book-btn" data-title="'+esc(e.title)+'" data-date="'+selDate+'" data-time="'+esc(e.start)+'" onclick="window._bookCourse(this.dataset.title,this.dataset.date,this.dataset.time)">Buchen</button></div>').join('')
+      slotsHtml+=evts.map(e=>{
+        const hasBlock=e.hasActiveBlock
+        const btnLabel=hasBlock?'Buchen':'Vormerken'
+        const btnClass=hasBlock?'book-btn':'book-btn'
+        return '<div class="slot-card"><div class="slot-time">'+esc(e.start)+' Uhr</div><div class="slot-info"><div class="slot-title">'+esc(e.title)+'</div><div class="slot-meta">'+esc(e.start)+' – '+esc(e.end)+' Uhr · <span class="slot-badge">'+esc(e.cat)+'</span> · '+esc(e.age)+(e.price?' · '+esc(e.price):'')+'</div></div><button class="'+btnClass+'" data-title="'+esc(e.title)+'" data-date="'+selDate+'" data-time="'+esc(e.start)+'" onclick="window._bookCourse(this.dataset.title,this.dataset.date,this.dataset.time)">'+btnLabel+'</button></div>'
+      }).join('')
     }else{slotsHtml+='<div class="empty-state">Keine Kurse an diesem Tag.</div>'}
     slotsHtml+='</div>'
   }

@@ -1704,12 +1704,19 @@ export function registerRoutes(router: Router) {
     const provider = await ProviderService.getBySlug(req.params.slug)
     if (!provider) return res.error(404, 'Provider nicht gefunden')
     const activities = await ActivityService.listByProvider(provider.id)
-    // Only return public-safe fields
+    // Check which activities have active blocks
+    const db = getServiceClient()
+    const activityIds = activities.map((a: any) => a.id)
+    const { data: activeBlocks } = await db.from('course_blocks')
+      .select('activity_id').in('activity_id', activityIds).in('status', ['active', 'upcoming'])
+    const blockedIds = new Set((activeBlocks ?? []).map((b: any) => b.activity_id))
+    // Only return public-safe fields + block availability
     const safe = activities.map((a: any) => ({
       id: a.id, title: a.title, description: a.description, category: a.category,
       ageRange: a.ageRange || { min: a.age_group_min, max: a.age_group_max },
       duration: a.duration || a.duration_minutes, schedule: a.schedule,
       pricing: a.pricing, status: a.status, color: a.color, images: a.images,
+      hasActiveBlock: blockedIds.has(a.id),
     }))
     res.json({ data: safe, count: safe.length })
   })
