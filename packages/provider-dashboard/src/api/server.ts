@@ -305,8 +305,10 @@ window._bookCourse=async function(title,date,time){
         detailLines+='<div style="color:#64748b;margin-top:4px">'+pkgSize+' Termine · '+(dayName?dayName+' · ':'')+(slot?slot.startTime+'–'+slot.endTime+' Uhr':'')+'</div>'
         detailLines+='<div style="background:#FFF9F5;border:1px solid #F2E6E2;border-radius:8px;padding:8px 10px;margin-top:6px;font-size:12px;color:#92400e">Dieser Kurs umfasst <strong>'+pkgSize+' Termine</strong>'+(pkgLabel?' ('+esc(pkgLabel)+')':'')+ '. Der Gesamtpreis von <strong>'+priceStr+'</strong> gilt für alle '+pkgSize+' Termine.</div>'
       }
-            const perSession=pkgSize>1?(price/pkgSize).toFixed(2).replace('.',','):''
-      detailLines+='<div style="font-weight:700;margin-top:6px">'+priceStr+(pkgSize>1?' ('+perSession+' € pro Termin)':'')+'</div>'
+      detailLines+='<div style="font-weight:700;margin-top:6px">'+priceStr+'</div>'
+      if(pkgSize>1){
+        detailLines+='<div style="color:#64748b;font-size:12px;margin-top:6px">Falls Sie einen Termin nicht wahrnehmen können, ist eine rechtzeitige Verschiebung auf einen anderen Termin möglich.</div>'
+      }
       html+='<div style="background:#f8fafc;border-radius:10px;padding:12px;margin-bottom:16px;font-size:13px;color:#374151">'+detailLines+'</div>'
       html+='<label style="display:flex;align-items:start;gap:8px;margin-bottom:10px;cursor:pointer"><input type="checkbox" id="agbCheck" style="margin-top:3px"><span style="font-size:12px;color:#374151">Ich stimme den <a href="#" style="color:${brandColor}">AGB</a> zu.</span></label>'
       if(cancel.custom_text){
