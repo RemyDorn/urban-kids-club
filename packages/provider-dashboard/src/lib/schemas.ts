@@ -49,6 +49,7 @@ export const UpdateProviderSchema = z.object({
   contact: ContactInfoSchema.optional(),
   categories: z.array(z.string()).optional(),
   logo: z.string().optional(),
+  booking_redirect_url: z.string().url().nullable().optional(),
 })
 
 // --- Activity ---

@@ -1631,7 +1631,7 @@ export function registerRoutes(router: Router) {
     // Server-side validation
     if (!slug || !activityId || !paymentMethod) return res.error(400, 'Pflichtfelder fehlen')
     if (!child?.firstName?.trim() || !child?.lastName?.trim()) return res.error(400, 'Vor- und Nachname des Kindes erforderlich')
-    if (!child.birthYear || child.birthYear < 2005 || child.birthYear > 2026) return res.error(400, 'Ungültiges Geburtsjahr')
+    if (!child.birthYear || child.birthYear < 2005 || child.birthYear > new Date().getFullYear()) return res.error(400, 'Ungültiges Geburtsjahr')
     if (!parent?.firstName?.trim() || !parent?.lastName?.trim()) return res.error(400, 'Vor- und Nachname des Elternteils erforderlich')
     if (!parent?.email?.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(parent.email)) return res.error(400, 'Ungültige E-Mail-Adresse')
     if (!['stripe', 'paypal', 'onsite'].includes(paymentMethod)) return res.error(400, 'Ungültige Zahlungsart')
@@ -1639,9 +1639,13 @@ export function registerRoutes(router: Router) {
     const db = getServiceClient()
     const provider = await ProviderService.getBySlug(slug)
     if (!provider) return res.error(404, 'Provider nicht gefunden')
+    // Fetch extra fields not in Provider mapper
+    const { data: provExtra } = await db.from('providers')
+      .select('booking_redirect_url, stripe_account_id').eq('id', provider.id).single()
 
     const { data: activity } = await db.from('activities').select('*').eq('id', activityId).single()
     if (!activity) return res.error(404, 'Kurs nicht gefunden')
+    if (activity.provider_id !== provider.id) return res.error(400, 'Kurs gehört nicht zu diesem Provider')
 
     // Capacity check: count existing confirmed bookings
     const maxCapacity = activity.max_participants || activity.pricing?.[0]?.packageSize || 12
@@ -1678,17 +1682,18 @@ export function registerRoutes(router: Router) {
         parentEmail: parent.email, parentPhone: parent.phone || '',
         paymentMethod: 'onsite', amount: price, currency: 'EUR',
       })
-      return res.json({ success: true, bookingId: booking.id, redirect: (provider as any).booking_redirect_url || null })
+      return res.json({ success: true, bookingId: booking.id, redirect: provExtra?.booking_redirect_url || null })
     }
 
     if (paymentMethod === 'stripe') {
       const { stripe: stripeClient, createCheckoutSession } = await import('../lib/stripe')
       if (!stripeClient) return res.error(500, 'Stripe ist nicht konfiguriert')
-      const origin = req.raw.headers.origin || req.raw.headers.host ? `https://${req.raw.headers.host}` : 'https://app.urbankids.club'
+      const origin = req.raw.headers.origin || (req.raw.headers.host ? `https://${req.raw.headers.host}` : 'https://app.urbankids.club')
       const defaultSuccess = `${origin}/embed/${slug}/booking-success?session_id={CHECKOUT_SESSION_ID}`
-      const successUrl = (provider as any).booking_redirect_url || defaultSuccess
+      const redirectUrl = provExtra?.booking_redirect_url
+      const successUrl = (redirectUrl && (redirectUrl.startsWith('https://') || redirectUrl.startsWith('http://'))) ? redirectUrl : defaultSuccess
       const url = await createCheckoutSession({
-        stripeAccountId: provider.stripe_account_id || undefined,
+        stripeAccountId: provExtra?.stripe_account_id || undefined,
         amount: price, currency: 'EUR', courseName: activity.title,
         successUrl,
         cancelUrl: `${origin}/embed/${slug}/calendar`,
@@ -1707,7 +1712,7 @@ export function registerRoutes(router: Router) {
         .select('paypal_client_id, paypal_secret').eq('id', provider.id).single()
       if (!provData?.paypal_client_id) return res.error(400, 'PayPal nicht verbunden')
 
-      const origin = req.raw.headers.origin || `https://${req.raw.headers.host}` || 'https://app.urbankids.club'
+      const origin = req.raw.headers.origin || (req.raw.headers.host ? `https://${req.raw.headers.host}` : 'https://app.urbankids.club')
       const auth = Buffer.from(`${provData.paypal_client_id}:${provData.paypal_secret}`).toString('base64')
       const ppRes = await fetch('https://api-m.paypal.com/v2/checkout/orders', {
         method: 'POST',
@@ -1748,9 +1753,13 @@ export function registerRoutes(router: Router) {
         console.error('Webhook signature verification failed:', err.message)
         return res.error(400, 'Invalid signature')
       }
-    } else {
-      // Fallback for dev/test without webhook secret
+    } else if (process.env.NODE_ENV !== 'production') {
+      // Fallback for dev/test only — never accept unverified webhooks in production
+      console.warn('WARNING: Webhook signature not verified (no STRIPE_WEBHOOK_SECRET set)')
       event = req.body
+    } else {
+      console.error('STRIPE_WEBHOOK_SECRET not configured in production!')
+      return res.error(500, 'Webhook not configured')
     }
 
     if (event?.type === 'checkout.session.completed') {

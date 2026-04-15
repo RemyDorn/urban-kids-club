@@ -85,6 +85,7 @@ export function providerToDb(p: Partial<Provider> & { id?: ID }): Row {
   if (p.categories !== undefined) row.categories = p.categories
   if (p.status !== undefined) row.status = p.status
   if (p.subscription !== undefined) row.subscription = p.subscription
+  if ((p as any).booking_redirect_url !== undefined) row.booking_redirect_url = (p as any).booking_redirect_url
   return row
 }
 

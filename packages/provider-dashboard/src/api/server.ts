@@ -181,7 +181,7 @@ function getCoursesForDate(d){
     const sd=a.schedule.startDate||'',ed=a.schedule.endDate||'9999-12-31'
     if(ds<sd||ds>ed)return
     a.schedule.slots.forEach(s=>{
-      if(DN[s.day]===dow)res.push({title:a.title,start:s.startTime,end:s.endTime,cat:a.category,age:(a.ageRange?.min||0)+'-'+(a.ageRange?.max||0)+' J.',price:a.pricing?.[0]?.amount?a.pricing[0].amount+'€':'',color:a.color||BC,desc:a.description||''})
+      if(DN[s.day]===dow)res.push({title:a.title,start:s.startTime,end:s.endTime,cat:a.category,age:(a.ageRange?.min||0)+'-'+(a.ageRange?.max||0)+' J.',price:a.pricing?.[0]?.amount?a.pricing[0].amount.toFixed(0)+'€':'',color:a.color||BC,desc:a.description||''})
     })
   })
   return res.sort((a,b)=>a.start.localeCompare(b.start))
@@ -338,7 +338,7 @@ window._bookCourse=async function(title,date,time){
         this.textContent='Wird verarbeitet...'
         this.disabled=true
         try{
-          const r=await fetch('/api/checkout/create-session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({slug:slug,activityId:course.id,child:window._checkoutChild,parent:window._checkoutParent,paymentMethod:window._checkoutPayMethod})})
+          const r=await fetch('/api/checkout/create-session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({slug:slug,activityId:course.id,blockId:course.blockId||null,child:window._checkoutChild,parent:window._checkoutParent,paymentMethod:window._checkoutPayMethod})})
           const data=await r.json()
           if(!r.ok){alert(data.error||'Fehler beim Buchen');this.textContent='Erneut versuchen';this.disabled=false;return}
           if(data.redirect){window.top.location.href=data.redirect}
@@ -379,13 +379,14 @@ if(params.get('font')){document.body.style.fontFamily=params.get('font')+',syste
 (async()=>{
   const slug='${slug}'
   const app=document.getElementById('app')
+  function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
   try{
     const r=await fetch('${apiBase}/api/providers/by-slug/'+slug+'/activities')
     if(!r.ok){app.innerHTML='<div class="empty">Kein Anbieter gefunden.</div>';return}
     const{data}=await r.json()
     const published=data.filter(a=>a.status==='published')
     if(!published.length){app.innerHTML='<div class="empty">Aktuell keine Kurse.</div>';return}
-    app.innerHTML=published.map(a=>'<div class="course"><div class="course-title">'+a.title+'</div><div class="course-meta"><span class="badge">'+a.category+'</span> '+(a.ageRange?.min||'?')+'-'+(a.ageRange?.max||'?')+' Jahre · '+(a.duration||'?')+' Min.'+(a.pricing?.[0]?.amount?' · '+a.pricing[0].amount+'€':'')+'</div>'+(a.description?'<p style="font-size:13px;color:#3C2225;margin-top:8px">'+a.description.substring(0,150)+(a.description.length>150?'...':'')+'</p>':'')+'</div>').join('')
+    app.innerHTML=published.map(a=>'<div class="course"><div class="course-title">'+esc(a.title)+'</div><div class="course-meta"><span class="badge">'+esc(a.category)+'</span> '+(a.ageRange?.min||'?')+'-'+(a.ageRange?.max||'?')+' Jahre · '+(a.duration||'?')+' Min.'+(a.pricing?.[0]?.amount?' · '+a.pricing[0].amount+'€':'')+'</div>'+(a.description?'<p style="font-size:13px;color:#3C2225;margin-top:8px">'+esc(a.description.substring(0,150))+(a.description.length>150?'...':'')+'</p>':'')+'</div>').join('')
   }catch(e){app.innerHTML='<div class="empty">Fehler beim Laden.</div>'}
 })()
 </script></body></html>`
