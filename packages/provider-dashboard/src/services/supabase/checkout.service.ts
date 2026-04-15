@@ -168,6 +168,23 @@ export class CheckoutService {
       console.error('Confirmation email failed:', emailErr)
     }
 
+    // 5. Auto-create draft invoice (non-blocking)
+    try {
+      const { data: provTax } = await db.from('providers')
+        .select('kleinunternehmer, vat_rate').eq('id', params.providerId).single()
+      const vatRate = provTax?.kleinunternehmer ? 0 : (provTax?.vat_rate ? provTax.vat_rate / 100 : 0.19)
+
+      const { SupabaseInvoiceService } = await import('./invoice.service')
+      const invoice = await SupabaseInvoiceService.createFromBooking(booking.id, params.providerId, vatRate)
+      if ('error' in invoice) {
+        console.error('[Checkout] Auto-invoice failed:', invoice.error)
+      } else {
+        console.log(`[Checkout] Auto-invoice ${(invoice as any).number} created for booking ${booking.id}`)
+      }
+    } catch (invoiceErr) {
+      console.error('[Checkout] Auto-invoice creation failed:', invoiceErr)
+    }
+
     return booking
   }
 

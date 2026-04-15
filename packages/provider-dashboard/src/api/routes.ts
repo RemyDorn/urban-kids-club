@@ -738,6 +738,91 @@ export function registerRoutes(router: Router) {
     res.json({ data: outstanding })
   })
 
+  // Invoice PDF view (renders HTML template for printing)
+  router.get('/api/invoices/:id/view', async (req, res) => {
+    // Support token in query param for new-tab opening
+    if (req.query.token && !req.raw.headers.authorization) {
+      req.raw.headers.authorization = `Bearer ${req.query.token}`
+    }
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    const db = getServiceClient()
+
+    const { data: invoice } = await db.from('invoices').select('*').eq('id', req.params.id).eq('provider_id', auth.providerId).single()
+    if (!invoice) return res.error(404, 'Rechnung nicht gefunden')
+
+    const { data: provider } = await db.from('providers').select('*').eq('id', auth.providerId).single()
+    const { data: parent } = await db.from('parents').select('*').eq('id', invoice.parent_id).single()
+
+    const lineItems = (invoice.line_items || []) as Array<{ description: string; quantity: number; unitPrice: number; vatRate: number; total: number }>
+    const isKleinunternehmer = provider?.kleinunternehmer || false
+    const vatPercent = isKleinunternehmer ? 0 : Math.round((lineItems[0]?.vatRate || 0.19) * 100)
+
+    const fmt = (n: number) => Number(n).toFixed(2).replace('.', ',')
+    const fmtDate = (d: string) => d ? new Date(d).toLocaleDateString('de-DE') : ''
+    const statusLabels: Record<string, string> = { draft: 'Entwurf', sent: 'Versendet', paid: 'Bezahlt', overdue: 'Überfällig', cancelled: 'Storniert' }
+
+    const lineItemsHtml = lineItems.map((item, i) =>
+      `<tr><td>${i + 1}</td><td>${item.description}</td><td>${fmt(item.unitPrice)} &euro;</td><td>${isKleinunternehmer ? 'entf.' : (Math.round(item.vatRate * 100) + '%')}</td><td>${fmt(item.total)} &euro;</td></tr>`
+    ).join('')
+
+    // Read template and replace placeholders
+    const fs = await import('node:fs/promises')
+    const path = await import('node:path')
+    let template = await fs.readFile(path.join(__dirname, '../frontend/invoice-template.html'), 'utf-8')
+
+    const replacements: Record<string, string> = {
+      '{{invoiceNumber}}': invoice.number,
+      '{{invoiceDate}}': fmtDate(invoice.issued_at),
+      '{{dueDate}}': fmtDate(invoice.due_date),
+      '{{status}}': statusLabels[invoice.status] || invoice.status,
+      '{{providerName}}': provider?.company_name || '',
+      '{{providerLegalForm}}': provider?.legal_form || '',
+      '{{providerStreet}}': provider?.address_street || '',
+      '{{providerZip}}': provider?.address_zip || '',
+      '{{providerCity}}': provider?.address_city || '',
+      '{{providerEmail}}': provider?.email || '',
+      '{{providerPhone}}': provider?.phone || '',
+      '{{providerTaxId}}': provider?.tax_id || '',
+      '{{providerVatId}}': provider?.vat_id || '',
+      '{{logoUrl}}': provider?.logo_url || '',
+      '{{parentName}}': parent?.name || '',
+      '{{parentEmail}}': parent?.email || '',
+      '{{lineItemsHtml}}': lineItemsHtml,
+      '{{subtotal}}': fmt(invoice.subtotal),
+      '{{tax}}': fmt(invoice.tax),
+      '{{total}}': fmt(invoice.total),
+      '{{vatPercent}}': String(vatPercent),
+      '{{bankHolder}}': provider?.bank_holder || provider?.company_name || '',
+      '{{bankIban}}': provider?.bank_iban || '',
+      '{{bankBic}}': provider?.bank_bic || '',
+    }
+
+    // Handle conditional blocks
+    for (const [key, val] of Object.entries(replacements)) {
+      template = template.replaceAll(key, val)
+    }
+
+    // Handle {{#if ...}} blocks
+    const ifBlock = (flag: boolean, name: string) => {
+      const re = new RegExp(`\\{\\{#if ${name}\\}\\}([\\s\\S]*?)\\{\\{/if\\}\\}`, 'g')
+      template = template.replace(re, flag ? '$1' : '')
+      // Also handle {{else}} within if blocks
+      const reElse = new RegExp(`\\{\\{#if ${name}\\}\\}([\\s\\S]*?)\\{\\{else\\}\\}([\\s\\S]*?)\\{\\{/if\\}\\}`, 'g')
+      template = template.replace(reElse, flag ? '$1' : '$2')
+    }
+    ifBlock(!!provider?.logo_url, 'logoUrl')
+    ifBlock(isKleinunternehmer, 'isKleinunternehmer')
+    ifBlock(!!provider?.tax_id, 'providerTaxId')
+    ifBlock(!!provider?.vat_id, 'providerVatId')
+    ifBlock(!!provider?.bank_holder, 'bankHolder')
+    ifBlock(!!provider?.bank_iban, 'bankIban')
+    ifBlock(!!provider?.bank_bic, 'bankBic')
+
+    res.raw.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+    res.raw.end(template)
+  })
+
   router.get('/api/providers/:providerId/invoices/vat-summary/:year', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
