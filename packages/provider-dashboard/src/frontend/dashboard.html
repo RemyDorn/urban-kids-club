@@ -2973,61 +2973,80 @@
     // --- Kursblöcke Tab ---
     async function renderCB_Blocks(blocks, actMap, dayNames, statusColors, statusLabels) {
       const cc = document.getElementById('cb-content')
+      const today = fmtDate(new Date())
 
-      // Stat-Cards
-      const active = blocks.filter(b => b.status === 'active').length
-      const upcoming = blocks.filter(b => b.status === 'upcoming').length
-      const total = blocks.length
+      // Auto-detect real status based on dates
+      blocks.forEach(b => {
+        if (b.status === 'cancelled') return // keep cancelled
+        if (b.startDate <= today) b._displayStatus = 'active'
+        else b._displayStatus = 'upcoming'
+      })
+
+      // Group by display status
+      const activeBlocks = blocks.filter(b => b.status !== 'cancelled' && b._displayStatus === 'active')
+      const upcomingBlocks = blocks.filter(b => b.status !== 'cancelled' && b._displayStatus === 'upcoming')
+      const cancelledBlocks = blocks.filter(b => b.status === 'cancelled')
+
+      const blockTab = window._blockStatusTab || 'active'
+
+      const filteredBlocks = blockTab === 'active' ? activeBlocks : blockTab === 'upcoming' ? upcomingBlocks : cancelledBlocks
+
+      function renderBlockCard(block) {
+        const act = actMap[block.activityId]
+        const title = act ? act.title : block.activityType
+        const day = dayNames[block.recurringDay] || block.recurringDay
+        const status = block.status === 'cancelled' ? 'cancelled' : block._displayStatus
+        const sc = statusColors[status] || 'bg-gray-100 text-gray-600'
+        const sl = statusLabels[status] || status
+        return `
+          <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition cursor-pointer" onclick="showBlockDetail('${block.id}')">
+            <div class="flex justify-between items-start">
+              <div>
+                <div class="font-bold text-gray-800">${escapeHtml(title)}</div>
+                <div class="text-sm text-gray-500 mt-0.5">${escapeHtml(block.seasonLabel)}</div>
+                <div class="flex gap-4 mt-2 text-xs text-gray-500">
+                  <span>${day} ${block.recurringTime} Uhr</span>
+                  <span>${block.totalSessions} Termine</span>
+                  <span>${block.pricePerBlock?.toFixed(2).replace('.',',')} €</span>
+                  <span>Kapazität: ${block.capacity}</span>
+                </div>
+              </div>
+              <span class="px-3 py-1 rounded-full text-xs font-semibold ${sc}">${sl}</span>
+            </div>
+          </div>`
+      }
 
       cc.innerHTML = `
         <!-- Stats -->
         <div class="grid grid-cols-3 gap-4 mb-6">
           <div class="stat-card bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-            <div class="text-3xl font-bold text-green-600">${active}</div>
+            <div class="text-3xl font-bold text-green-600">${activeBlocks.length}</div>
             <div class="text-sm text-gray-500 mt-1">Aktive Blöcke</div>
           </div>
           <div class="stat-card bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-            <div class="text-3xl font-bold text-blue-600">${upcoming}</div>
+            <div class="text-3xl font-bold text-blue-600">${upcomingBlocks.length}</div>
             <div class="text-sm text-gray-500 mt-1">Kommende Blöcke</div>
           </div>
           <div class="stat-card bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-            <div class="text-3xl font-bold text-gray-600">${total}</div>
-            <div class="text-sm text-gray-500 mt-1">Gesamt</div>
+            <div class="text-3xl font-bold text-red-400">${cancelledBlocks.length}</div>
+            <div class="text-sm text-gray-500 mt-1">Storniert</div>
           </div>
         </div>
 
-        <!-- Neuen Block erstellen -->
+        <!-- Status-Tabs -->
         <div class="flex justify-between items-center mb-4">
-          <h3 class="text-lg font-bold text-gray-800">Alle Kursblöcke</h3>
+          <div class="flex gap-2">
+            <button onclick="window._blockStatusTab='active'; renderCourseBlocks()" class="px-4 py-2 rounded-lg text-sm font-semibold ${blockTab === 'active' ? 'bg-green-500 text-white' : 'bg-white text-gray-600 hover:bg-green-50 border border-gray-200'}">Aktiv (${activeBlocks.length})</button>
+            <button onclick="window._blockStatusTab='upcoming'; renderCourseBlocks()" class="px-4 py-2 rounded-lg text-sm font-semibold ${blockTab === 'upcoming' ? 'bg-blue-500 text-white' : 'bg-white text-gray-600 hover:bg-blue-50 border border-gray-200'}">Demnächst (${upcomingBlocks.length})</button>
+            <button onclick="window._blockStatusTab='cancelled'; renderCourseBlocks()" class="px-4 py-2 rounded-lg text-sm font-semibold ${blockTab === 'cancelled' ? 'bg-red-500 text-white' : 'bg-white text-gray-600 hover:bg-red-50 border border-gray-200'}">Storniert (${cancelledBlocks.length})</button>
+          </div>
           <button onclick="showCreateBlockForm()" class="bg-brand-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-brand-600 transition">+ Neuer Block</button>
         </div>
 
         <!-- Block-Liste -->
         <div class="space-y-3" id="block-list">
-          ${blocks.length === 0 ? '<div class="text-gray-400 text-center py-12">Noch keine Kursblöcke angelegt.</div>' : ''}
-          ${blocks.sort((a,b) => a.startDate > b.startDate ? -1 : 1).map(block => {
-            const act = actMap[block.activityId]
-            const title = act ? act.title : block.activityType
-            const day = dayNames[block.recurringDay] || block.recurringDay
-            const sc = statusColors[block.status] || 'bg-gray-100 text-gray-600'
-            const sl = statusLabels[block.status] || block.status
-            return `
-              <div class="bg-white rounded-xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition cursor-pointer" onclick="showBlockDetail('${block.id}')">
-                <div class="flex justify-between items-start">
-                  <div>
-                    <div class="font-bold text-gray-800">${escapeHtml(title)}</div>
-                    <div class="text-sm text-gray-500 mt-0.5">${escapeHtml(block.seasonLabel)}</div>
-                    <div class="flex gap-4 mt-2 text-xs text-gray-500">
-                      <span>${day} ${block.recurringTime} Uhr</span>
-                      <span>${block.totalSessions} Termine</span>
-                      <span>${block.pricePerBlock?.toFixed(2).replace('.',',')} €</span>
-                      <span>Kapazität: ${block.capacity}</span>
-                    </div>
-                  </div>
-                  <span class="px-3 py-1 rounded-full text-xs font-semibold ${sc}">${sl}</span>
-                </div>
-              </div>`
-          }).join('')}
+          ${filteredBlocks.length === 0 ? '<div class="text-gray-400 text-center py-12">' + (blockTab === 'active' ? 'Keine aktiven Kursblöcke.' : blockTab === 'upcoming' ? 'Keine geplanten Kursblöcke.' : 'Keine stornierten Kursblöcke.') + '</div>' : ''}
+          ${filteredBlocks.sort((a,b) => a.startDate > b.startDate ? -1 : 1).map(renderBlockCard).join('')}
         </div>
 
         <!-- Block-Detail Modal -->
