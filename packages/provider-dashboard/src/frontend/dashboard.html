@@ -3474,11 +3474,19 @@
         return
       }
 
-      // Regular session: ask for reason, then show credit choice inline
+      // Regular session: ask for reason
       const reason = prompt('Grund für die Absage:')
       if (!reason) return
 
-      // Show inline credit choice in the session row
+      const makeupOn = currentProvider.makeup_enabled || currentProvider.makeupEnabled || false
+
+      if (!makeupOn) {
+        // Makeup disabled: cancel without credit option
+        await executeCancelSession(sessionId, blockId, reason, 'none')
+        return
+      }
+
+      // Makeup enabled: show inline credit choice in the session row
       const row = document.getElementById('sess-row-' + sessionId)
       if (row) {
         const actionsDiv = row.querySelector('.flex.items-center.gap-2')
@@ -4370,6 +4378,7 @@
           <button onclick="settingsTab='company'; renderSettings()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${settingsTab === 'company' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}">Unternehmen</button>
           <button onclick="settingsTab='finance'; renderSettings()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${settingsTab === 'finance' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}">Steuern & Finanzen</button>
           <button onclick="settingsTab='loyalty'; renderSettings()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${settingsTab === 'loyalty' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}">Treueprogramm</button>
+          <button onclick="settingsTab='courses'; renderSettings()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${settingsTab === 'courses' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}">Kurse & Blöcke</button>
           <button onclick="settingsTab='legal'; renderSettings()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${settingsTab === 'legal' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}">Rechtliches</button>
         </div>
         <div id="settingsContent"></div>
@@ -4379,7 +4388,58 @@
       if (settingsTab === 'company') sc.innerHTML = renderCompanyTab(p, s)
       else if (settingsTab === 'finance') { sc.innerHTML = renderFinanceTab(p, s); loadPaymentConfig() }
       else if (settingsTab === 'loyalty') sc.innerHTML = renderLoyaltyTab()
+      else if (settingsTab === 'courses') sc.innerHTML = renderCoursesSettingsTab(p)
       else if (settingsTab === 'legal') sc.innerHTML = renderLegalTab(s)
+    }
+
+    function renderCoursesSettingsTab(p) {
+      const makeupEnabled = p.makeupEnabled || p.makeup_enabled || false
+      return `
+        <div class="max-w-2xl space-y-6">
+          <div class="bg-white rounded-xl border border-brand-200 p-6">
+            <h3 class="font-semibold text-gray-900 mb-4">Kursblock-Einstellungen</h3>
+            <div class="space-y-4">
+              <!-- Makeup Toggle -->
+              <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                <div>
+                  <div class="font-medium text-gray-900">Makeup- & Guthaben-System</div>
+                  <div class="text-sm text-gray-500 mt-1">Teilnehmer erhalten bei Ausfall ein Guthaben und können den Termin in einem anderen Block nachholen. Reserviert automatisch Makeup-Plätze pro Block.</div>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer ml-4 flex-shrink-0">
+                  <input type="checkbox" ${makeupEnabled ? 'checked' : ''} onchange="toggleMakeupSystem(this.checked)" class="sr-only peer">
+                  <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-500"></div>
+                </label>
+              </div>
+
+              ${makeupEnabled ? `
+              <div class="p-4 bg-brand-50/30 border border-brand-200 rounded-lg text-sm text-gray-700 space-y-2">
+                <div class="font-medium text-brand-700 mb-2">Wenn aktiviert:</div>
+                <ul class="space-y-1 text-gray-600">
+                  <li>• Jeder Kursblock reserviert die letzten Plätze als Makeup-Slots (konfigurierbar pro Block)</li>
+                  <li>• Bei Absage eines Termins kannst du allen Teilnehmern automatisch ein Guthaben ausstellen</li>
+                  <li>• Teilnehmer können das Guthaben in einem anderen Block einlösen</li>
+                  <li>• Neue Buchungen über der festen Grenze müssen manuell freigegeben werden</li>
+                </ul>
+              </div>
+              ` : `
+              <div class="p-4 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-600">
+                <div class="font-medium text-gray-700 mb-1">Wenn deaktiviert:</div>
+                <p>Alle Plätze in einem Kursblock sind feste Plätze. Buchungen werden bis zur vollen Kapazität automatisch bestätigt. Kein Guthaben-System.</p>
+              </div>
+              `}
+            </div>
+          </div>
+        </div>
+      `
+    }
+
+    async function toggleMakeupSystem(enabled) {
+      try {
+        await api('/providers/' + currentProvider.id, 'PUT', { makeup_enabled: enabled })
+        currentProvider.makeup_enabled = enabled
+        currentProvider.makeupEnabled = enabled
+        renderSettings()
+      } catch (err) { alert('Fehler: ' + err.message) }
     }
 
     function renderCompanyTab(p, s) {

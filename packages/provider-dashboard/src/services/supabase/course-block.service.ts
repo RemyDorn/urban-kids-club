@@ -178,8 +178,15 @@ export const SupabaseCourseBlockService = {
 
     const session = blockSessionFromDb(data)
 
-    // Auto-issue credits to all active enrollments if compensation requested
+    // Auto-issue credits to all active enrollments if compensation requested AND makeup is enabled
     if (compensation === 'credit') {
+      // Check if provider has makeup system enabled
+      const { data: blockData } = await sb.from(BLOCK_TABLE).select('provider_id').eq('id', data.block_id).single()
+      const { data: provSettings } = await sb.from('providers').select('makeup_enabled').eq('id', blockData?.provider_id).single()
+      if (!provSettings?.makeup_enabled) {
+        console.log(`[CourseBlock] Makeup disabled for provider. No credits issued.`)
+        return session
+      }
       const { data: enrollments } = await sb.from(ENROLLMENT_TABLE)
         .select('id, block_id, parent_id, child_id, credits_earned')
         .eq('block_id', data.block_id)

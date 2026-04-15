@@ -64,6 +64,11 @@ export class CheckoutService {
 
     // 3. Auto-enroll in active course block (if exists)
     try {
+      // Check if provider has makeup system enabled
+      const { data: providerSettings } = await db.from('providers')
+        .select('makeup_enabled').eq('id', params.providerId).single()
+      const makeupEnabled = providerSettings?.makeup_enabled ?? false
+
       const { data: activeBlock } = await db.from('course_blocks')
         .select('id, capacity, makeup_capacity')
         .eq('activity_id', params.activityId)
@@ -73,7 +78,10 @@ export class CheckoutService {
         .maybeSingle()
 
       if (activeBlock) {
-        const fixedSlots = activeBlock.capacity - (activeBlock.makeup_capacity || 2)
+        // If makeup disabled: all slots are fixed. If enabled: reserve makeup_capacity slots.
+        const fixedSlots = makeupEnabled
+          ? activeBlock.capacity - (activeBlock.makeup_capacity || 2)
+          : activeBlock.capacity
         const { count: enrolledCount } = await db.from('block_enrollments')
           .select('*', { count: 'exact', head: true })
           .eq('block_id', activeBlock.id)
