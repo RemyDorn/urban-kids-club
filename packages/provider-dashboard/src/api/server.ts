@@ -242,10 +242,10 @@ window._waitlistCourse=async function(title,date){
   const dateStr=sd.getDate()+'. '+ML[sd.getMonth()]+' '+sd.getFullYear()
   const course=courses.find(c=>c.title===title)
   if(!course){alert('Kurs nicht gefunden');return}
-  var wlActId=course.id
+  window._wlActId=course.id
   var html='<div class="book-modal"><div class="book-modal-inner">'+
     '<h3>Warteliste: '+esc(title)+'</h3>'+
-    '<p>'+dateStr+' — Aktuell kein Kursblock verfügbar. Tragen Sie sich ein und wir benachrichtigen Sie, sobald der Kurs startet.</p>'+
+    '<p>'+dateStr+' — Dieser Kurs hat aktuell noch keinen festen Termin. Trag dich gerne auf die Warteliste ein — wir geben dir Bescheid, sobald es losgeht!</p>'+
     '<input id="wlChildFirst" placeholder="Vorname Kind *" required>'+
     '<input id="wlChildLast" placeholder="Nachname Kind *" required>'+
     '<input id="wlChildYear" type="number" placeholder="Geburtsjahr Kind *" min="2010" max="2025" required>'+
@@ -260,7 +260,7 @@ window._waitlistCourse=async function(title,date){
   app.insertAdjacentHTML('beforeend',html)
 }
 window._submitWaitlist=async function(){
-  var activityId=window._wlActId||wlActId
+  var activityId=window._wlActId
   var f=function(s){var el=document.getElementById(s);return el?el.value.trim():''}
   var childFirst=f('wlChildFirst'),childLast=f('wlChildLast'),childYear=f('wlChildYear')
   var parentFirst=f('wlParentFirst'),parentLast=f('wlParentLast'),email=f('wlEmail'),phone=f('wlPhone')
