@@ -841,7 +841,7 @@ export function registerRoutes(router: Router) {
     // Get waitlist entry with parent + activity info
     const { data: entry } = await db.from('waitlist_entries')
       .select('*, parents!inner(name, email), activities!inner(title, pricing, payment_online, payment_onsite)')
-      .eq('id', req.params.id).eq('status', 'waiting').single()
+      .eq('id', req.params.id).in('status', ['waiting', 'offered', 'expired']).single()
     if (!entry) return res.error(404, 'Wartelisten-Eintrag nicht gefunden')
 
     // Generate secure token for confirm/decline links
