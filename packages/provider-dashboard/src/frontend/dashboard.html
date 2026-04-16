@@ -1080,11 +1080,88 @@
           const el = document.getElementById('calModalParticipants')
           if (!el || !bookings.length) return
           el.innerHTML = '<div class="border border-gray-200 rounded-lg p-3"><div class="text-xs font-semibold text-gray-700 mb-2">Teilnehmer (' + bookings.length + ')</div><div class="space-y-1">' +
-            bookings.map(b => '<div class="flex justify-between items-center text-xs py-1 px-2 bg-gray-50 rounded"><span class="font-medium">' +
+            bookings.map(b => '<div class="flex justify-between items-center text-xs py-1 px-2 bg-gray-50 rounded cursor-pointer hover:bg-gray-100" onclick="showParentProfile(\'' + b.parentId + '\')"><span class="font-medium text-brand-700">' +
               escapeHtml(b.child?.name || 'Unbekannt') + '</span><span class="text-gray-400">' +
               (b.child?.age ? b.child.age + ' J.' : '') + '</span></div>').join('') +
             '</div></div>'
         }).catch(() => {})
+      }
+    }
+
+    async function showParentProfile(parentId) {
+      const modal = document.getElementById('calModal')
+      modal.className = 'cal-modal-backdrop'
+      modal.onclick = (e) => { if (e.target === modal) modal.className = 'hidden' }
+      modal.innerHTML = '<div class="cal-modal fade-in" style="max-width:500px"><div class="text-center text-gray-400 py-8">Lade Profil...</div></div>'
+
+      try {
+        const [parentRes, bookingsRes] = await Promise.all([
+          api('/parents/' + parentId),
+          api('/parents/' + parentId + '/bookings'),
+        ])
+        const parent = parentRes.data || parentRes
+        const bookings = (bookingsRes.data || bookingsRes || []).filter(b => b.status !== 'cancelled')
+
+        // Extract unique children from bookings
+        const childMap = {}
+        bookings.forEach(b => {
+          const key = (b.child?.firstName || '') + ' ' + (b.child?.lastName || '')
+          if (key.trim() && !childMap[key]) {
+            childMap[key] = { name: b.child.name || key.trim(), age: b.child.age || 0, bookings: 0 }
+          }
+          if (childMap[key]) childMap[key].bookings++
+        })
+        const children = Object.values(childMap)
+
+        // Load activity names
+        let actRes = null
+        try { actRes = await api('/providers/' + currentProvider.id + '/activities') } catch(e) {}
+        const actMap = {}
+        if (actRes?.data) actRes.data.forEach(a => { actMap[a.id] = a })
+
+        const totalSpent = bookings.reduce((s, b) => s + (b.amountPaid || 0), 0)
+
+        modal.innerHTML = '<div class="cal-modal fade-in" style="max-width:500px">' +
+          '<div class="flex items-center justify-between mb-4">' +
+            '<h3 class="text-lg font-bold text-gray-900">' + escapeHtml(parent.name || 'Unbekannt') + '</h3>' +
+            '<button onclick="document.getElementById(\'calModal\').className=\'hidden\'" class="text-gray-400 hover:text-gray-600"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>' +
+          '</div>' +
+
+          // Contact info
+          '<div class="grid grid-cols-2 gap-3 mb-4">' +
+            '<div class="bg-gray-50 rounded-lg p-3"><div class="text-xs text-gray-500">E-Mail</div><div class="text-sm font-medium">' + escapeHtml(parent.email || '–') + '</div></div>' +
+            '<div class="bg-gray-50 rounded-lg p-3"><div class="text-xs text-gray-500">Telefon</div><div class="text-sm font-medium">' + escapeHtml(parent.phone || '–') + '</div></div>' +
+          '</div>' +
+
+          // Stats
+          '<div class="grid grid-cols-3 gap-3 mb-4">' +
+            '<div class="text-center p-3 bg-gray-50 rounded-lg"><div class="text-xl font-bold text-brand-600">' + bookings.length + '</div><div class="text-xs text-gray-500">Buchungen</div></div>' +
+            '<div class="text-center p-3 bg-gray-50 rounded-lg"><div class="text-xl font-bold text-green-600">' + totalSpent.toFixed(2).replace('.',',') + '€</div><div class="text-xs text-gray-500">Umsatz</div></div>' +
+            '<div class="text-center p-3 bg-gray-50 rounded-lg"><div class="text-xl font-bold">' + children.length + '</div><div class="text-xs text-gray-500">Kinder</div></div>' +
+          '</div>' +
+
+          // Children
+          (children.length ? '<div class="mb-4"><div class="text-xs font-semibold text-gray-700 mb-2">Kinder</div><div class="space-y-1">' +
+            children.map(c => '<div class="flex justify-between items-center text-sm py-2 px-3 bg-gray-50 rounded-lg"><span class="font-medium">' + escapeHtml(c.name) + '</span><span class="text-gray-400">' + (c.age ? c.age + ' J.' : '') + ' · ' + c.bookings + ' Buchungen</span></div>').join('') +
+          '</div></div>' : '') +
+
+          // Booking history
+          '<div><div class="text-xs font-semibold text-gray-700 mb-2">Buchungshistorie</div><div class="space-y-1 max-h-48 overflow-y-auto">' +
+            bookings.sort((a,b) => b.createdAt > a.createdAt ? 1 : -1).map(b => {
+              const act = actMap[b.activityId]
+              const statusCl = b.paymentStatus === 'paid' ? 'text-green-600' : 'text-amber-600'
+              return '<div class="flex justify-between items-center text-xs py-2 px-3 bg-gray-50 rounded-lg">' +
+                '<div><span class="font-medium">' + escapeHtml(act?.title || '–') + '</span><span class="text-gray-400 ml-2">' + escapeHtml(b.child?.name || '') + '</span></div>' +
+                '<div class="flex items-center gap-2"><span class="' + statusCl + ' font-medium">' + (b.amountPaid > 0 ? b.amountPaid.toFixed(2).replace('.',',') + '€' : 'offen') + '</span><span class="text-gray-400">' + new Date(b.createdAt).toLocaleDateString('de-DE') + '</span></div>' +
+              '</div>'
+            }).join('') +
+          '</div></div>' +
+
+          // Close button
+          '<div class="mt-4 pt-3 border-t"><button onclick="document.getElementById(\'calModal\').className=\'hidden\'" class="w-full bg-gray-100 text-gray-700 py-2 rounded-lg font-medium hover:bg-gray-200 text-sm">Schließen</button></div>' +
+        '</div>'
+      } catch (err) {
+        modal.innerHTML = '<div class="cal-modal fade-in"><div class="text-red-500 text-center py-8">Profil konnte nicht geladen werden.</div></div>'
       }
     }
 
@@ -1795,9 +1872,9 @@
                 return `
                 <tr class="hover:bg-gray-50">
                   <td class="px-6 py-4 text-sm text-gray-700">${new Date(b.createdAt).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}</td>
-                  <td class="px-6 py-4">
-                    <div class="font-medium text-gray-900 text-sm">${escapeHtml(b.child.name)}</div>
-                    <div class="text-xs text-gray-500">${b.child.age} Jahre</div>
+                  <td class="px-6 py-4 cursor-pointer" onclick="showParentProfile('${b.parentId}')">
+                    <div class="font-medium text-brand-700 text-sm hover:underline">${escapeHtml(b.child.name)}</div>
+                    <div class="text-xs text-gray-500">${b.child.age ? b.child.age + ' Jahre' : ''}</div>
                   </td>
                   <td class="px-6 py-4">
                     <div class="text-sm font-medium text-gray-900">${escapeHtml(act?.title || '–')}</div>
