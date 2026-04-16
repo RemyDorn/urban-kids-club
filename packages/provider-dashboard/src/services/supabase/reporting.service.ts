@@ -57,12 +57,36 @@ export const SupabaseReportingService = {
     const activityIds = (activities ?? []).map((a: { id: string }) => a.id)
     if (activityIds.length === 0) return []
 
+    // Get individual bookings (Einzelstunden)
     const { data: bookings, error: bookErr } = await sb.from('provider_bookings').select('activity_id, status, booked_date').eq('provider_id', providerId)
     if (bookErr) throw new Error('Buchungen konnten nicht geladen werden: ' + bookErr.message)
 
+    // Get block enrollments + sessions (Pakete: enrollment = all sessions)
+    const { data: blocks } = await sb.from('course_blocks').select('id, activity_id').eq('provider_id', providerId).in('status', ['active', 'upcoming', 'completed'])
+    const blockActivityMap = new Map<string, string>()
+    const blockIds: string[] = []
+    for (const b of blocks ?? []) { blockActivityMap.set(b.id, b.activity_id); blockIds.push(b.id) }
+
+    // Count active enrollments per block
+    let enrollmentsByBlock = new Map<string, number>()
+    // Get session dates per block for per-date occupancy
+    let sessionDatesByBlock = new Map<string, string[]>()
+    if (blockIds.length > 0) {
+      const { data: enrollments } = await sb.from('block_enrollments').select('block_id, status').in('block_id', blockIds).eq('status', 'active')
+      for (const e of enrollments ?? []) {
+        enrollmentsByBlock.set(e.block_id, (enrollmentsByBlock.get(e.block_id) ?? 0) + 1)
+      }
+      const { data: sessions } = await sb.from('block_sessions').select('block_id, date').in('block_id', blockIds).in('status', ['scheduled', 'completed'])
+      for (const s of sessions ?? []) {
+        if (!sessionDatesByBlock.has(s.block_id)) sessionDatesByBlock.set(s.block_id, [])
+        sessionDatesByBlock.get(s.block_id)!.push(s.date)
+      }
+    }
+
     const bookingCounts = new Map<string, number>()
-    // Also count per activity+date for calendar occupancy
     const bookingsByDate = new Map<string, number>()
+
+    // Count individual bookings
     for (const b of bookings ?? []) {
       if (b.status === 'confirmed' || b.status === 'pending') {
         bookingCounts.set(b.activity_id, (bookingCounts.get(b.activity_id) ?? 0) + 1)
@@ -70,6 +94,20 @@ export const SupabaseReportingService = {
           const key = `${b.activity_id}:${b.booked_date}`
           bookingsByDate.set(key, (bookingsByDate.get(key) ?? 0) + 1)
         }
+      }
+    }
+
+    // Add block enrollments to counts (package = all sessions)
+    for (const [blockId, enrollCount] of enrollmentsByBlock.entries()) {
+      const actId = blockActivityMap.get(blockId)
+      if (!actId) continue
+      // Total count: use enrollment count (replaces individual bookings for block courses)
+      bookingCounts.set(actId, Math.max(bookingCounts.get(actId) ?? 0, enrollCount))
+      // Per-date: spread enrollments across ALL session dates
+      const dates = sessionDatesByBlock.get(blockId) ?? []
+      for (const date of dates) {
+        const key = `${actId}:${date}`
+        bookingsByDate.set(key, Math.max(bookingsByDate.get(key) ?? 0, enrollCount))
       }
     }
 
