@@ -55,6 +55,15 @@ export const SupabaseCrmService = {
       parentStats.set(b.parent_id, existing)
     }
 
+    // Also include parents from waitlist (no bookings yet)
+    const { data: waitlistParents } = await sb.from('waitlist_entries')
+      .select('parent_id').in('status', ['waiting', 'offered'])
+    for (const w of waitlistParents ?? []) {
+      if (!parentStats.has(w.parent_id)) {
+        parentStats.set(w.parent_id, { count: 0, spent: 0, last: '' })
+      }
+    }
+
     if (parentStats.size === 0) return []
 
     // Fetch parent details
@@ -85,32 +94,45 @@ export const SupabaseCrmService = {
     return results
   },
 
-  async getSegments(providerId: ID): Promise<{ name: string; count: number }[]> {
+  async getSegments(providerId: ID): Promise<Record<string, number>> {
     const sb = getServiceClient()
     const { data: bookings } = await sb.from('provider_bookings')
-      .select('parent_id, amount_paid, payment_status').eq('provider_id', providerId).neq('status', 'cancelled')
+      .select('parent_id, amount_paid, payment_status, created_at').eq('provider_id', providerId).neq('status', 'cancelled')
 
-    const parentSpend = new Map<string, number>()
+    const parentIds = new Set<string>()
+    const activeIds = new Set<string>()
+    const vipIds = new Set<string>()
+    const newIds = new Set<string>()
+    const thirtyDaysAgo = new Date(); thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+    const ninetyDaysAgo = new Date(); ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90)
+
     for (const b of bookings ?? []) {
-      if (b.payment_status === 'paid') {
-        parentSpend.set(b.parent_id, (parentSpend.get(b.parent_id) ?? 0) + (b.amount_paid ?? 0))
-      }
+      parentIds.add(b.parent_id)
+      const created = new Date(b.created_at)
+      if (created > ninetyDaysAgo) activeIds.add(b.parent_id)
+      if (created > thirtyDaysAgo) newIds.add(b.parent_id)
+      if (b.payment_status === 'paid' && (b.amount_paid ?? 0) >= 200) vipIds.add(b.parent_id)
     }
 
-    let bronze = 0, silver = 0, gold = 0, platinum = 0
-    for (const spent of parentSpend.values()) {
-      if (spent >= 500) platinum++
-      else if (spent >= 200) gold++
-      else if (spent >= 100) silver++
-      else bronze++
+    // Also count waitlist parents
+    const { data: waitlistParents } = await sb.from('waitlist_entries')
+      .select('parent_id').in('status', ['waiting', 'offered'])
+    const prospectIds = new Set<string>()
+    for (const w of waitlistParents ?? []) {
+      if (!parentIds.has(w.parent_id)) prospectIds.add(w.parent_id)
     }
 
-    return [
-      { name: 'Bronze', count: bronze },
-      { name: 'Silber', count: silver },
-      { name: 'Gold', count: gold },
-      { name: 'Platin', count: platinum },
-    ]
+    const total = parentIds.size + prospectIds.size
+    const inactive = parentIds.size - activeIds.size
+
+    return {
+      total,
+      active: activeIds.size,
+      inactive: inactive > 0 ? inactive : 0,
+      vip: vipIds.size,
+      prospects: prospectIds.size,
+      newThisMonth: newIds.size,
+    }
   },
 
   async getExtendedProfile(parentId: ID, providerId: ID): Promise<Record<string, unknown> | undefined> {

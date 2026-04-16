@@ -549,6 +549,55 @@ export function registerRoutes(router: Router) {
     res.status(201).json({ data: result })
   })
 
+  // Offer waitlist spot to parent (changes status, sends email)
+  router.post('/api/waitlist/:id/offer', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    const db = getServiceClient()
+
+    // Get waitlist entry with parent + activity info
+    const { data: entry } = await db.from('waitlist_entries')
+      .select('*, parents!inner(name, email), activities!inner(title, pricing, payment_online, payment_onsite)')
+      .eq('id', req.params.id).eq('status', 'waiting').single()
+    if (!entry) return res.error(404, 'Wartelisten-Eintrag nicht gefunden')
+
+    // Update status to "offered"
+    await db.from('waitlist_entries')
+      .update({ status: 'offered', notified_at: new Date().toISOString(),
+        expires_at: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString() })
+      .eq('id', req.params.id)
+
+    // Send notification email
+    try {
+      const { EmailService } = await import('../lib/email')
+      const parent = (entry as any).parents
+      const activity = (entry as any).activities
+      const { data: provider } = await db.from('providers').select('company_name, slug').eq('id', auth.providerId).single()
+
+      const childName = entry.child_info?.firstName ? (entry.child_info.firstName + ' ' + (entry.child_info.lastName || '')) : 'Ihr Kind'
+      const hasOnlinePayment = activity?.payment_online
+
+      // Build booking link
+      const origin = req.raw.headers.origin || 'https://dev.urbankids.club'
+      const bookingLink = origin + '/embed/' + (provider?.slug || 'socialy') + '/calendar'
+
+      await EmailService.sendBookingConfirmation(parent.email, {
+        parentName: parent.name.split(' ')[0],
+        childName,
+        courseName: activity?.title || 'Kurs',
+        date: '',
+        time: '',
+        providerName: provider?.company_name || '',
+        packageInfo: hasOnlinePayment ? 'Bitte bestätige deine Buchung und bezahle online: ' + bookingLink : 'Bitte bestätige deine Buchung: ' + bookingLink,
+      })
+      console.log('[Waitlist] Offer email sent to ' + parent.email)
+    } catch (emailErr) {
+      console.error('[Waitlist] Email failed:', emailErr)
+    }
+
+    res.json({ data: { id: req.params.id, status: 'offered' } })
+  })
+
   router.post('/api/waitlist/:id/accept', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
