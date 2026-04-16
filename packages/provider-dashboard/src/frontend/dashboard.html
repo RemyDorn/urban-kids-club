@@ -966,10 +966,16 @@
     }
 
     function showEventDetail(ev, activity, occ) {
-      // Use per-date booking count if available (important for multi-block courses)
-      var dateBooked = occ ? occ.booked : 0
+      // Use per-date booking count — if byDate has this date use it, otherwise check if date has any block coverage
+      var dateBooked = 0
       if (occ && occ.byDate && ev.date && occ.byDate[ev.date] !== undefined) {
         dateBooked = occ.byDate[ev.date]
+      } else if (occ && occ.byDate && ev.date) {
+        // Date not in byDate → no block covers this date → 0 participants
+        dateBooked = 0
+      } else if (occ && (!occ.byDate || Object.keys(occ.byDate || {}).length === 0)) {
+        // No byDate data at all (single sessions without blocks) → use total
+        dateBooked = occ.booked || 0
       }
       var occPct = occ && occ.capacity > 0 ? Math.round((dateBooked / occ.capacity) * 100) : 0
       // Parse event date (YYYY-MM-DD string from fmtDate)
