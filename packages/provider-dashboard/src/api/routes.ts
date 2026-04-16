@@ -221,6 +221,9 @@ export function registerRoutes(router: Router) {
   router.put('/api/team/:id', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
+    // Verify team member belongs to this provider
+    const existing = await TeamService.getById(req.params.id)
+    if (!existing || existing.providerId !== auth.providerId) return res.error(404, 'Teammitglied nicht gefunden')
     const member = await TeamService.update(req.params.id, req.body as any)
     if (!member) return res.error(404, 'Teammitglied nicht gefunden')
     res.json({ data: member })
@@ -326,6 +329,9 @@ export function registerRoutes(router: Router) {
   router.get('/api/activities/:activityId/bookings', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
+    // Verify activity belongs to this provider
+    const act = await ActivityService.getById(req.params.activityId)
+    if (!act || act.providerId !== auth.providerId) return res.error(404, 'Aktivität nicht gefunden')
     const bookings = await BookingService.listByActivity(req.params.activityId)
     res.json({ data: bookings, count: bookings.length })
   })
@@ -596,7 +602,7 @@ export function registerRoutes(router: Router) {
 
     const activity = (entry as any).activities
     const parent = (entry as any).parents
-    const courseName = activity?.title || 'den Kurs'
+    const courseName = escHtml(activity?.title || 'den Kurs')
     const requiresOnlinePayment = activity?.payment_online && !activity?.payment_onsite
 
     // If online-only course → redirect to widget checkout with pre-filled data
@@ -647,7 +653,7 @@ export function registerRoutes(router: Router) {
       })
     } catch (bookErr: any) {
       console.error('[Waitlist] Booking creation failed:', bookErr)
-      return res.html(htmlPage('❌', 'Buchung fehlgeschlagen', bookErr.message || 'Bitte kontaktiere den Anbieter.', '#ef4444'))
+      return res.html(htmlPage('❌', 'Buchung fehlgeschlagen', escHtml(bookErr.message || 'Bitte kontaktiere den Anbieter.'), '#ef4444'))
     }
 
     // Booking succeeded — now mark waitlist entry as accepted
@@ -936,7 +942,7 @@ export function registerRoutes(router: Router) {
     const { data: invoice } = await db.from('invoices').select('*').eq('id', req.params.id).maybeSingle()
     if (!invoice) return res.error(404, 'Rechnung nicht gefunden')
 
-    const { data: provider } = await db.from('providers').select('*').eq('id', auth.providerId).single()
+    const { data: provider } = await db.from('providers').select('*').eq('id', invoice.provider_id).single()
     const { data: parent } = await db.from('parents').select('*').eq('id', invoice.parent_id).single()
 
     const lineItems = (invoice.line_items || []) as Array<{ description: string; quantity: number; unitPrice: number; vatRate: number; total: number }>
@@ -1530,15 +1536,15 @@ export function registerRoutes(router: Router) {
   // ============================================================
 
   router.post('/api/admin/jobs/daily', async (req, res) => {
-    const auth = await requireAuth(req, res)
-    if (!auth) return
+    const admin = await requireAdmin(req, res)
+    if (!admin) return
     const result = await BackgroundJobs.runDaily()
     res.json({ data: result })
   })
 
   router.post('/api/admin/jobs/weekly', async (req, res) => {
-    const auth = await requireAuth(req, res)
-    if (!auth) return
+    const admin = await requireAdmin(req, res)
+    if (!admin) return
     const result = await BackgroundJobs.runWeekly()
     res.json({ data: result })
   })
