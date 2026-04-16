@@ -1116,8 +1116,8 @@
               el.innerHTML = html
             }).catch(function() { el.innerHTML = '' })
           } else if (blocks.length > 0) {
-            // Activity has blocks but none covers this date → this is a future/new block period, show empty
-            el.innerHTML = ''
+            // Activity has blocks but none covers this date → new block period, no participants yet
+            el.innerHTML = '<div class="border border-gray-200 rounded-lg p-3 mb-2 text-center"><div class="text-xs text-gray-400">Noch kein aktiver Kursblock für diesen Termin.</div></div>'
           } else {
             // Activity has NO blocks at all (single sessions) — show bookings
             api('/activities/' + activity.id + '/bookings').then(function(res) {

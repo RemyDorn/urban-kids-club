@@ -2351,7 +2351,8 @@ export function registerRoutes(router: Router) {
       return res.error(400, 'Online-Zahlung ist für diesen Kurs nicht aktiviert')
     }
 
-    // Pre-check capacity BEFORE creating Stripe session or booking
+    // Soft pre-check capacity BEFORE creating Stripe session (avoids paying for a full course)
+    // This is NOT the authoritative gate — create_booking_atomic RPC does the real atomic check
     // Only check base capacity (NOT makeup) — makeup slots are provider-assigned only
     const { count: currentBookings } = await db.from('provider_bookings')
       .select('*', { count: 'exact', head: true })
@@ -2415,7 +2416,8 @@ export function registerRoutes(router: Router) {
           .in('status', ['confirmed', 'pending'])
         const isDuplicate = (parentBookings || []).some(function(b: any) {
           const ci = b.child_info || {}
-          return ci.firstName === child.firstName && ci.lastName === child.lastName
+          return (ci.firstName || '').toLowerCase() === child.firstName.toLowerCase()
+            && (ci.lastName || '').toLowerCase() === child.lastName.toLowerCase()
         })
         if (isDuplicate) {
           return res.error(400, child.firstName + ' ' + child.lastName + ' ist bereits für diesen Kurs angemeldet.')
