@@ -1152,20 +1152,39 @@
         // Load waitlist
         api('/activities/' + activity.id + '/waitlist').then(res => {
           const allEntries = (res.data || res || [])
-          const waiting = allEntries.filter(e => e.status === 'waiting')
-          const offered = allEntries.filter(e => e.status === 'offered')
-          const el = document.getElementById('calModalWaitlist')
-          if (!el || (!waiting.length && !offered.length)) return
-          let html = ''
-          // Offered entries (ausstehend)
+          var waiting = allEntries.filter(function(e) { return e.status === 'waiting' })
+          var offered = allEntries.filter(function(e) { return e.status === 'offered' })
+          var expired = allEntries.filter(function(e) { return e.status === 'expired' })
+          var el = document.getElementById('calModalWaitlist')
+          if (!el || (!waiting.length && !offered.length && !expired.length)) return
+          var html = ''
+          // Offered entries (ausstehend) — check if actually expired
+          var now = new Date()
           if (offered.length) {
             html += '<div class="border border-blue-200 bg-blue-50 rounded-lg p-3 mb-2"><div class="text-xs font-semibold text-blue-800 mb-2">Ausstehend (' + offered.length + ')</div><div class="space-y-1">' +
-              offered.map(e => {
-                const name = e.child?.firstName ? (e.child.firstName + ' ' + (e.child.lastName || '')) : (e.child?.name || 'Unbekannt')
-                const expiry = e.expiresAt ? new Date(e.expiresAt).toLocaleString('de-DE', {hour:'2-digit',minute:'2-digit'}) + ' Uhr' : ''
+              offered.map(function(e) {
+                var name = e.child?.firstName ? (e.child.firstName + ' ' + (e.child.lastName || '')) : (e.child?.name || 'Unbekannt')
+                var isExpired = e.expiresAt && new Date(e.expiresAt) < now
+                var expiry = e.expiresAt ? new Date(e.expiresAt).toLocaleString('de-DE', {hour:'2-digit',minute:'2-digit'}) + ' Uhr' : ''
+                if (isExpired) {
+                  return '<div class="flex justify-between items-center text-xs py-2 px-3 bg-red-50 border border-red-200 rounded-lg">' +
+                    '<div class="cursor-pointer" onclick="showParentProfile(\'' + e.parentId + '\')"><span class="font-medium text-red-900">' + escapeHtml(name) + '</span></div>' +
+                    '<span class="text-red-500 font-medium">Abgelaufen</span></div>'
+                }
                 return '<div class="flex justify-between items-center text-xs py-2 px-3 bg-white border border-blue-100 rounded-lg">' +
                   '<div class="cursor-pointer" onclick="showParentProfile(\'' + e.parentId + '\')"><span class="font-medium text-blue-900">' + escapeHtml(name) + '</span></div>' +
-                  '<div class="flex items-center gap-2"><span class="text-blue-500">Läuft ab ' + expiry + '</span><button onclick="acceptWaitlistEntry(\'' + e.id + '\', \'' + (activity?.id || '') + '\')" class="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium hover:bg-blue-200">Erneut senden</button></div>' +
+                  '<div class="flex items-center gap-2"><span class="text-blue-500">Bestätigen bis ' + expiry + '</span><button onclick="acceptWaitlistEntry(\'' + e.id + '\', \'' + (activity?.id || '') + '\')" class="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium hover:bg-blue-200">Erneut senden</button></div>' +
+                  '</div>'
+              }).join('') + '</div></div>'
+          }
+          // Expired entries
+          if (expired.length) {
+            html += '<div class="border border-red-200 bg-red-50 rounded-lg p-3 mb-2"><div class="text-xs font-semibold text-red-800 mb-2">Abgelaufen (' + expired.length + ')</div><div class="space-y-1">' +
+              expired.map(function(e) {
+                var name = e.child?.firstName ? (e.child.firstName + ' ' + (e.child.lastName || '')) : (e.child?.name || 'Unbekannt')
+                return '<div class="flex justify-between items-center text-xs py-2 px-3 bg-white border border-red-100 rounded-lg">' +
+                  '<div class="cursor-pointer" onclick="showParentProfile(\'' + e.parentId + '\')"><span class="font-medium text-red-900">' + escapeHtml(name) + '</span></div>' +
+                  '<div class="flex items-center gap-2"><span class="text-red-400">Nicht bestätigt</span><button onclick="acceptWaitlistEntry(\'' + e.id + '\', \'' + (activity?.id || '') + '\')" class="px-2 py-1 bg-amber-100 text-amber-700 rounded text-xs font-medium hover:bg-amber-200">Erneut anbieten</button></div>' +
                   '</div>'
               }).join('') + '</div></div>'
           }
