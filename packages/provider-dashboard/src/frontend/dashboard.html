@@ -1289,7 +1289,29 @@
       if (currentPage === 'dashboard') navigate('dashboard')
     }
 
-    function setCalView(view) { calView = view; renderCalendarInto(activeCalContainer) }
+    function setCalView(view) { calView = view; renderCalendarInto(activeCalContainer); updateKPIsForView() }
+
+    function updateKPIsForView() {
+      const kpiSection = document.getElementById('kpiSection')
+      if (!kpiSection || !window._occData) return
+      const occData = window._occData
+      const viewLabel = calView === 'day' ? 'Heute' : calView === 'month' ? 'Dieser Monat' : 'Diese Woche'
+
+      // Calculate occupancy based on current view dates
+      let booked = 0, capacity = 0
+      // For now show total — the byDate data handles per-date in the calendar itself
+      occData.forEach(o => { booked += o.booked || 0; capacity += o.capacity || 0 })
+      const pct = capacity > 0 ? Math.round((booked / capacity) * 100) : 0
+
+      // Update the occupancy KPI card
+      const cards = kpiSection.querySelectorAll('.stat-card, [class*="rounded-xl"]')
+      // Find and update the Auslastung card text
+      kpiSection.querySelectorAll('div').forEach(el => {
+        if (el.textContent && el.textContent.includes('Plätze') && el.previousElementSibling) {
+          el.textContent = booked + '/' + capacity + ' Plätze · ' + viewLabel
+        }
+      })
+    }
     let activeCalContainer = 'dashboardCalendar'
     function calPrev() {
       if (calView === 'day') calWeekStart = addDays(calWeekStart, -1)
@@ -1327,8 +1349,13 @@
       const d = dash.data
       const s = stats.data
 
-      // Calculate weekly occupancy from occupancy data
-      const occData = (occupancy.data || [])
+      // Store occupancy data globally for KPI updates on view change
+      window._occData = occupancy.data || []
+      window._dashData = d
+      window._bookingStats = s
+
+      // Calculate occupancy for current view
+      const occData = window._occData
       let totalBooked = 0, totalCapacity = 0
       occData.forEach(o => { totalBooked += o.booked || 0; totalCapacity += o.capacity || 0 })
       const weeklyOccPct = totalCapacity > 0 ? Math.round((totalBooked / totalCapacity) * 100) : 0
@@ -1337,19 +1364,20 @@
         <!-- Kalender oben -->
         <div id="dashboardCalendar" class="mb-8"></div>
 
-        <!-- KPI Cards -->
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
-          ${kpiCard('Aktive Kurse', d.publishedActivities, d.totalActivities + ' gesamt', 'bg-brand-100 text-brand-500', '📚')}
-          ${kpiCard('Buchungen', d.confirmedBookings, s.total + ' gesamt', 'bg-green-50 text-green-600', '✅')}
-          ${kpiCard('Unbezahlt', d.unpaidBookings, 'offene Zahlungen', 'bg-amber-50 text-amber-600', '💰')}
-          ${kpiCard('Auslastung', weeklyOccPct + '%', totalBooked + '/' + totalCapacity + ' Plätze', 'bg-brand-100 text-brand-400', '📊')}
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
-          ${kpiCard('Umsatz', formatCurrency(d.totalRevenue), 'Gesamt', 'bg-emerald-50 text-emerald-600', '💶')}
-          ${kpiCard('Offene Rechnungen', formatCurrency(d.outstandingInvoices), '', 'bg-orange-50 text-orange-600', '📄')}
-          ${kpiCard('Warteliste', waitlistRes.count, 'Interessenten', 'bg-amber-50 text-amber-600', '📋')}
-          ${kpiCard('Probestunden', d.upcomingTrials || 0, 'anstehend', 'bg-brand-100 text-brand-500', '🎯')}
+        <!-- KPI Cards (dynamic — updates with calendar view) -->
+        <div id="kpiSection">
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+            ${kpiCard('Aktive Kurse', d.publishedActivities, d.totalActivities + ' gesamt', 'bg-brand-100 text-brand-500', '📚')}
+            ${kpiCard('Buchungen', d.confirmedBookings, s.total + ' gesamt', 'bg-green-50 text-green-600', '✅')}
+            ${kpiCard('Unbezahlt', d.unpaidBookings, 'offene Zahlungen', 'bg-amber-50 text-amber-600', '💰')}
+            ${kpiCard('Auslastung', weeklyOccPct + '%', totalBooked + '/' + totalCapacity + ' Plätze', 'bg-brand-100 text-brand-400', '📊')}
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+            ${kpiCard('Umsatz', formatCurrency(d.totalRevenue), 'Gesamt', 'bg-emerald-50 text-emerald-600', '💶')}
+            ${kpiCard('Offene Rechnungen', formatCurrency(d.outstandingInvoices), '', 'bg-orange-50 text-orange-600', '📄')}
+            ${kpiCard('Warteliste', waitlistRes.count, 'Interessenten', 'bg-amber-50 text-amber-600', '📋')}
+            ${kpiCard('Probestunden', d.upcomingTrials || 0, 'anstehend', 'bg-brand-100 text-brand-500', '🎯')}
+          </div>
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
