@@ -242,7 +242,8 @@ window._waitlistCourse=async function(title,date){
   const dateStr=sd.getDate()+'. '+ML[sd.getMonth()]+' '+sd.getFullYear()
   const course=courses.find(c=>c.title===title)
   if(!course){alert('Kurs nicht gefunden');return}
-  const html='<div class="book-modal"><div class="book-modal-inner">'+
+  var wlActId=course.id
+  var html='<div class="book-modal"><div class="book-modal-inner">'+
     '<h3>Warteliste: '+esc(title)+'</h3>'+
     '<p>'+dateStr+' — Aktuell kein Kursblock verfügbar. Tragen Sie sich ein und wir benachrichtigen Sie, sobald der Kurs startet.</p>'+
     '<input id="wlChildFirst" placeholder="Vorname Kind *" required>'+
@@ -253,27 +254,31 @@ window._waitlistCourse=async function(title,date){
     '<input id="wlEmail" type="email" placeholder="E-Mail *" required>'+
     '<input id="wlPhone" placeholder="Telefon (optional)">'+
     '<div class="btn-row">'+
-    '<button class="btn-send" onclick="window._submitWaitlist(\''+course.id+'\')">Auf Warteliste eintragen</button>'+
-    '<button class="btn-cancel" onclick="this.closest(\'.book-modal\').remove()">Abbrechen</button>'+
+    '<button class="btn-send" onclick="window._submitWaitlist()">Auf Warteliste eintragen</button>'+
+    '<button class="btn-cancel" onclick="document.querySelector(String.fromCharCode(46)+String.fromCharCode(98)+String.fromCharCode(111)+String.fromCharCode(111)+String.fromCharCode(107)+String.fromCharCode(45)+String.fromCharCode(109)+String.fromCharCode(111)+String.fromCharCode(100)+String.fromCharCode(97)+String.fromCharCode(108))?.remove()">Abbrechen</button>'+
     '</div></div></div>'
   app.insertAdjacentHTML('beforeend',html)
 }
-window._submitWaitlist=async function(activityId){
-  const f=s=>document.getElementById(s)?.value?.trim()||''
-  const childFirst=f('wlChildFirst'),childLast=f('wlChildLast'),childYear=f('wlChildYear')
-  const parentFirst=f('wlParentFirst'),parentLast=f('wlParentLast'),email=f('wlEmail'),phone=f('wlPhone')
+window._submitWaitlist=async function(){
+  var activityId=window._wlActId||wlActId
+  var f=function(s){var el=document.getElementById(s);return el?el.value.trim():''}
+  var childFirst=f('wlChildFirst'),childLast=f('wlChildLast'),childYear=f('wlChildYear')
+  var parentFirst=f('wlParentFirst'),parentLast=f('wlParentLast'),email=f('wlEmail'),phone=f('wlPhone')
   if(!childFirst||!childLast||!childYear||!parentFirst||!parentLast||!email){alert('Bitte alle Pflichtfelder ausfüllen');return}
   try{
-    const r=await fetch('/api/checkout/create-session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({slug:slug,activityId:activityId,child:{firstName:childFirst,lastName:childLast,birthYear:parseInt(childYear)},parent:{firstName:parentFirst,lastName:parentLast,email:email,phone:phone},paymentMethod:'onsite'})})
-    const data=await r.json()
-    document.querySelector('.book-modal').remove()
-    if(data.error&&data.error.includes('Warteliste')){
-      app.insertAdjacentHTML('beforeend','<div class="book-modal"><div class="book-modal-inner" style="text-align:center"><div style="font-size:32px;margin-bottom:12px">✅</div><h3>Auf der Warteliste!</h3><p style="margin:12px 0">Sie werden benachrichtigt, sobald ein Kursblock verfügbar ist.</p><button class="btn-send" onclick="this.closest(\'.book-modal\').remove()">OK</button></div></div>')
+    var r=await fetch('/api/checkout/create-session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({slug:slug,activityId:activityId,child:{firstName:childFirst,lastName:childLast,birthYear:parseInt(childYear)},parent:{firstName:parentFirst,lastName:parentLast,email:email,phone:phone},paymentMethod:'onsite'})})
+    var data=await r.json()
+    var modal=document.querySelector('.book-modal')
+    if(modal)modal.remove()
+    var msg=''
+    if(data.error&&data.error.indexOf('Warteliste')>-1){
+      msg='<div class="book-modal"><div class="book-modal-inner" style="text-align:center"><div style="font-size:32px;margin-bottom:12px">✅</div><h3>Auf der Warteliste!</h3><p style="margin:12px 0">Sie werden benachrichtigt, sobald ein Kursblock verfügbar ist.</p><button class="btn-send" onclick="var m=document.querySelector(String.fromCharCode(46,98,111,111,107,45,109,111,100,97,108));if(m)m.remove()">OK</button></div></div>'
     } else if(data.success){
-      app.insertAdjacentHTML('beforeend','<div class="book-modal"><div class="book-modal-inner" style="text-align:center"><div style="font-size:32px;margin-bottom:12px">✅</div><h3>Buchung bestätigt!</h3><p style="margin:12px 0">Vielen Dank für Ihre Buchung.</p><button class="btn-send" onclick="this.closest(\'.book-modal\').remove()">OK</button></div></div>')
+      msg='<div class="book-modal"><div class="book-modal-inner" style="text-align:center"><div style="font-size:32px;margin-bottom:12px">✅</div><h3>Buchung bestätigt!</h3><p style="margin:12px 0">Vielen Dank für Ihre Buchung.</p><button class="btn-send" onclick="var m=document.querySelector(String.fromCharCode(46,98,111,111,107,45,109,111,100,97,108));if(m)m.remove()">OK</button></div></div>'
     } else {
-      alert(data.error||'Fehler')
+      alert(data.error||'Fehler');return
     }
+    app.insertAdjacentHTML('beforeend',msg)
   }catch(e){alert('Verbindungsfehler')}
 }
 window._bookCourse=async function(title,date,time){
