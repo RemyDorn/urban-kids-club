@@ -1464,18 +1464,35 @@
       activities.forEach(function(a) {
         if (a.status !== 'published' || !a.schedule?.slots) return
         var sStart = a.schedule.startDate || '2020-01-01'
-        var sEnd = a.schedule.endDate || '2099-12-31'
-        var totalSessions = 0, rangeSessions = 0
+        // Use packageSize if available, otherwise use endDate (with sane fallback)
+        var pkgSize = a.pricing && a.pricing[0] && a.pricing[0].packageSize ? a.pricing[0].packageSize : 0
+        // If no endDate, calculate from packageSize or default to 12 weeks max
+        var sEnd = a.schedule.endDate
+        if (!sEnd && pkgSize > 0) {
+          // Estimate endDate from packageSize: pkgSize sessions × 7 days per session
+          var estEnd = new Date(sStart + 'T00:00:00')
+          estEnd.setDate(estEnd.getDate() + (pkgSize * 7))
+          sEnd = fmtDate(estEnd)
+        }
+        if (!sEnd) {
+          var maxEnd = new Date(sStart + 'T00:00:00')
+          maxEnd.setDate(maxEnd.getDate() + 84) // 12 weeks max fallback
+          sEnd = fmtDate(maxEnd)
+        }
+        var totalSessions = pkgSize || 0
+        var rangeSessions = 0
         a.schedule.slots.forEach(function(slot) {
           var targetDay = dayToNum[slot.day]
           if (targetDay === undefined) return
-          // Count ALL sessions (entire course duration)
-          var allStart = new Date(sStart + 'T00:00:00')
-          var allEnd = new Date(sEnd + 'T00:00:00')
-          var c = new Date(allStart)
-          while (c <= allEnd) {
-            if (c.getDay() === targetDay) totalSessions++
-            c.setDate(c.getDate() + 1)
+          // Count ALL sessions only if packageSize not available
+          if (!pkgSize) {
+            var allStart = new Date(sStart + 'T00:00:00')
+            var allEnd = new Date(sEnd + 'T00:00:00')
+            var c = new Date(allStart)
+            while (c <= allEnd) {
+              if (c.getDay() === targetDay) totalSessions++
+              c.setDate(c.getDate() + 1)
+            }
           }
           // Count sessions in visible range
           var cur = new Date(startDate)
