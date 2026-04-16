@@ -1592,8 +1592,11 @@ export function registerRoutes(router: Router) {
     if (!auth) return
     // Ownership check: verify session belongs to provider's block
     const db = getServiceClient()
-    const { data: sess } = await db.from('block_sessions').select('block_id').eq('id', req.params.id).maybeSingle()
+    const { data: sess } = await db.from('block_sessions').select('block_id, date, start_time').eq('id', req.params.id).maybeSingle()
     if (!sess) return res.error(404, 'Session nicht gefunden')
+    // Past-event locking: prevent cancelling sessions that already happened
+    const sessionDate = new Date(sess.date + 'T' + (sess.start_time || '00:00') + ':00')
+    if (sessionDate < new Date()) return res.error(400, 'Vergangene Termine können nicht mehr geändert werden.')
     const { data: block } = await db.from('course_blocks').select('provider_id').eq('id', sess.block_id).maybeSingle()
     if (!block || block.provider_id !== auth.providerId) return res.error(403, 'Zugriff verweigert')
     const result = await CourseBlockService.cancelSession({
@@ -1616,6 +1619,9 @@ export function registerRoutes(router: Router) {
     const { data: session, error: sessErr } = await db.from('block_sessions').select('*, block:course_blocks!inner(provider_id)').eq('id', req.params.id).single()
     if (sessErr || !session) return res.error(404, 'Session nicht gefunden')
     if ((session as any).block?.provider_id !== auth.providerId) return res.error(403, 'Zugriff verweigert')
+    // Past-event locking
+    const sessDate = new Date(session.date + 'T' + (session.start_time || '00:00') + ':00')
+    if (sessDate < new Date()) return res.error(400, 'Vergangene Termine können nicht mehr verschoben werden.')
     // Validate date
     const newDate = req.body.date
     if (!newDate || !/^\d{4}-\d{2}-\d{2}$/.test(newDate)) return res.error(400, 'Ungültiges Datum')
