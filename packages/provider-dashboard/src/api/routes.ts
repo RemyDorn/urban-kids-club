@@ -50,8 +50,14 @@ function safeParseInt(value: string | undefined, defaultValue: number): number {
   return isNaN(parsed) ? defaultValue : parsed
 }
 
+// Helper: escape HTML to prevent XSS
+function escHtml(s: string): string {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
+}
 // Helper: render a branded HTML page (for confirm/decline/error pages)
 function htmlPage(icon: string, title: string, message: string, color = '#059669') {
+  const safeTitle = escHtml(title)
+  const safeMsg = message.replace(/</g,'&lt;').replace(/>/g,'&gt;') // allow <strong> by not escaping it fully — actually let's be safe
   return `<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Inter',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#faf9f8}
@@ -60,7 +66,7 @@ function htmlPage(icon: string, title: string, message: string, color = '#059669
 @keyframes pop{0%{transform:scale(0)}50%{transform:scale(1.2)}100%{transform:scale(1)}}
 h2{color:#1f2937;font-size:22px;margin-bottom:8px}p{color:#64748b;font-size:14px;line-height:1.6;margin-bottom:20px}
 .footer{font-size:11px;color:#94a3b8;margin-top:24px}
-</style></head><body><div class="card"><div class="icon">${icon}</div><h2>${title}</h2><p>${message}</p><div class="footer">Powered by Urban Kids Club</div></div></body></html>`
+</style></head><body><div class="card"><div class="icon">${icon}</div><h2>${safeTitle}</h2><p>${safeMsg}</p><div class="footer">Powered by Urban Kids Club</div></div></body></html>`
 }
 
 export function registerRoutes(router: Router) {
@@ -567,13 +573,13 @@ export function registerRoutes(router: Router) {
     const db = getServiceClient()
     const token = _req.query.token
     const { data: entry } = await db.from('waitlist_entries')
-      .select('*, parents!inner(name, email), activities!inner(title, provider_id, capacity)')
+      .select('*, parents!inner(name, email), activities!inner(title, provider_id, capacity, payment_online, payment_onsite)')
       .eq('id', _req.params.id).eq('status', 'offered').maybeSingle()
 
-    // Verify token
-    if (entry && token && entry.confirm_token && entry.confirm_token !== token) {
+    // Verify token (mandatory)
+    if (!token || !entry.confirm_token || token !== entry.confirm_token) {
       res.raw.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
-      return res.raw.end(htmlPage('🔒', 'Ungültiger Link', 'Dieser Bestätigungslink ist ungültig.', '#ef4444'))
+      return res.raw.end(htmlPage('🔒', 'Ungültiger Link', 'Dieser Bestätigungslink ist ungültig oder abgelaufen.', '#ef4444'))
     }
 
     if (!entry) {
@@ -627,10 +633,10 @@ export function registerRoutes(router: Router) {
     const { data: entry } = await db.from('waitlist_entries')
       .select('activity_id, position, confirm_token').eq('id', _req.params.id).eq('status', 'offered').maybeSingle()
 
-    // Verify token
-    if (entry && token && entry.confirm_token && entry.confirm_token !== token) {
+    // Verify token (mandatory)
+    if (!token || !entry.confirm_token || token !== entry.confirm_token) {
       res.raw.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
-      return res.raw.end(htmlPage('🔒', 'Ungültiger Link', 'Dieser Link ist ungültig.', '#ef4444'))
+      return res.raw.end(htmlPage('🔒', 'Ungültiger Link', 'Dieser Link ist ungültig oder abgelaufen.', '#ef4444'))
     }
 
     if (!entry) {
