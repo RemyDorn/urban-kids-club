@@ -966,7 +966,12 @@
     }
 
     function showEventDetail(ev, activity, occ) {
-      const occPct = occ ? Math.round(occ.occupancy * 100) : 0
+      // Use per-date booking count if available (important for multi-block courses)
+      var dateBooked = occ ? occ.booked : 0
+      if (occ && occ.byDate && ev.date && occ.byDate[ev.date] !== undefined) {
+        dateBooked = occ.byDate[ev.date]
+      }
+      var occPct = occ && occ.capacity > 0 ? Math.round((dateBooked / occ.capacity) * 100) : 0
       // Parse event date (YYYY-MM-DD string from fmtDate)
       const evDate = ev.date
       let eventDateStr = evDate || 'Unbekannt'
@@ -1039,8 +1044,8 @@
                   <div class="h-3 rounded-full transition-all ${occPct > 80 ? 'bg-red-500' : occPct > 50 ? 'bg-amber-500' : 'bg-green-500'}" style="width:${occPct}%"></div>
                 </div>
                 <div class="flex justify-between text-sm">
-                  <span class="text-gray-500">Gebucht: <strong>${occ.booked}</strong> / ${occ.capacity}</span>
-                  ${occ.waitlisted > 0 ? `<span class="text-amber-600 font-medium">${occ.waitlisted} auf Warteliste</span>` : `<span class="text-green-600">${occ.capacity - occ.booked} Plätze frei</span>`}
+                  <span class="text-gray-500">Gebucht: <strong>${dateBooked}</strong> / ${occ.capacity}</span>
+                  ${occ.waitlisted > 0 ? `<span class="text-amber-600 font-medium">${occ.waitlisted} auf Warteliste</span>` : `<span class="text-green-600">${Math.max(0, occ.capacity - dateBooked)} Plätze frei</span>`}
                 </div>
               </div>
             ` : ''}
@@ -1049,19 +1054,19 @@
             <div class="bg-gray-50 border border-gray-200 rounded-lg p-3 text-center">
               <div class="text-sm text-gray-500">Dieser Termin hat bereits stattgefunden.</div>
             </div>
-            ` : occ && (occ.capacity - occ.booked) > 0 ? `
+            ` : occ && (occ.capacity - dateBooked) > 0 ? `
             <!-- Last-Minute Kids Club Freigabe -->
             <div class="border-2 border-brand-200 rounded-lg p-4 bg-brand-50/30">
               <div class="flex items-center gap-2 mb-2">
                 <div class="w-5 h-5 bg-brand-500 rounded text-white flex items-center justify-center text-xs font-bold">U</div>
                 <span class="text-sm font-semibold text-brand-700">Last-Minute für Kids Club freigeben</span>
               </div>
-              <div class="text-xs text-gray-600 mb-3">${occ.capacity - occ.booked} freie Plätze – für die Plattform freischalten, damit Eltern über Kids Club buchen können.</div>
+              <div class="text-xs text-gray-600 mb-3">${occ.capacity - dateBooked} freie Plätze – für die Plattform freischalten, damit Eltern über Kids Club buchen können.</div>
               <div class="flex items-center gap-3">
                 <div class="flex items-center gap-2">
                   <label class="text-xs text-gray-600">Plätze:</label>
-                  <input type="number" id="lastMinuteSpots" min="1" max="${occ.capacity - occ.booked}" value="${occ.capacity - occ.booked}" class="w-16 border border-gray-200 rounded px-2 py-1 text-sm text-center">
-                  <span class="text-xs text-gray-400">von ${occ.capacity - occ.booked} freien</span>
+                  <input type="number" id="lastMinuteSpots" min="1" max="${occ.capacity - dateBooked}" value="${occ.capacity - dateBooked}" class="w-16 border border-gray-200 rounded px-2 py-1 text-sm text-center">
+                  <span class="text-xs text-gray-400">von ${occ.capacity - dateBooked} freien</span>
                 </div>
                 <button onclick="releaseToKidsClub('${activity?.id}', document.getElementById('lastMinuteSpots').value); document.getElementById('calModal').className='hidden'" class="px-4 py-1.5 bg-brand-500 text-white text-xs rounded-lg font-medium hover:bg-brand-600">Jetzt freigeben</button>
               </div>
@@ -1400,19 +1405,43 @@
 
       var occPct = totalCapacity > 0 ? Math.round((totalBooked / totalCapacity) * 100) : 0
 
-      // Filter revenue by visible date range
+      // Build set of activity IDs that have sessions in visible range
+      var activeActivityIds = new Set()
+      activities.forEach(function(a) {
+        if (a.status !== 'published' || !a.schedule?.slots) return
+        var sStart = a.schedule.startDate || '2020-01-01'
+        var sEnd = a.schedule.endDate || '2099-12-31'
+        a.schedule.slots.forEach(function(slot) {
+          var targetDay = dayToNum[slot.day]
+          if (targetDay === undefined) return
+          var cur = new Date(startDate)
+          while (cur <= endDate) {
+            if (cur.getDay() === targetDay) {
+              var ds = fmtDate(cur)
+              if (ds >= sStart && ds <= sEnd) activeActivityIds.add(a.id)
+            }
+            cur.setDate(cur.getDate() + 1)
+          }
+        })
+      })
+
+      // Build activity price map for unpaid amount fallback
+      var actPriceMap = {}
+      activities.forEach(function(a) {
+        if (a.pricing && a.pricing.length) actPriceMap[a.id] = a.pricing[0].amount || a.pricing[0].price || 0
+      })
+
+      // Revenue: sum bookings whose activity has a session in visible range
       var rangeRevenue = 0, rangeUnpaid = 0, rangeUnpaidCount = 0
-      var startStr = fmtDate(startDate), endStr = fmtDate(endDate)
       var allBookings = window._bookingsData || []
       allBookings.forEach(function(b) {
         if (b.status === 'cancelled') return
-        var bDate = (b.createdAt || '').slice(0, 10)
-        if (bDate >= startStr && bDate <= endStr) {
-          if (b.paymentStatus === 'paid') rangeRevenue += b.amountPaid || 0
-          if (b.paymentStatus === 'unpaid' || b.paymentStatus === 'pending') {
-            rangeUnpaidCount++
-            rangeUnpaid += b.amountPaid || 0
-          }
+        if (!activeActivityIds.has(b.activityId)) return
+        if (b.paymentStatus === 'paid') rangeRevenue += b.amountPaid || 0
+        if (b.paymentStatus === 'unpaid' || b.paymentStatus === 'pending') {
+          rangeUnpaidCount++
+          // Use amountPaid if set, otherwise use activity price
+          rangeUnpaid += (b.amountPaid > 0 ? b.amountPaid : (actPriceMap[b.activityId] || 0))
         }
       })
 

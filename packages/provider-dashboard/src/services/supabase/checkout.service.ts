@@ -67,8 +67,22 @@ export class CheckoutService {
             priority: 'normal',
             status: 'waiting',
           })
+          // Send waitlist confirmation email
+          try {
+            const { EmailService } = await import('../../lib/email')
+            const { data: activity } = await db.from('activities').select('title').eq('id', params.activityId).maybeSingle()
+            const { data: provider } = await db.from('providers').select('company_name').eq('id', params.providerId).single()
+            await EmailService.sendWaitlistConfirmation(params.parentEmail, {
+              parentName: params.parentFirstName,
+              childName: (params.childFirstName + ' ' + params.childLastName).trim(),
+              courseName: activity?.title || 'Kurs',
+              providerName: provider?.company_name || '',
+            })
+          } catch (emailErr) {
+            console.error('[Checkout] Waitlist email failed:', emailErr)
+          }
         }
-        throw new Error('Aktuell keine Termine verfügbar. Sie wurden auf die Warteliste gesetzt und werden benachrichtigt, sobald ein neuer Kursblock startet.')
+        throw new Error('Aktuell sind leider keine Termine verfügbar. Wir haben ' + params.childFirstName + ' auf die Warteliste gesetzt und melden uns, sobald ein neuer Kursblock startet! 🤞')
       }
     }
 
@@ -117,8 +131,22 @@ export class CheckoutService {
             body: params.childFirstName + ' wurde auf die Warteliste gesetzt.',
             data: { activityId: params.activityId },
           })
+          // Send waitlist confirmation email
+          try {
+            const { EmailService } = await import('../../lib/email')
+            const { data: activity } = await db.from('activities').select('title').eq('id', params.activityId).maybeSingle()
+            const { data: provider } = await db.from('providers').select('company_name').eq('id', params.providerId).single()
+            await EmailService.sendWaitlistConfirmation(params.parentEmail, {
+              parentName: params.parentFirstName,
+              childName: (params.childFirstName + ' ' + params.childLastName).trim(),
+              courseName: activity?.title || 'Kurs',
+              providerName: provider?.company_name || '',
+            })
+          } catch (emailErr) {
+            console.error('[Checkout] Waitlist email failed:', emailErr)
+          }
         }
-        throw new Error('Der Kurs ist leider voll. Du wurdest auf die Warteliste gesetzt und wirst benachrichtigt, sobald ein Platz frei wird.')
+        throw new Error('Tut uns leid — da war leider jemand schneller! 😅 Aber keine Sorge, wir haben ' + params.childFirstName + ' auf die Warteliste gesetzt. Sobald ein Platz frei wird, melden wir uns sofort bei dir!')
       }
       throw new Error(rpcResult.error)
     }

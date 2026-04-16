@@ -109,18 +109,28 @@ export const SupabaseReportingService = {
       }
     }
 
-    // Add block enrollments to counts (package = all sessions)
+    // Add block enrollments per-date (each block's enrollments only on its own sessions)
     for (const [blockId, enrollCount] of enrollmentsByBlock.entries()) {
       const actId = blockActivityMap.get(blockId)
       if (!actId) continue
-      // Total count: use enrollment count (replaces individual bookings for block courses)
-      bookingCounts.set(actId, Math.max(bookingCounts.get(actId) ?? 0, enrollCount))
-      // Per-date: spread enrollments across ALL session dates
+      // Per-date: spread this block's enrollments across only THIS block's session dates
       const dates = sessionDatesByBlock.get(blockId) ?? []
       for (const date of dates) {
         const key = `${actId}:${date}`
+        // Use this block's enrollment count for its dates (don't mix blocks)
         bookingsByDate.set(key, Math.max(bookingsByDate.get(key) ?? 0, enrollCount))
       }
+    }
+    // Total booked = max enrollments across any single block (for the overview card)
+    // Group enrollments by activity to find the max across blocks
+    const enrollByActivity = new Map<string, number>()
+    for (const [blockId, enrollCount] of enrollmentsByBlock.entries()) {
+      const actId = blockActivityMap.get(blockId)
+      if (!actId) continue
+      enrollByActivity.set(actId, (enrollByActivity.get(actId) ?? 0) + enrollCount)
+    }
+    for (const [actId, totalEnroll] of enrollByActivity.entries()) {
+      bookingCounts.set(actId, Math.max(bookingCounts.get(actId) ?? 0, totalEnroll))
     }
 
     return (activities ?? []).map((a: { id: string; title: string; capacity: number }) => {
