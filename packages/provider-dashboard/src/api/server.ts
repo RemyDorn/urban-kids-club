@@ -187,7 +187,9 @@ function getCoursesForDate(d){
       }
     })
   })
-  return res.sort((a,b)=>a.start.localeCompare(b.start))
+  // Deduplicate: same title+start+end on same date
+  const seen=new Set()
+  return res.filter(e=>{const k=e.title+e.start+e.end;if(seen.has(k))return false;seen.add(k);return true}).sort((a,b)=>a.start.localeCompare(b.start))
 }
 function render(){
   const today=new Date(),todayStr=fmtD(today)

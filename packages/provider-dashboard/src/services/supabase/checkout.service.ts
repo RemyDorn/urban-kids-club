@@ -93,9 +93,48 @@ export class CheckoutService {
     })
 
     if (rpcError) throw new Error(rpcError.message)
-    if (rpcResult?.error) throw new Error(rpcResult.error)
+    if (rpcResult?.error) {
+      // If course is full but block exists → add to waitlist instead of error
+      if (rpcResult.error.includes('ausgebucht') && activeBlock) {
+        const { count: existingWl } = await db.from('waitlist_entries')
+          .select('*', { count: 'exact', head: true })
+          .eq('activity_id', params.activityId).eq('parent_id', parent.id)
+          .in('status', ['waiting', 'offered'])
+        if (!existingWl || existingWl === 0) {
+          const { count: wlCount } = await db.from('waitlist_entries')
+            .select('*', { count: 'exact', head: true })
+            .eq('activity_id', params.activityId).in('status', ['waiting', 'offered'])
+          await db.from('waitlist_entries').insert({
+            activity_id: params.activityId, parent_id: parent.id,
+            child_info: { firstName: params.childFirstName, lastName: params.childLastName, birthYear: params.childBirthYear },
+            position: (wlCount ?? 0) + 1, priority: 'normal', status: 'waiting',
+          })
+          // Notify provider
+          await db.from('notifications').insert({
+            recipient_type: 'provider', recipient_id: params.providerId,
+            type: 'block_full', channel: 'in_app',
+            title: 'Kurs ist voll — Warteliste!',
+            body: params.childFirstName + ' wurde auf die Warteliste gesetzt.',
+            data: { activityId: params.activityId },
+          })
+        }
+        throw new Error('Der Kurs ist leider voll. Du wurdest auf die Warteliste gesetzt und wirst benachrichtigt, sobald ein Platz frei wird.')
+      }
+      throw new Error(rpcResult.error)
+    }
 
     const booking = { id: rpcResult.id, ...rpcResult }
+
+    // 3b. Notify provider about new booking
+    try {
+      await db.from('notifications').insert({
+        recipient_type: 'provider', recipient_id: params.providerId,
+        type: 'new_booking', channel: 'in_app',
+        title: 'Neue Buchung!',
+        body: params.childFirstName + ' ' + params.childLastName + ' hat gebucht (' + (params.paymentMethod === 'onsite' ? 'Vor-Ort-Zahlung' : 'Online bezahlt') + ').',
+        data: { bookingId: booking.id, activityId: params.activityId },
+      })
+    } catch(e) { /* non-blocking */ }
 
     // 4. Auto-enroll in the active block
     try {

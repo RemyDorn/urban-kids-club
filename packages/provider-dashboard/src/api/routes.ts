@@ -928,7 +928,15 @@ export function registerRoutes(router: Router) {
     // Read template and replace placeholders
     const fs = await import('node:fs/promises')
     const path = await import('node:path')
-    let template = await fs.readFile(path.join(__dirname, '../frontend/invoice-template.html'), 'utf-8')
+    const { fileURLToPath } = await import('node:url')
+    const currentDir = path.dirname(fileURLToPath(import.meta.url))
+    let template: string
+    try {
+      template = await fs.readFile(path.join(currentDir, '../frontend/invoice-template.html'), 'utf-8')
+    } catch {
+      // Fallback: try relative to cwd
+      template = await fs.readFile(path.resolve('src/frontend/invoice-template.html'), 'utf-8')
+    }
 
     const replacements: Record<string, string> = {
       '{{invoiceNumber}}': invoice.number,
