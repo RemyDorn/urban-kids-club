@@ -93,13 +93,23 @@ export class CheckoutService {
       birthYear: params.childBirthYear,
     }
 
-    // Waitlist confirmations bypass normal capacity but check makeup limit
+    // Waitlist confirmations: provider explicitly approved → check capacity + makeup from block
     if (params.skipBlockCheck) {
-      // Check total capacity (capacity + makeup_capacity)
       const { data: actCap } = await db.from('activities').select('capacity').eq('id', params.activityId).single()
-      const { data: provMakeup } = await db.from('providers').select('makeup_enabled, makeup_capacity').eq('id', params.providerId).single()
       const baseCapacity = actCap?.capacity ?? 999
-      const makeupSlots = provMakeup?.makeup_enabled ? (provMakeup?.makeup_capacity ?? 2) : 0
+
+      // Read makeup_capacity from the active block (not provider settings)
+      let makeupSlots = 0
+      const { data: activeBlk } = await db.from('course_blocks')
+        .select('makeup_capacity').eq('activity_id', params.activityId)
+        .in('status', ['active', 'upcoming']).order('start_date', { ascending: true }).limit(1).maybeSingle()
+      if (activeBlk) {
+        makeupSlots = activeBlk.makeup_capacity ?? 0
+      } else {
+        // Fallback to provider settings
+        const { data: provMakeup } = await db.from('providers').select('makeup_enabled, makeup_capacity').eq('id', params.providerId).single()
+        makeupSlots = provMakeup?.makeup_enabled ? (provMakeup?.makeup_capacity ?? 0) : 0
+      }
       const maxTotal = baseCapacity + makeupSlots
 
       const { count: currentBookings } = await db.from('provider_bookings')
