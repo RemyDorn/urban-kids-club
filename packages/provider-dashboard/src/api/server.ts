@@ -169,7 +169,6 @@ try{
   if(!r.ok){app.innerHTML='<div class="empty-state">Anbieter nicht gefunden.</div>';return}
   const{data}=await r.json()
   courses=data.filter(a=>a.status==='published'&&a.schedule?.slots)
-  if(!courses.length){app.innerHTML='<div class="empty-state">Aktuell keine Kurse verfügbar.</div>';return}
   render()
 }catch(e){app.innerHTML='<div class="empty-state">Fehler beim Laden.</div>'}
 
