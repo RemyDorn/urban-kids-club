@@ -4843,16 +4843,23 @@
               `}
             </div>
           </div>
+          <button onclick="saveCourseSettings()" class="mt-4 bg-brand-500 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-brand-600">Kursblock-Einstellungen speichern</button>
         </div>
       `
     }
 
     async function toggleMakeupSystem(enabled) {
+      // Just update UI, save happens on button click
+      currentProvider.makeup_enabled = enabled
+      currentProvider.makeupEnabled = enabled
+      renderSettings()
+    }
+
+    async function saveCourseSettings() {
       try {
+        const enabled = currentProvider.makeup_enabled || false
         await api('/providers/' + currentProvider.id, 'PUT', { makeup_enabled: enabled })
-        currentProvider.makeup_enabled = enabled
-        currentProvider.makeupEnabled = enabled
-        renderSettings()
+        alert('Kursblock-Einstellungen gespeichert!')
       } catch (err) { alert('Fehler: ' + err.message) }
     }
 
