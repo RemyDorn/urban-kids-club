@@ -234,6 +234,7 @@ window._selectDay=function(ds){selDate=selDate===ds?null:ds;render()}
 window._bookCourse=async function(title,date,time){
   const sd=new Date(+date.split('-')[0],+date.split('-')[1]-1,+date.split('-')[2])
   const dateStr=sd.getDate()+'. '+ML[sd.getMonth()]+' '+sd.getFullYear()
+  window._checkoutDate=date // Store booked date (YYYY-MM-DD)
 
   // Find activity ID from courses array
   const course=courses.find(c=>c.title===title)
@@ -360,7 +361,7 @@ window._bookCourse=async function(title,date,time){
         this.textContent='Wird verarbeitet...'
         this.disabled=true
         try{
-          const r=await fetch('/api/checkout/create-session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({slug:slug,activityId:course.id,blockId:course.blockId||null,child:window._checkoutChild,parent:window._checkoutParent,paymentMethod:window._checkoutPayMethod})})
+          const r=await fetch('/api/checkout/create-session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({slug:slug,activityId:course.id,blockId:course.blockId||null,bookedDate:window._checkoutDate||null,child:window._checkoutChild,parent:window._checkoutParent,paymentMethod:window._checkoutPayMethod})})
           const data=await r.json()
           if(!r.ok){alert(data.error||'Fehler beim Buchen');this.textContent='Erneut versuchen';this.disabled=false;return}
           if(data.redirect){window.top.location.href=data.redirect}

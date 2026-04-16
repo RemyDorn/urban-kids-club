@@ -57,24 +57,38 @@ export const SupabaseReportingService = {
     const activityIds = (activities ?? []).map((a: { id: string }) => a.id)
     if (activityIds.length === 0) return []
 
-    const { data: bookings, error: bookErr } = await sb.from('provider_bookings').select('activity_id, status').eq('provider_id', providerId)
+    const { data: bookings, error: bookErr } = await sb.from('provider_bookings').select('activity_id, status, booked_date').eq('provider_id', providerId)
     if (bookErr) throw new Error('Buchungen konnten nicht geladen werden: ' + bookErr.message)
 
     const bookingCounts = new Map<string, number>()
+    // Also count per activity+date for calendar occupancy
+    const bookingsByDate = new Map<string, number>()
     for (const b of bookings ?? []) {
       if (b.status === 'confirmed' || b.status === 'pending') {
         bookingCounts.set(b.activity_id, (bookingCounts.get(b.activity_id) ?? 0) + 1)
+        if (b.booked_date) {
+          const key = `${b.activity_id}:${b.booked_date}`
+          bookingsByDate.set(key, (bookingsByDate.get(key) ?? 0) + 1)
+        }
       }
     }
 
     return (activities ?? []).map((a: { id: string; title: string; capacity: number }) => {
       const booked = bookingCounts.get(a.id) ?? 0
+      // Build per-date occupancy map for this activity
+      const byDate: Record<string, number> = {}
+      for (const [key, count] of bookingsByDate.entries()) {
+        if (key.startsWith(a.id + ':')) {
+          byDate[key.split(':')[1]] = count
+        }
+      }
       return {
         activityId: a.id,
         title: a.title,
         capacity: a.capacity,
         booked,
         occupancy: a.capacity > 0 ? Math.round((booked / a.capacity) * 100) / 100 : 0,
+        byDate,
       }
     })
   },

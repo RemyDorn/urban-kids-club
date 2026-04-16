@@ -165,12 +165,15 @@ export function activityToDb(a: Partial<Activity> & { id?: ID; providerId?: ID }
 // ============================================================
 
 export function bookingFromDb(r: Row): Booking {
+  const ci = r.child_info ?? {} as any
+  const childName = ci.name || [ci.firstName, ci.lastName].filter(Boolean).join(' ') || ''
+  const childAge = ci.age || (ci.birthYear ? new Date().getFullYear() - ci.birthYear : 0)
   return {
     id: r.id,
     activityId: r.activity_id,
     providerId: r.provider_id,
     parentId: r.parent_id,
-    child: r.child_info ?? { name: '', age: 0, emergencyContact: '', emergencyPhone: '' },
+    child: { name: childName, age: childAge, firstName: ci.firstName, lastName: ci.lastName, birthYear: ci.birthYear },
     pricingOptionId: r.pricing_option_id ?? '',
     status: r.status ?? 'pending',
     paymentStatus: r.payment_status ?? 'unpaid',

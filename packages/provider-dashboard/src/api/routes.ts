@@ -1748,7 +1748,7 @@ export function registerRoutes(router: Router) {
   // ============================================================
 
   router.post('/api/checkout/create-session', async (req, res) => {
-    const { slug, activityId, blockId, child, parent, paymentMethod } = req.body as any
+    const { slug, activityId, blockId, child, parent, paymentMethod, bookedDate } = req.body as any
 
     // Server-side validation
     if (!slug || !activityId || !paymentMethod) return res.error(400, 'Pflichtfelder fehlen')
@@ -1796,6 +1796,7 @@ export function registerRoutes(router: Router) {
           childFirstName: child.firstName, childLastName: child.lastName, childBirthYear: child.birthYear,
           parentFirstName: parent.firstName, parentLastName: parent.lastName,
           parentEmail: parent.email, parentPhone: parent.phone || '',
+          bookedDate: bookedDate || undefined,
           paymentMethod: 'onsite', amount: price, currency: 'EUR',
         })
         return res.json({ success: true, bookingId: booking.id, redirect: provExtra?.booking_redirect_url || null })
@@ -1821,6 +1822,7 @@ export function registerRoutes(router: Router) {
           child_first: child.firstName, child_last: child.lastName, child_year: String(child.birthYear),
           parent_first: parent.firstName, parent_last: parent.lastName,
           parent_email: parent.email, parent_phone: parent.phone || '',
+          booked_date: bookedDate || '',
         },
       })
       return res.json({ success: true, redirect: url })
@@ -1895,6 +1897,7 @@ export function registerRoutes(router: Router) {
           childBirthYear: parseInt(meta.child_year) || 2020,
           parentFirstName: meta.parent_first, parentLastName: meta.parent_last,
           parentEmail: meta.parent_email, parentPhone: meta.parent_phone || '',
+          bookedDate: meta.booked_date || undefined,
           paymentMethod: 'stripe', amount: session.amount_total || 0,
           currency: session.currency || 'eur', stripeSessionId: session.id,
         })

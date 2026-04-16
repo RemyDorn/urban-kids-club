@@ -12,6 +12,7 @@ export class CheckoutService {
     parentLastName: string
     parentEmail: string
     parentPhone: string
+    bookedDate?: string
     paymentMethod: 'stripe' | 'paypal' | 'onsite'
     amount: number
     currency: string
@@ -83,6 +84,7 @@ export class CheckoutService {
       p_source: 'widget',
       p_stripe_session_id: params.stripeSessionId || null,
       p_paypal_order_id: params.paypalOrderId || null,
+      p_booked_date: params.bookedDate || null,
     })
 
     if (rpcError) throw new Error(rpcError.message)

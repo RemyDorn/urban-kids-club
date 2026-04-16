@@ -925,8 +925,14 @@
           const occ = occMap[ev.activityId]
           const actIdx = activities.data.findIndex(a => a.id === ev.activityId)
           const clr = getCourseColor(activity, actIdx)
-          const occPct = occ ? Math.round(occ.occupancy * 100) : 0
-          const occText = occ ? `${occ.booked}/${occ.capacity}` : ''
+          // Use per-date occupancy if available, else fall back to total
+          const dateStr = fmtDate(d)
+          const dateBooked = occ?.byDate?.[dateStr] ?? 0
+          const dateCapacity = occ?.capacity ?? 0
+          const hasDateData = occ?.byDate && Object.keys(occ.byDate).length > 0
+          const displayBooked = hasDateData ? dateBooked : (occ?.booked ?? 0)
+          const occPct = dateCapacity > 0 ? Math.round((displayBooked / dateCapacity) * 100) : 0
+          const occText = `${displayBooked}/${dateCapacity}`
 
           const firstCell = document.querySelector(`.cal-day-col[data-date="${fmtDate(d)}"][data-hour="7"]`)
           if (firstCell && !firstCell.style.position) {
@@ -1056,6 +1062,31 @@
               </div>
             </div>
             ` : ''}
+
+            <!-- Teilnehmerliste -->
+            <div id="calModalParticipants" class="mb-3"></div>
+            <script>
+              (async () => {
+                try {
+                  const actId = '${activity?.id || ''}'
+                  if (!actId) return
+                  const r = await fetch(API + '/activities/' + actId + '/bookings', {
+                    headers: currentSession?.access_token ? { 'Authorization': 'Bearer ' + currentSession.access_token } : {}
+                  })
+                  if (!r.ok) return
+                  const { data: bookings } = await r.json()
+                  const confirmed = (bookings || []).filter(b => b.status === 'confirmed')
+                  if (!confirmed.length) return
+                  const el = document.getElementById('calModalParticipants')
+                  if (!el) return
+                  el.innerHTML = '<div class="border border-gray-200 rounded-lg p-3"><div class="text-xs font-semibold text-gray-700 mb-2">Teilnehmer (' + confirmed.length + ')</div><div class="space-y-1">' +
+                    confirmed.map(b => '<div class="flex justify-between items-center text-xs py-1 px-2 bg-gray-50 rounded"><span class="font-medium">' +
+                      (b.child?.name || 'Unbekannt') + '</span><span class="text-gray-400">' +
+                      (b.child?.age ? b.child.age + ' J.' : '') + '</span></div>').join('') +
+                    '</div></div>'
+                } catch(e) {}
+              })()
+            </script>
 
             <div class="flex gap-3">
               <button onclick="filterBookingsByActivity('${activity?.id || ''}'); document.getElementById('calModal').className='hidden'" class="flex-1 bg-brand-500 text-white py-2 rounded-lg font-medium hover:bg-brand-600 transition-colors text-sm">Buchungen anzeigen</button>
@@ -1784,7 +1815,7 @@
                   <td class="px-6 py-4"><span class="px-2 py-1 rounded-full text-xs font-medium ${statusColors[b.status] || ''}">${statusLabelsDE[b.status] || b.status}</span></td>
                   <td class="px-6 py-4">
                     <span class="text-sm font-medium ${paymentColors[b.paymentStatus] || ''}">${paymentLabelsDE[b.paymentStatus] || b.paymentStatus}</span>
-                    ${b.amountPaid > 0 ? `<span class="text-xs text-gray-400 ml-1">(${(b.amountPaid / 100).toFixed(2)}€)</span>` : ''}
+                    ${b.amountPaid > 0 ? `<span class="text-xs text-gray-400 ml-1">(${Number(b.amountPaid).toFixed(2).replace('.',',')}€)</span>` : ''}
                     <div class="text-xs text-gray-400 mt-0.5">${({stripe:'💳 Stripe',paypal:'🅿️ PayPal',onsite:'🏠 Vor Ort'})[b.paymentMethod] || ''}</div>
                   </td>
                   <td class="px-6 py-4">
