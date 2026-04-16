@@ -50,6 +50,19 @@ function safeParseInt(value: string | undefined, defaultValue: number): number {
   return isNaN(parsed) ? defaultValue : parsed
 }
 
+// Helper: render a branded HTML page (for confirm/decline/error pages)
+function htmlPage(icon: string, title: string, message: string, color = '#059669') {
+  return `<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Inter',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#faf9f8}
+.card{text-align:center;background:#fff;padding:48px 40px;border-radius:20px;box-shadow:0 4px 24px rgba(0,0,0,0.08);max-width:400px;width:90%}
+.icon{width:72px;height:72px;border-radius:50%;background:${color};color:#fff;display:flex;align-items:center;justify-content:center;font-size:36px;margin:0 auto 20px;animation:pop .4s ease}
+@keyframes pop{0%{transform:scale(0)}50%{transform:scale(1.2)}100%{transform:scale(1)}}
+h2{color:#1f2937;font-size:22px;margin-bottom:8px}p{color:#64748b;font-size:14px;line-height:1.6;margin-bottom:20px}
+.footer{font-size:11px;color:#94a3b8;margin-top:24px}
+</style></head><body><div class="card"><div class="icon">${icon}</div><h2>${title}</h2><p>${message}</p><div class="footer">Powered by Urban Kids Club</div></div></body></html>`
+}
+
 export function registerRoutes(router: Router) {
 
   // ============================================================
@@ -552,18 +565,27 @@ export function registerRoutes(router: Router) {
   // Public: Confirm or decline waitlist offer (linked from email)
   router.get('/api/waitlist/:id/confirm', async (_req, res) => {
     const db = getServiceClient()
+    const token = _req.query.token
     const { data: entry } = await db.from('waitlist_entries')
       .select('*, parents!inner(name, email), activities!inner(title, provider_id, capacity)')
       .eq('id', _req.params.id).eq('status', 'offered').maybeSingle()
 
+    // Verify token
+    if (entry && token && entry.confirm_token && entry.confirm_token !== token) {
+      res.raw.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+      return res.raw.end(htmlPage('🔒', 'Ungültiger Link', 'Dieser Bestätigungslink ist ungültig.', '#ef4444'))
+    }
+
     if (!entry) {
-      return res.json({ error: 'Dieses Angebot ist leider nicht mehr gültig.' })
+      res.raw.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+      return res.raw.end(htmlPage('⚠️', 'Nicht mehr gültig', 'Dieses Angebot wurde bereits bestätigt, abgelehnt oder ist abgelaufen.', '#f59e0b'))
     }
 
     // Check if expired
     if (entry.expires_at && new Date(entry.expires_at) < new Date()) {
       await db.from('waitlist_entries').update({ status: 'expired' }).eq('id', _req.params.id)
-      return res.json({ error: 'Das Angebot ist abgelaufen. Bitte kontaktiere den Anbieter.' })
+      res.raw.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+      return res.raw.end(htmlPage('⏰', 'Leider abgelaufen', 'Das Angebot ist abgelaufen. Bitte kontaktiere den Anbieter für einen neuen Termin.', '#ef4444'))
     }
 
     // Create booking FIRST, then update status (atomic order matters)
@@ -586,24 +608,34 @@ export function registerRoutes(router: Router) {
         currency: 'EUR',
       })
     } catch (bookErr: any) {
-      // Booking failed — DON'T change waitlist status, tell customer
       console.error('[Waitlist] Booking creation failed:', bookErr)
-      return res.error(400, bookErr.message || 'Buchung konnte nicht erstellt werden. Bitte kontaktiere den Anbieter.')
+      res.raw.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+      return res.raw.end(htmlPage('❌', 'Buchung fehlgeschlagen', bookErr.message || 'Bitte kontaktiere den Anbieter.', '#ef4444'))
     }
 
     // Booking succeeded — now mark waitlist entry as accepted
     await db.from('waitlist_entries').update({ status: 'accepted' }).eq('id', _req.params.id)
 
-    res.json({ success: true, message: 'Buchung bestätigt! Dein Platz ist reserviert.' })
+    const courseName = activity?.title || 'den Kurs'
+    res.raw.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+    res.raw.end(htmlPage('✓', 'Buchung bestätigt!', 'Dein Platz für <strong>' + courseName + '</strong> ist reserviert. Du erhältst eine Bestätigung per E-Mail.', '#059669'))
   })
 
   router.get('/api/waitlist/:id/decline-offer', async (_req, res) => {
     const db = getServiceClient()
+    const token = _req.query.token
     const { data: entry } = await db.from('waitlist_entries')
-      .select('activity_id, position').eq('id', _req.params.id).eq('status', 'offered').maybeSingle()
+      .select('activity_id, position, confirm_token').eq('id', _req.params.id).eq('status', 'offered').maybeSingle()
+
+    // Verify token
+    if (entry && token && entry.confirm_token && entry.confirm_token !== token) {
+      res.raw.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+      return res.raw.end(htmlPage('🔒', 'Ungültiger Link', 'Dieser Link ist ungültig.', '#ef4444'))
+    }
 
     if (!entry) {
-      return res.json({ error: 'Dieses Angebot ist nicht mehr gültig.' })
+      res.raw.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+      return res.raw.end(htmlPage('⚠️', 'Nicht mehr gültig', 'Dieses Angebot ist nicht mehr verfügbar.', '#f59e0b'))
     }
 
     await db.from('waitlist_entries').update({ status: 'declined' }).eq('id', _req.params.id)
@@ -617,7 +649,8 @@ export function registerRoutes(router: Router) {
       console.log('[Waitlist] Auto-offering to next entry:', nextEntry.id)
     }
 
-    res.json({ success: true, message: 'Du hast den Platz abgelehnt. Wir hoffen, dich beim nächsten Mal dabei zu haben!' })
+    res.raw.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+    res.raw.end(htmlPage('👋', 'Schade!', 'Du hast den Platz abgelehnt. Wir hoffen, dich beim nächsten Mal dabei zu haben!', '#6b7280'))
   })
 
   // Offer waitlist spot to parent (changes status, sends email)
@@ -632,10 +665,15 @@ export function registerRoutes(router: Router) {
       .eq('id', req.params.id).eq('status', 'waiting').single()
     if (!entry) return res.error(404, 'Wartelisten-Eintrag nicht gefunden')
 
-    // Update status to "offered"
+    // Generate secure token for confirm/decline links
+    const { randomBytes } = await import('node:crypto')
+    const confirmToken = randomBytes(24).toString('hex')
+
+    // Update status to "offered" with token
     await db.from('waitlist_entries')
       .update({ status: 'offered', notified_at: new Date().toISOString(),
-        expires_at: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString() })
+        expires_at: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(),
+        confirm_token: confirmToken })
       .eq('id', req.params.id)
 
     // Send notification email
@@ -648,10 +686,10 @@ export function registerRoutes(router: Router) {
       const childName = entry.child_info?.firstName ? (entry.child_info.firstName + ' ' + (entry.child_info.lastName || '')) : 'Ihr Kind'
       const hasOnlinePayment = activity?.payment_online
 
-      // Build confirm/decline links
-      const origin = req.raw.headers.origin || (req.raw.headers.host ? 'https://' + req.raw.headers.host : 'https://dev.urbankids.club')
-      const confirmLink = origin + '/api/waitlist/' + req.params.id + '/confirm'
-      const declineLink = origin + '/api/waitlist/' + req.params.id + '/decline-offer'
+      // Build confirm/decline links with token
+      const origin = process.env.APP_PUBLIC_URL || (req.raw.headers.host ? 'https://' + req.raw.headers.host : 'https://dev.urbankids.club')
+      const confirmLink = origin + '/api/waitlist/' + req.params.id + '/confirm?token=' + confirmToken
+      const declineLink = origin + '/api/waitlist/' + req.params.id + '/decline-offer?token=' + confirmToken
 
       await EmailService.sendBookingConfirmation(parent.email, {
         parentName: parent.name.split(' ')[0],

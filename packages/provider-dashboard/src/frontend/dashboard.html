@@ -286,6 +286,10 @@
         <h1 id="pageTitle" class="text-xl font-bold text-brand-700 font-heading">Dashboard</h1>
         <div class="flex items-center gap-4">
           <span id="providerName" class="text-sm text-gray-500"></span>
+          <button onclick="showNotifications()" class="relative w-8 h-8 text-gray-500 hover:text-brand-600 flex items-center justify-center transition-colors cursor-pointer" title="Benachrichtigungen">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+            <span id="notifBadge" class="hidden absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold"></span>
+          </button>
           <button onclick="navigate('settings')" class="w-8 h-8 bg-brand-100 text-brand-700 rounded-full flex items-center justify-center text-sm font-bold hover:bg-brand-200 transition-colors cursor-pointer" id="providerAvatar" title="Profil & Einstellungen">?</button>
         </div>
       </header>
@@ -621,6 +625,7 @@
         currentProvider = providers[0]
         updateProviderDisplay()
         navigate('dashboard')
+        loadNotificationBadge()
       }
     }
 
@@ -1124,6 +1129,58 @@
           }
           el.innerHTML = html
         }).catch(() => {})
+      }
+    }
+
+    // Notification center
+    async function loadNotificationBadge() {
+      try {
+        const res = await api('/notifications/' + currentProvider.id + '?unread=true')
+        const notifs = res.data || res || []
+        const badge = document.getElementById('notifBadge')
+        if (badge) {
+          if (notifs.length > 0) {
+            badge.textContent = notifs.length > 9 ? '9+' : String(notifs.length)
+            badge.classList.remove('hidden')
+          } else {
+            badge.classList.add('hidden')
+          }
+        }
+      } catch(e) {}
+    }
+
+    async function showNotifications() {
+      let modal = document.getElementById('calModal')
+      if (!modal) { modal = document.createElement('div'); modal.id = 'calModal'; document.body.appendChild(modal) }
+      modal.className = 'cal-modal-backdrop'
+      modal.onclick = (e) => { if (e.target === modal) modal.className = 'hidden' }
+      modal.innerHTML = '<div class="cal-modal fade-in" style="max-width:500px"><div class="text-center text-gray-400 py-8">Lade...</div></div>'
+
+      try {
+        const res = await api('/notifications/' + currentProvider.id)
+        const notifs = (res.data || res || []).slice(0, 20)
+
+        const typeIcons = { waitlist_entry: '📋', block_full: '🔴', new_block_available: '🟢', invoice_sent: '📄' }
+        const content = notifs.length ? notifs.map(n => {
+          const icon = typeIcons[n.type] || '🔔'
+          const time = new Date(n.sentAt || n.sent_at).toLocaleString('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })
+          return '<div class="flex gap-3 py-3 px-3 border-b border-gray-100 ' + (n.read ? '' : 'bg-brand-50/30') + '">' +
+            '<div class="text-lg flex-shrink-0">' + icon + '</div>' +
+            '<div class="flex-1"><div class="text-sm font-medium text-gray-900">' + escapeHtml(n.title) + '</div>' +
+            '<div class="text-xs text-gray-500 mt-0.5">' + escapeHtml(n.body) + '</div>' +
+            '<div class="text-xs text-gray-400 mt-1">' + time + '</div></div></div>'
+        }).join('') : '<div class="text-center text-gray-400 py-8">Keine Benachrichtigungen</div>'
+
+        modal.innerHTML = '<div class="cal-modal fade-in" style="max-width:500px">' +
+          '<div class="flex items-center justify-between mb-4"><h3 class="text-lg font-bold text-gray-900">Benachrichtigungen</h3>' +
+          '<button onclick="document.getElementById(\'calModal\').className=\'hidden\'" class="text-gray-400 hover:text-gray-600"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button></div>' +
+          '<div class="max-h-96 overflow-y-auto -mx-3">' + content + '</div></div>'
+
+        // Mark all as read
+        try { await api('/notifications/' + currentProvider.id + '/read-all', 'POST') } catch(e) {}
+        loadNotificationBadge()
+      } catch(e) {
+        modal.innerHTML = '<div class="cal-modal fade-in"><div class="text-red-500 text-center py-8">Fehler beim Laden</div></div>'
       }
     }
 
