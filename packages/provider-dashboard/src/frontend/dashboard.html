@@ -1044,8 +1044,8 @@
                   <div class="h-3 rounded-full transition-all ${occPct > 80 ? 'bg-red-500' : occPct > 50 ? 'bg-amber-500' : 'bg-green-500'}" style="width:${occPct}%"></div>
                 </div>
                 <div class="flex justify-between text-sm">
-                  <span class="text-gray-500">Gebucht: <strong>${dateBooked}</strong> / ${occ.capacity}</span>
-                  ${occ.waitlisted > 0 ? `<span class="text-amber-600 font-medium">${occ.waitlisted} auf Warteliste</span>` : `<span class="text-green-600">${Math.max(0, occ.capacity - dateBooked)} Plätze frei</span>`}
+                  <span class="text-gray-500">Gebucht: <strong>${Math.min(dateBooked, occ.capacity)}</strong> / ${occ.capacity}${dateBooked > occ.capacity ? ' <span class="text-purple-600 font-medium">+' + (dateBooked - occ.capacity) + ' Makeup</span>' : ''}</span>
+                  ${dateBooked > occ.capacity ? `<span class="text-purple-600 font-medium">${dateBooked} Teilnehmer</span>` : occ.waitlisted > 0 ? `<span class="text-amber-600 font-medium">${occ.waitlisted} auf Warteliste</span>` : `<span class="text-green-600">${Math.max(0, occ.capacity - dateBooked)} Plätze frei</span>`}
                 </div>
               </div>
             ` : ''}
@@ -1088,7 +1088,7 @@
       if (activity?.id) {
         var clickedDate = ev.date || ''
         // Find which block covers this date, then load its enrollments
-        api('/providers/' + currentProvider.id + '/blocks').then(function(blocksRes) {
+        api('/providers/' + currentProvider.id + '/course-blocks').then(function(blocksRes) {
           var blocks = (blocksRes.data || []).filter(function(bl) { return bl.activityId === activity.id })
           // Find the block whose date range covers the clicked date
           var matchingBlock = null
@@ -1102,7 +1102,7 @@
 
           if (matchingBlock) {
             // Load enrollments for this specific block
-            api('/blocks/' + matchingBlock.id + '/enrollments').then(function(enrollRes) {
+            api('/course-blocks/' + matchingBlock.id + '/enrollments').then(function(enrollRes) {
               var enrollments = (enrollRes.data || []).filter(function(e) { return e.status === 'active' })
               var html = ''
               if (enrollments.length) {
