@@ -1520,15 +1520,36 @@
         if (a.pricing && a.pricing.length) actPriceMap[a.id] = a.pricing[0].amount || a.pricing[0].price || 0
       })
 
-      // Revenue: proportional to sessions in visible range
+      // Revenue: only count bookings whose block covers the visible date range
+      // Use byDate from occupancy — if any date in visible range has bookings, include that booking's revenue
       var rangeRevenue = 0, rangeUnpaid = 0, rangeUnpaidCount = 0
       var allBookings = window._bookingsData || []
+      var startStr = fmtDate(startDate), endStr = fmtDate(endDate)
+
       allBookings.forEach(function(b) {
         if (b.status === 'cancelled') return
+        var occ = occMap[b.activityId]
+        if (!occ) return
+
+        // Check if this booking's activity has ACTUAL coverage in visible range (via byDate)
+        var hasBlockCoverage = false
+        if (occ.byDate && Object.keys(occ.byDate).length > 0) {
+          // Block-based: only count if byDate has entries in visible range
+          for (var dateKey in occ.byDate) {
+            if (dateKey >= startStr && dateKey <= endStr && occ.byDate[dateKey] > 0) {
+              hasBlockCoverage = true
+              break
+            }
+          }
+        } else {
+          // Non-block (single sessions): check if activity has sessions in range
+          hasBlockCoverage = (actSessionsInRange[b.activityId] || 0) > 0
+        }
+        if (!hasBlockCoverage) return
+
         var sessionsInRange = actSessionsInRange[b.activityId] || 0
-        if (sessionsInRange === 0) return
         var totalSessions = actSessionsTotal[b.activityId] || 1
-        var ratio = sessionsInRange / totalSessions // e.g. 1/3 for one week of a 3-week course
+        var ratio = totalSessions > 0 ? sessionsInRange / totalSessions : 0
 
         if (b.paymentStatus === 'paid') {
           rangeRevenue += (b.amountPaid || 0) * ratio
