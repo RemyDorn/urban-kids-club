@@ -372,6 +372,16 @@ export function registerRoutes(router: Router) {
     const booking = await BookingService.cancel(req.params.id, auth.providerId)
     if (!booking) return res.error(400, 'Buchung konnte nicht storniert werden')
 
+    // Deactivate block enrollments for this booking
+    try {
+      await db.from('block_enrollments')
+        .update({ status: 'cancelled' })
+        .eq('booking_id', req.params.id)
+      console.log('[Cancel] Block enrollments deactivated for booking ' + req.params.id)
+    } catch (enrollErr) {
+      console.error('[Cancel] Failed to deactivate enrollments:', enrollErr)
+    }
+
     // Stripe refund if paid via Stripe
     let refundInfo = ''
     if (bookingRow?.payment_method === 'stripe' && bookingRow?.payment_status === 'paid' && bookingRow?.stripe_session_id) {
@@ -2396,15 +2406,19 @@ export function registerRoutes(router: Router) {
       return res.error(400, 'Tut uns leid — da war leider jemand schneller! 😅 Aber keine Sorge, wir haben ' + child.firstName + ' auf die Warteliste gesetzt. Sobald ein Platz frei wird, melden wir uns sofort bei dir!')
     }
 
-    // Duplicate check
-    if (parent.email) {
+    // Duplicate check — same child (first+last name) for same activity, not just same parent
+    if (parent.email && child.firstName && child.lastName) {
       const { data: existingParent2 } = await db.from('parents').select('id').eq('email', parent.email).maybeSingle()
       if (existingParent2) {
-        const { data: dupBooking } = await db.from('provider_bookings')
-          .select('id').eq('activity_id', activityId).eq('parent_id', existingParent2.id)
-          .in('status', ['confirmed', 'pending']).maybeSingle()
-        if (dupBooking) {
-          return res.error(400, 'Dieses Kind ist bereits für diesen Kurs angemeldet.')
+        const { data: parentBookings } = await db.from('provider_bookings')
+          .select('id, child_info').eq('activity_id', activityId).eq('parent_id', existingParent2.id)
+          .in('status', ['confirmed', 'pending'])
+        const isDuplicate = (parentBookings || []).some(function(b: any) {
+          const ci = b.child_info || {}
+          return ci.firstName === child.firstName && ci.lastName === child.lastName
+        })
+        if (isDuplicate) {
+          return res.error(400, child.firstName + ' ' + child.lastName + ' ist bereits für diesen Kurs angemeldet.')
         }
       }
     }
