@@ -1453,24 +1453,37 @@
 
       var occPct = totalCapacity > 0 ? Math.round((totalBooked / totalCapacity) * 100) : 0
 
-      // Build set of activity IDs that have sessions in visible range
-      var activeActivityIds = new Set()
+      // Count total sessions + sessions in range per activity (for revenue splitting)
+      var actSessionsTotal = {}  // activityId → total sessions across all weeks
+      var actSessionsInRange = {} // activityId → sessions in visible range
       activities.forEach(function(a) {
         if (a.status !== 'published' || !a.schedule?.slots) return
         var sStart = a.schedule.startDate || '2020-01-01'
         var sEnd = a.schedule.endDate || '2099-12-31'
+        var totalSessions = 0, rangeSessions = 0
         a.schedule.slots.forEach(function(slot) {
           var targetDay = dayToNum[slot.day]
           if (targetDay === undefined) return
+          // Count ALL sessions (entire course duration)
+          var allStart = new Date(sStart + 'T00:00:00')
+          var allEnd = new Date(sEnd + 'T00:00:00')
+          var c = new Date(allStart)
+          while (c <= allEnd) {
+            if (c.getDay() === targetDay) totalSessions++
+            c.setDate(c.getDate() + 1)
+          }
+          // Count sessions in visible range
           var cur = new Date(startDate)
           while (cur <= endDate) {
             if (cur.getDay() === targetDay) {
               var ds = fmtDate(cur)
-              if (ds >= sStart && ds <= sEnd) activeActivityIds.add(a.id)
+              if (ds >= sStart && ds <= sEnd) rangeSessions++
             }
             cur.setDate(cur.getDate() + 1)
           }
         })
+        actSessionsTotal[a.id] = totalSessions || 1
+        actSessionsInRange[a.id] = rangeSessions
       })
 
       // Build activity price map for unpaid amount fallback
@@ -1479,19 +1492,27 @@
         if (a.pricing && a.pricing.length) actPriceMap[a.id] = a.pricing[0].amount || a.pricing[0].price || 0
       })
 
-      // Revenue: sum bookings whose activity has a session in visible range
+      // Revenue: proportional to sessions in visible range
       var rangeRevenue = 0, rangeUnpaid = 0, rangeUnpaidCount = 0
       var allBookings = window._bookingsData || []
       allBookings.forEach(function(b) {
         if (b.status === 'cancelled') return
-        if (!activeActivityIds.has(b.activityId)) return
-        if (b.paymentStatus === 'paid') rangeRevenue += b.amountPaid || 0
+        var sessionsInRange = actSessionsInRange[b.activityId] || 0
+        if (sessionsInRange === 0) return
+        var totalSessions = actSessionsTotal[b.activityId] || 1
+        var ratio = sessionsInRange / totalSessions // e.g. 1/3 for one week of a 3-week course
+
+        if (b.paymentStatus === 'paid') {
+          rangeRevenue += (b.amountPaid || 0) * ratio
+        }
         if (b.paymentStatus === 'unpaid' || b.paymentStatus === 'pending') {
           rangeUnpaidCount++
-          // Use amountPaid if set, otherwise use activity price
-          rangeUnpaid += (b.amountPaid > 0 ? b.amountPaid : (actPriceMap[b.activityId] || 0))
+          var amount = b.amountPaid > 0 ? b.amountPaid : (actPriceMap[b.activityId] || 0)
+          rangeUnpaid += amount * ratio
         }
       })
+      rangeRevenue = Math.round(rangeRevenue * 100) / 100
+      rangeUnpaid = Math.round(rangeUnpaid * 100) / 100
 
       // Re-render KPI section
       kpiSection.innerHTML = `

@@ -1690,6 +1690,68 @@ export function registerRoutes(router: Router) {
     res.json({ data: result })
   })
 
+  // Auto-expire waitlist offers and offer to next person (call via cron/n8n every 15min)
+  router.post('/api/admin/jobs/expire-waitlist', async (req, res) => {
+    const db = getServiceClient()
+    const now = new Date().toISOString()
+
+    // Find all expired offers
+    const { data: expired } = await db.from('waitlist_entries')
+      .select('id, activity_id, parent_id, child_info, confirm_token')
+      .eq('status', 'offered')
+      .lt('expires_at', now)
+
+    let expiredCount = 0, offeredCount = 0
+    for (const entry of expired ?? []) {
+      // Mark as expired
+      await db.from('waitlist_entries').update({ status: 'expired' }).eq('id', entry.id)
+      expiredCount++
+
+      // Auto-offer to next person in line
+      const { data: nextEntry } = await db.from('waitlist_entries')
+        .select('id, parent_id, child_info, activity_id')
+        .eq('activity_id', entry.activity_id).eq('status', 'waiting')
+        .order('position', { ascending: true }).limit(1).maybeSingle()
+
+      if (nextEntry) {
+        // Generate new token and offer
+        const { randomBytes } = await import('node:crypto')
+        const token = randomBytes(24).toString('hex')
+        await db.from('waitlist_entries').update({
+          status: 'offered',
+          notified_at: now,
+          expires_at: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(),
+          confirm_token: token,
+        }).eq('id', nextEntry.id)
+
+        // Send offer email
+        try {
+          const { EmailService } = await import('../lib/email')
+          const { data: parent } = await db.from('parents').select('name, email').eq('id', nextEntry.parent_id).single()
+          const { data: activity } = await db.from('activities').select('title, provider_id').eq('id', nextEntry.activity_id).single()
+          const { data: provider } = await db.from('providers').select('company_name').eq('id', activity?.provider_id).single()
+          if (parent?.email) {
+            const origin = process.env.APP_PUBLIC_URL || 'https://dev.urbankids.club'
+            const childName = nextEntry.child_info?.firstName ? (nextEntry.child_info.firstName + ' ' + (nextEntry.child_info.lastName || '')) : 'Ihr Kind'
+            await EmailService.sendWaitlistOffer(parent.email, {
+              parentName: parent.name?.split(' ')[0] || '',
+              childName,
+              courseName: activity?.title || 'Kurs',
+              providerName: provider?.company_name || '',
+              confirmLink: origin + '/api/waitlist/' + nextEntry.id + '/confirm?token=' + token,
+              declineLink: origin + '/api/waitlist/' + nextEntry.id + '/decline-offer?token=' + token,
+            })
+            offeredCount++
+            console.log('[AutoOffer] Offered to next person: ' + parent.email + ' for ' + activity?.title)
+          }
+        } catch (emailErr) {
+          console.error('[AutoOffer] Email failed:', emailErr)
+        }
+      }
+    }
+    res.json({ data: { expired: expiredCount, offered: offeredCount } })
+  })
+
   // ============================================================
   // AUTH
   // ============================================================

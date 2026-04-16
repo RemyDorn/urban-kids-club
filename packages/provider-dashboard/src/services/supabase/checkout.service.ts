@@ -93,8 +93,23 @@ export class CheckoutService {
       birthYear: params.childBirthYear,
     }
 
-    // Waitlist confirmations bypass capacity check (provider manually approved)
+    // Waitlist confirmations bypass normal capacity but check makeup limit
     if (params.skipBlockCheck) {
+      // Check total capacity (capacity + makeup_capacity)
+      const { data: actCap } = await db.from('activities').select('capacity').eq('id', params.activityId).single()
+      const { data: provMakeup } = await db.from('providers').select('makeup_enabled, makeup_capacity').eq('id', params.providerId).single()
+      const baseCapacity = actCap?.capacity ?? 999
+      const makeupSlots = provMakeup?.makeup_enabled ? (provMakeup?.makeup_capacity ?? 2) : 0
+      const maxTotal = baseCapacity + makeupSlots
+
+      const { count: currentBookings } = await db.from('provider_bookings')
+        .select('*', { count: 'exact', head: true })
+        .eq('activity_id', params.activityId)
+        .in('status', ['confirmed', 'pending'])
+      if ((currentBookings ?? 0) >= maxTotal) {
+        throw new Error('Dieser Kurs ist leider ausgebucht. Auch die Makeup-Plätze sind vergeben.')
+      }
+
       const { data: directBooking, error: directErr } = await db.from('provider_bookings').insert({
         provider_id: params.providerId,
         activity_id: params.activityId,

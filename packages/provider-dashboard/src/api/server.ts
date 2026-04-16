@@ -537,4 +537,18 @@ server.listen(PORT, '0.0.0.0', () => {
 │  Auto-Save:  ${USE_SUPABASE ? 'n/a (Supabase)' : 'aktiv'}${' '.repeat(Math.max(0, 35 - (USE_SUPABASE ? 'n/a (Supabase)' : 'aktiv').length))}│
 └─────────────────────────────────────────────────┘
   `)
+
+  // Auto-expire waitlist offers every 15 minutes (Supabase mode only)
+  if (USE_SUPABASE) {
+    setInterval(async () => {
+      try {
+        const resp = await fetch(`http://localhost:${PORT}/api/admin/jobs/expire-waitlist`, { method: 'POST' })
+        const data = await resp.json() as any
+        if (data.data?.expired > 0 || data.data?.offered > 0) {
+          console.log(`[AutoOffer] Expired: ${data.data.expired}, Offered to next: ${data.data.offered}`)
+        }
+      } catch (e) { /* silent */ }
+    }, 15 * 60 * 1000) // every 15 minutes
+    console.log('  [AutoOffer] Waitlist auto-expire job running every 15 minutes')
+  }
 })
