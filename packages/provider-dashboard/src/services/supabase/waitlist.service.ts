@@ -7,7 +7,7 @@ import { waitlistEntryFromDb, waitlistEntryToDb } from './mappers'
 import type { WaitlistEntry, ChildInfo, ID } from '../../types'
 
 const TABLE = 'waitlist_entries'
-const OFFER_EXPIRY_HOURS = 48
+const OFFER_EXPIRY_HOURS = 3
 
 export const SupabaseWaitlistService = {
 

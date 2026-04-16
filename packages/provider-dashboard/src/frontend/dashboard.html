@@ -2065,7 +2065,7 @@
         for (const a of (actRes.data || [])) {
           try {
             const w = await api('/activities/' + a.id + '/waitlist')
-            const entries = (w.data || w || []).filter(e => e.status === 'waiting')
+            const entries = (w.data || w || []).filter(e => e.status === 'waiting' || e.status === 'offered')
             entries.forEach(e => allWaitlist.push({ ...e, courseTitle: a.title }))
           } catch(e) {}
         }

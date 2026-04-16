@@ -566,17 +566,8 @@ export function registerRoutes(router: Router) {
       return res.json({ error: 'Das Angebot ist abgelaufen. Bitte kontaktiere den Anbieter.' })
     }
 
-    // Accept: change status + create booking
-    await db.from('waitlist_entries').update({ status: 'accepted' }).eq('id', _req.params.id)
-
-    // Check if activity has online payment — if so, redirect to checkout
+    // Create booking FIRST, then update status (atomic order matters)
     const activity = (entry as any).activities
-    if (activity?.payment_online) {
-      // TODO: redirect to Stripe checkout for this specific booking
-      // For now, just confirm
-    }
-
-    // Create booking via checkout
     try {
       const { CheckoutService } = await import('../services/supabase/checkout.service')
       await CheckoutService.createBooking({
@@ -590,13 +581,18 @@ export function registerRoutes(router: Router) {
         parentLastName: (entry as any).parents.name.split(' ').slice(1).join(' '),
         parentEmail: (entry as any).parents.email,
         parentPhone: '',
-        paymentMethod: 'onsite',
+        paymentMethod: activity?.payment_online ? 'stripe' : 'onsite',
         amount: 0,
         currency: 'EUR',
       })
-    } catch (bookErr) {
+    } catch (bookErr: any) {
+      // Booking failed — DON'T change waitlist status, tell customer
       console.error('[Waitlist] Booking creation failed:', bookErr)
+      return res.error(400, bookErr.message || 'Buchung konnte nicht erstellt werden. Bitte kontaktiere den Anbieter.')
     }
+
+    // Booking succeeded — now mark waitlist entry as accepted
+    await db.from('waitlist_entries').update({ status: 'accepted' }).eq('id', _req.params.id)
 
     res.json({ success: true, message: 'Buchung bestätigt! Dein Platz ist reserviert.' })
   })
@@ -639,7 +635,7 @@ export function registerRoutes(router: Router) {
     // Update status to "offered"
     await db.from('waitlist_entries')
       .update({ status: 'offered', notified_at: new Date().toISOString(),
-        expires_at: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString() })
+        expires_at: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString() })
       .eq('id', req.params.id)
 
     // Send notification email
