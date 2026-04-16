@@ -243,19 +243,20 @@ window._waitlistCourse=async function(title,date){
   const course=courses.find(c=>c.title===title)
   if(!course){alert('Kurs nicht gefunden');return}
   window._wlActId=course.id
+  window._wlTitle=title
+  window._wlDate=dateStr
+  // Use same multi-step booking UI but for waitlist
   var html='<div class="book-modal"><div class="book-modal-inner">'+
-    '<h3>Warteliste: '+esc(title)+'</h3>'+
-    '<p>'+dateStr+' — Dieser Kurs hat aktuell noch keinen festen Termin. Trag dich gerne auf die Warteliste ein — wir geben dir Bescheid, sobald es losgeht!</p>'+
-    '<input id="wlChildFirst" placeholder="Vorname Kind *" required>'+
-    '<input id="wlChildLast" placeholder="Nachname Kind *" required>'+
-    '<input id="wlChildYear" type="number" placeholder="Geburtsjahr Kind *" min="2010" max="2025" required>'+
-    '<input id="wlParentFirst" placeholder="Vorname Elternteil *" required>'+
-    '<input id="wlParentLast" placeholder="Nachname Elternteil *" required>'+
-    '<input id="wlEmail" type="email" placeholder="E-Mail *" required>'+
-    '<input id="wlPhone" placeholder="Telefon (optional)">'+
+    '<h3>Warteliste</h3>'+
+    '<p style="margin-bottom:16px;color:#64748b;font-size:13px">'+esc(title)+' — '+dateStr+'<br>Dieser Kurs hat aktuell noch keinen festen Termin. Trag dich gerne ein — wir geben dir Bescheid, sobald es losgeht!</p>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><input id="wlChildFirst" placeholder="Vorname Kind *"><input id="wlChildLast" placeholder="Nachname Kind *"></div>'+
+    '<input id="wlChildYear" type="number" placeholder="Geburtsjahr Kind (z.B. 2019) *" min="2010" max="2025">'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><input id="wlParentFirst" placeholder="Vorname Elternteil *"><input id="wlParentLast" placeholder="Nachname Elternteil *"></div>'+
+    '<input id="wlEmail" type="email" placeholder="E-Mail-Adresse *">'+
+    '<input id="wlPhone" type="tel" placeholder="Telefon (optional)">'+
     '<div class="btn-row">'+
     '<button class="btn-send" onclick="window._submitWaitlist()">Auf Warteliste eintragen</button>'+
-    '<button class="btn-cancel" onclick="document.querySelector(String.fromCharCode(46)+String.fromCharCode(98)+String.fromCharCode(111)+String.fromCharCode(111)+String.fromCharCode(107)+String.fromCharCode(45)+String.fromCharCode(109)+String.fromCharCode(111)+String.fromCharCode(100)+String.fromCharCode(97)+String.fromCharCode(108))?.remove()">Abbrechen</button>'+
+    '<button class="btn-cancel" onclick="var m=document.querySelector(String.fromCharCode(46,98,111,111,107,45,109,111,100,97,108));if(m)m.remove()">Abbrechen</button>'+
     '</div></div></div>'
   app.insertAdjacentHTML('beforeend',html)
 }
@@ -265,21 +266,15 @@ window._submitWaitlist=async function(){
   var childFirst=f('wlChildFirst'),childLast=f('wlChildLast'),childYear=f('wlChildYear')
   var parentFirst=f('wlParentFirst'),parentLast=f('wlParentLast'),email=f('wlEmail'),phone=f('wlPhone')
   if(!childFirst||!childLast||!childYear||!parentFirst||!parentLast||!email){alert('Bitte alle Pflichtfelder ausfüllen');return}
+  var btn=document.querySelector('.book-modal .btn-send')
+  if(btn){btn.textContent='Wird eingetragen...';btn.disabled=true}
   try{
-    var r=await fetch('/api/checkout/create-session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({slug:slug,activityId:activityId,child:{firstName:childFirst,lastName:childLast,birthYear:parseInt(childYear)},parent:{firstName:parentFirst,lastName:parentLast,email:email,phone:phone},paymentMethod:'onsite'})})
+    var r=await fetch('/api/widget/waitlist',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({slug:slug,activityId:activityId,child:{firstName:childFirst,lastName:childLast,birthYear:parseInt(childYear)},parent:{firstName:parentFirst,lastName:parentLast,email:email,phone:phone}})})
     var data=await r.json()
     var modal=document.querySelector('.book-modal')
     if(modal)modal.remove()
-    var msg=''
-    if(data.error&&data.error.indexOf('Warteliste')>-1){
-      msg='<div class="book-modal"><div class="book-modal-inner" style="text-align:center"><div style="font-size:32px;margin-bottom:12px">✅</div><h3>Auf der Warteliste!</h3><p style="margin:12px 0">Sie werden benachrichtigt, sobald ein Kursblock verfügbar ist.</p><button class="btn-send" onclick="var m=document.querySelector(String.fromCharCode(46,98,111,111,107,45,109,111,100,97,108));if(m)m.remove()">OK</button></div></div>'
-    } else if(data.success){
-      msg='<div class="book-modal"><div class="book-modal-inner" style="text-align:center"><div style="font-size:32px;margin-bottom:12px">✅</div><h3>Buchung bestätigt!</h3><p style="margin:12px 0">Vielen Dank für Ihre Buchung.</p><button class="btn-send" onclick="var m=document.querySelector(String.fromCharCode(46,98,111,111,107,45,109,111,100,97,108));if(m)m.remove()">OK</button></div></div>'
-    } else {
-      alert(data.error||'Fehler');return
-    }
-    app.insertAdjacentHTML('beforeend',msg)
-  }catch(e){alert('Verbindungsfehler')}
+    app.insertAdjacentHTML('beforeend','<div class="book-modal"><div class="book-modal-inner" style="text-align:center"><div style="font-size:48px;margin-bottom:12px">✅</div><h3>'+(data.alreadyExists?'Bereits eingetragen':'Auf der Warteliste!')+'</h3><p style="margin:12px 0;color:#64748b;font-size:13px">'+(data.alreadyExists?'Du bist bereits auf der Warteliste für diesen Kurs.':'Super! Wir benachrichtigen dich, sobald ein Kursblock verfügbar ist.')+'</p><button class="btn-send" onclick="var m=document.querySelector(String.fromCharCode(46,98,111,111,107,45,109,111,100,97,108));if(m)m.remove()">Alles klar</button></div></div>')
+  }catch(e){alert('Verbindungsfehler');if(btn){btn.textContent='Auf Warteliste eintragen';btn.disabled=false}}
 }
 window._bookCourse=async function(title,date,time){
   const sd=new Date(+date.split('-')[0],+date.split('-')[1]-1,+date.split('-')[2])

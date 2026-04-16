@@ -1727,6 +1727,64 @@ export function registerRoutes(router: Router) {
     res.json({ data: safe, count: safe.length })
   })
 
+  // Public: Waitlist registration (no auth needed — for embed widget)
+  router.post('/api/widget/waitlist', async (req, res) => {
+    const { slug, activityId, child, parent: parentData } = req.body as any
+    if (!slug || !activityId) return res.error(400, 'Pflichtfelder fehlen')
+    if (!child?.firstName || !child?.lastName || !child?.birthYear) return res.error(400, 'Kind-Daten unvollständig')
+    if (!parentData?.firstName || !parentData?.lastName || !parentData?.email) return res.error(400, 'Eltern-Daten unvollständig')
+
+    const db = getServiceClient()
+    const provider = await ProviderService.getBySlug(slug)
+    if (!provider) return res.error(404, 'Provider nicht gefunden')
+
+    // Find or create parent
+    let { data: existingParent } = await db.from('parents').select('id').eq('email', parentData.email).maybeSingle()
+    if (!existingParent) {
+      const { data: newParent } = await db.from('parents').insert({
+        name: (parentData.firstName + ' ' + parentData.lastName).trim(),
+        email: parentData.email,
+        phone: parentData.phone || null,
+      }).select('id').single()
+      existingParent = newParent
+    }
+    if (!existingParent) return res.error(500, 'Eltern konnten nicht erstellt werden')
+
+    // Check if already on waitlist
+    const { data: existing } = await db.from('waitlist_entries')
+      .select('id').eq('activity_id', activityId).eq('parent_id', existingParent.id)
+      .in('status', ['waiting', 'offered']).maybeSingle()
+    if (existing) return res.json({ success: true, message: 'Bereits auf der Warteliste', alreadyExists: true })
+
+    // Get next position
+    const { count } = await db.from('waitlist_entries')
+      .select('*', { count: 'exact', head: true })
+      .eq('activity_id', activityId).in('status', ['waiting', 'offered'])
+
+    // Add to waitlist
+    await db.from('waitlist_entries').insert({
+      activity_id: activityId,
+      parent_id: existingParent.id,
+      child_info: { firstName: child.firstName, lastName: child.lastName, birthYear: child.birthYear },
+      position: (count ?? 0) + 1,
+      priority: 'normal',
+      status: 'waiting',
+    })
+
+    // Notify provider
+    await db.from('notifications').insert({
+      recipient_type: 'provider',
+      recipient_id: provider.id,
+      type: 'waitlist_entry',
+      channel: 'in_app',
+      title: 'Neue Wartelisten-Anmeldung!',
+      body: child.firstName + ' ' + child.lastName + ' möchte am Kurs teilnehmen.',
+      data: { activityId, parentId: existingParent.id },
+    })
+
+    res.json({ success: true, message: 'Erfolgreich auf die Warteliste eingetragen!' })
+  })
+
   // Public: Booking inquiry from embed widget (creates a lead/notification)
   router.post('/api/widget/booking-inquiry', async (req, res) => {
     const { slug, course, date, time, name, email, phone, message } = req.body as any
