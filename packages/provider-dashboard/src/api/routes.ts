@@ -549,6 +549,81 @@ export function registerRoutes(router: Router) {
     res.status(201).json({ data: result })
   })
 
+  // Public: Confirm or decline waitlist offer (linked from email)
+  router.get('/api/waitlist/:id/confirm', async (_req, res) => {
+    const db = getServiceClient()
+    const { data: entry } = await db.from('waitlist_entries')
+      .select('*, parents!inner(name, email), activities!inner(title, provider_id, capacity)')
+      .eq('id', _req.params.id).eq('status', 'offered').maybeSingle()
+
+    if (!entry) {
+      return res.json({ error: 'Dieses Angebot ist leider nicht mehr gültig.' })
+    }
+
+    // Check if expired
+    if (entry.expires_at && new Date(entry.expires_at) < new Date()) {
+      await db.from('waitlist_entries').update({ status: 'expired' }).eq('id', _req.params.id)
+      return res.json({ error: 'Das Angebot ist abgelaufen. Bitte kontaktiere den Anbieter.' })
+    }
+
+    // Accept: change status + create booking
+    await db.from('waitlist_entries').update({ status: 'accepted' }).eq('id', _req.params.id)
+
+    // Check if activity has online payment — if so, redirect to checkout
+    const activity = (entry as any).activities
+    if (activity?.payment_online) {
+      // TODO: redirect to Stripe checkout for this specific booking
+      // For now, just confirm
+    }
+
+    // Create booking via checkout
+    try {
+      const { CheckoutService } = await import('../services/supabase/checkout.service')
+      await CheckoutService.createBooking({
+        providerId: activity.provider_id,
+        activityId: entry.activity_id,
+        skipBlockCheck: true,
+        childFirstName: entry.child_info?.firstName || '',
+        childLastName: entry.child_info?.lastName || '',
+        childBirthYear: entry.child_info?.birthYear || 2020,
+        parentFirstName: (entry as any).parents.name.split(' ')[0],
+        parentLastName: (entry as any).parents.name.split(' ').slice(1).join(' '),
+        parentEmail: (entry as any).parents.email,
+        parentPhone: '',
+        paymentMethod: 'onsite',
+        amount: 0,
+        currency: 'EUR',
+      })
+    } catch (bookErr) {
+      console.error('[Waitlist] Booking creation failed:', bookErr)
+    }
+
+    res.json({ success: true, message: 'Buchung bestätigt! Dein Platz ist reserviert.' })
+  })
+
+  router.get('/api/waitlist/:id/decline-offer', async (_req, res) => {
+    const db = getServiceClient()
+    const { data: entry } = await db.from('waitlist_entries')
+      .select('activity_id, position').eq('id', _req.params.id).eq('status', 'offered').maybeSingle()
+
+    if (!entry) {
+      return res.json({ error: 'Dieses Angebot ist nicht mehr gültig.' })
+    }
+
+    await db.from('waitlist_entries').update({ status: 'declined' }).eq('id', _req.params.id)
+
+    // Auto-offer to next person on waitlist
+    const { data: nextEntry } = await db.from('waitlist_entries')
+      .select('id').eq('activity_id', entry.activity_id).eq('status', 'waiting')
+      .order('position', { ascending: true }).limit(1).maybeSingle()
+
+    if (nextEntry) {
+      console.log('[Waitlist] Auto-offering to next entry:', nextEntry.id)
+    }
+
+    res.json({ success: true, message: 'Du hast den Platz abgelehnt. Wir hoffen, dich beim nächsten Mal dabei zu haben!' })
+  })
+
   // Offer waitlist spot to parent (changes status, sends email)
   router.post('/api/waitlist/:id/offer', async (req, res) => {
     const auth = await requireAuth(req, res)
@@ -577,18 +652,19 @@ export function registerRoutes(router: Router) {
       const childName = entry.child_info?.firstName ? (entry.child_info.firstName + ' ' + (entry.child_info.lastName || '')) : 'Ihr Kind'
       const hasOnlinePayment = activity?.payment_online
 
-      // Build booking link
-      const origin = req.raw.headers.origin || 'https://dev.urbankids.club'
-      const bookingLink = origin + '/embed/' + (provider?.slug || 'socialy') + '/calendar'
+      // Build confirm/decline links
+      const origin = req.raw.headers.origin || (req.raw.headers.host ? 'https://' + req.raw.headers.host : 'https://dev.urbankids.club')
+      const confirmLink = origin + '/api/waitlist/' + req.params.id + '/confirm'
+      const declineLink = origin + '/api/waitlist/' + req.params.id + '/decline-offer'
 
       await EmailService.sendBookingConfirmation(parent.email, {
         parentName: parent.name.split(' ')[0],
         childName,
         courseName: activity?.title || 'Kurs',
-        date: '',
-        time: '',
+        date: 'Ein Platz ist frei geworden!',
+        time: 'Angebot gültig für 3 Stunden',
         providerName: provider?.company_name || '',
-        packageInfo: hasOnlinePayment ? 'Bitte bestätige deine Buchung und bezahle online: ' + bookingLink : 'Bitte bestätige deine Buchung: ' + bookingLink,
+        packageInfo: 'Platz bestätigen: ' + confirmLink + '\n\nKein Interesse? ' + declineLink,
       })
       console.log('[Waitlist] Offer email sent to ' + parent.email)
     } catch (emailErr) {

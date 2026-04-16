@@ -5,6 +5,7 @@ export class CheckoutService {
     providerId: string
     activityId: string
     blockId?: string
+    skipBlockCheck?: boolean
     childFirstName: string
     childLastName: string
     childBirthYear: number
@@ -37,34 +38,38 @@ export class CheckoutService {
 
     if (!parent) throw new Error('Parent konnte nicht erstellt werden')
 
-    // 2. Verify active block exists for this course (no block = no booking)
-    const { data: activeBlock } = await db.from('course_blocks')
-      .select('id, capacity, makeup_capacity')
-      .eq('activity_id', params.activityId)
-      .in('status', ['active', 'upcoming'])
-      .order('start_date', { ascending: true })
-      .limit(1)
-      .maybeSingle()
-
-    if (!activeBlock) {
-      // No active block → add to waitlist as pre-registration
-      const { count: existingWaitlist } = await db.from('waitlist_entries')
-        .select('*', { count: 'exact', head: true })
+    // 2. Verify active block exists (skip for waitlist confirmations)
+    let activeBlock: any = null
+    if (!params.skipBlockCheck) {
+      const { data: foundBlock } = await db.from('course_blocks')
+        .select('id, capacity, makeup_capacity')
         .eq('activity_id', params.activityId)
-        .eq('parent_id', parent.id)
-        .in('status', ['waiting', 'offered'])
+        .in('status', ['active', 'upcoming'])
+        .order('start_date', { ascending: true })
+        .limit(1)
+        .maybeSingle()
+      activeBlock = foundBlock
 
-      if (!existingWaitlist || existingWaitlist === 0) {
-        await db.from('waitlist_entries').insert({
-          activity_id: params.activityId,
-          parent_id: parent.id,
-          child_info: { firstName: params.childFirstName, lastName: params.childLastName, birthYear: params.childBirthYear },
-          position: 1, // Will be recalculated
-          priority: 'normal',
-          status: 'waiting',
-        })
+      if (!activeBlock) {
+        // No active block → add to waitlist as pre-registration
+        const { count: existingWaitlist } = await db.from('waitlist_entries')
+          .select('*', { count: 'exact', head: true })
+          .eq('activity_id', params.activityId)
+          .eq('parent_id', parent.id)
+          .in('status', ['waiting', 'offered'])
+
+        if (!existingWaitlist || existingWaitlist === 0) {
+          await db.from('waitlist_entries').insert({
+            activity_id: params.activityId,
+            parent_id: parent.id,
+            child_info: { firstName: params.childFirstName, lastName: params.childLastName, birthYear: params.childBirthYear },
+            position: 1,
+            priority: 'normal',
+            status: 'waiting',
+          })
+        }
+        throw new Error('Aktuell keine Termine verfügbar. Sie wurden auf die Warteliste gesetzt und werden benachrichtigt, sobald ein neuer Kursblock startet.')
       }
-      throw new Error('Aktuell keine Termine verfügbar. Sie wurden auf die Warteliste gesetzt und werden benachrichtigt, sobald ein neuer Kursblock startet.')
     }
 
     // 3. Create booking atomically (capacity + duplicate check in one transaction)
