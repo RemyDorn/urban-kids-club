@@ -1289,7 +1289,13 @@
       if (currentPage === 'dashboard') navigate('dashboard')
     }
 
-    function setCalView(view) { calView = view; renderCalendarInto(activeCalContainer); updateKPIsForView() }
+    function setCalView(view) {
+      calView = view
+      // Always snap to Monday for week view
+      if (view === 'week') calWeekStart = getMonday(calWeekStart || new Date())
+      else if (view === 'month') calWeekStart = new Date(calWeekStart.getFullYear(), calWeekStart.getMonth(), 1)
+      renderCalendarInto(activeCalContainer); updateKPIsForView()
+    }
 
     function updateKPIsForView() {
       const kpiSection = document.getElementById('kpiSection')
