@@ -2246,10 +2246,15 @@ export function registerRoutes(router: Router) {
     }
     if (!existingParent) return res.error(500, 'Eltern konnten nicht erstellt werden')
 
-    // Check if already on waitlist
-    const { data: existing } = await db.from('waitlist_entries')
-      .select('id').eq('activity_id', activityId).eq('parent_id', existingParent.id)
-      .in('status', ['waiting', 'offered']).maybeSingle()
+    // Check if this specific child is already on waitlist (not just same parent)
+    const { data: parentWaitlist } = await db.from('waitlist_entries')
+      .select('id, child_info').eq('activity_id', activityId).eq('parent_id', existingParent.id)
+      .in('status', ['waiting', 'offered'])
+    const existing = (parentWaitlist || []).find(function(e: any) {
+      const ci = e.child_info || {}
+      return (ci.firstName || '').toLowerCase() === (child.firstName || '').toLowerCase()
+        && (ci.lastName || '').toLowerCase() === (child.lastName || '').toLowerCase()
+    })
     if (existing) return res.json({ success: true, message: 'Bereits auf der Warteliste', alreadyExists: true })
 
     // Get next position
@@ -2372,9 +2377,14 @@ export function registerRoutes(router: Router) {
         parentId = newParent?.id || ''
       }
       if (parentId) {
-        const { data: existingWl } = await db.from('waitlist_entries')
-          .select('id').eq('activity_id', activityId).eq('parent_id', parentId)
-          .in('status', ['waiting', 'offered']).maybeSingle()
+        const { data: parentWl } = await db.from('waitlist_entries')
+          .select('id, child_info').eq('activity_id', activityId).eq('parent_id', parentId)
+          .in('status', ['waiting', 'offered'])
+        const existingWl = (parentWl || []).find(function(e: any) {
+          const ci = e.child_info || {}
+          return (ci.firstName || '').toLowerCase() === (child.firstName || '').toLowerCase()
+            && (ci.lastName || '').toLowerCase() === (child.lastName || '').toLowerCase()
+        })
         if (!existingWl) {
           const { count: wlCount } = await db.from('waitlist_entries')
             .select('*', { count: 'exact', head: true })
