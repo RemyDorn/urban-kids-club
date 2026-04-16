@@ -1398,7 +1398,23 @@
         if (hasSessionInRange) activeCourses++
       })
 
-      const occPct = totalCapacity > 0 ? Math.round((totalBooked / totalCapacity) * 100) : 0
+      var occPct = totalCapacity > 0 ? Math.round((totalBooked / totalCapacity) * 100) : 0
+
+      // Filter revenue by visible date range
+      var rangeRevenue = 0, rangeUnpaid = 0, rangeUnpaidCount = 0
+      var startStr = fmtDate(startDate), endStr = fmtDate(endDate)
+      var allBookings = window._bookingsData || []
+      allBookings.forEach(function(b) {
+        if (b.status === 'cancelled') return
+        var bDate = (b.createdAt || '').slice(0, 10)
+        if (bDate >= startStr && bDate <= endStr) {
+          if (b.paymentStatus === 'paid') rangeRevenue += b.amountPaid || 0
+          if (b.paymentStatus === 'unpaid' || b.paymentStatus === 'pending') {
+            rangeUnpaidCount++
+            rangeUnpaid += b.amountPaid || 0
+          }
+        }
+      })
 
       // Re-render KPI section
       kpiSection.innerHTML = `
@@ -1409,8 +1425,8 @@
           ${kpiCard('Auslastung', occPct + '%', totalBooked + '/' + totalCapacity + ' · ' + viewLabel, 'bg-brand-100 text-brand-400', '📊')}
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
-          ${kpiCard('Umsatz', formatCurrency(window._dashData?.totalRevenue || 0), 'bezahlt', 'bg-emerald-50 text-emerald-600', '💶')}
-          ${kpiCard('Offener Umsatz', formatCurrency(window._dashData?.unpaidRevenue || 0), (window._dashData?.unpaidBookings || 0) + ' Buchungen offen', 'bg-orange-50 text-orange-600', '💰')}
+          ${kpiCard('Umsatz', formatCurrency(rangeRevenue), viewLabel + ' · bezahlt', 'bg-emerald-50 text-emerald-600', '💶')}
+          ${kpiCard('Offener Umsatz', formatCurrency(rangeUnpaid), rangeUnpaidCount + ' offen · ' + viewLabel, 'bg-orange-50 text-orange-600', '💰')}
           ${kpiCard('Warteliste', window._waitlistCount || 0, 'Interessenten', 'bg-amber-50 text-amber-600', '📋')}
           ${kpiCard('Probestunden', window._dashData?.upcomingTrials || 0, 'anstehend', 'bg-brand-100 text-brand-500', '🎯')}
         </div>
@@ -1438,11 +1454,12 @@
 
     // --- Dashboard ---
     async function renderDashboard() {
-      const [dash, stats, occupancy, activitiesRes, waitlistRes] = await Promise.all([
+      const [dash, stats, occupancy, activitiesRes, bookingsRes, waitlistRes] = await Promise.all([
         api(`/providers/${currentProvider.id}/dashboard`),
         api(`/providers/${currentProvider.id}/bookings/stats`),
         api(`/providers/${currentProvider.id}/reports/occupancy`),
         api(`/providers/${currentProvider.id}/activities`),
+        api(`/providers/${currentProvider.id}/bookings`).catch(function() { return { data: [] } }),
         api(`/providers/${currentProvider.id}/activities`).then(async actRes => {
           let total = 0
           for (const a of (actRes.data || [])) {
@@ -1461,6 +1478,7 @@
       // Store data globally for KPI updates on view change
       window._occData = occupancy.data || []
       window._activitiesData = activitiesRes.data || []
+      window._bookingsData = bookingsRes.data || []
       window._dashData = d
       window._bookingStats = s
       window._waitlistCount = waitlistRes.count
