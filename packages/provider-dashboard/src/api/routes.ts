@@ -668,7 +668,8 @@ export function registerRoutes(router: Router) {
     const activity = (entry as any).activities
     const parent = (entry as any).parents
     const courseName = escHtml(activity?.title || 'den Kurs')
-    const requiresOnlinePayment = activity?.payment_online && !activity?.payment_onsite
+    // If online payment is available, always redirect to Stripe (customer pays first)
+    const requiresOnlinePayment = !!activity?.payment_online
 
     // If online-only course → show payment page with Stripe checkout
     if (requiresOnlinePayment) {
