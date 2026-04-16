@@ -169,6 +169,38 @@ export class CheckoutService {
         console.error('Confirmation email failed:', emailErr)
       }
 
+      // Auto-enroll in active block (waitlist bookings need this too)
+      try {
+        const { data: activeBlk } = await db.from('course_blocks')
+          .select('id, capacity, makeup_capacity')
+          .eq('activity_id', params.activityId)
+          .in('status', ['active', 'upcoming'])
+          .order('start_date', { ascending: true })
+          .limit(1).maybeSingle()
+        if (activeBlk) {
+          const childId = `${params.childFirstName}-${params.childLastName}-${params.childBirthYear}`
+          const childAge = new Date().getFullYear() - params.childBirthYear
+          await db.from('block_enrollments').insert({
+            block_id: activeBlk.id,
+            activity_type: 'course',
+            provider_id: params.providerId,
+            parent_id: parent.id,
+            child_id: childId,
+            child_name: `${params.childFirstName} ${params.childLastName}`,
+            child_age: childAge,
+            booking_id: booking.id,
+            status: 'active',
+            price_paid: params.amount > 0 ? params.amount / 100 : 0,
+            currency: params.currency || 'EUR',
+            credits_earned: 0,
+            credits_used: 0,
+          })
+          console.log(`[Checkout] Waitlist booking auto-enrolled in block ${activeBlk.id}`)
+        }
+      } catch (enrollErr) {
+        console.error('[Checkout] Waitlist auto-enrollment failed:', enrollErr)
+      }
+
       // Auto-invoice
       try {
         const { data: provTax } = await db.from('providers')
