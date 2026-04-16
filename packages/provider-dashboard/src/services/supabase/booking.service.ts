@@ -85,7 +85,7 @@ export const SupabaseBookingService = {
     return (data ?? []).map(bookingFromDb)
   },
 
-  async getStats(providerId: ID): Promise<{ total: number; confirmed: number; cancelled: number; revenue: number }> {
+  async getStats(providerId: ID): Promise<{ total: number; confirmed: number; cancelled: number; completed: number; pending: number; waitlisted: number; noShow: number; revenue: number }> {
     const sb = getServiceClient()
     const { data, error } = await sb.from(TABLE).select('status, amount_paid').eq('provider_id', providerId)
     if (error) throw error
@@ -94,6 +94,10 @@ export const SupabaseBookingService = {
       total: rows.length,
       confirmed: rows.filter((r: any) => r.status === 'confirmed').length,
       cancelled: rows.filter((r: any) => r.status === 'cancelled').length,
+      completed: rows.filter((r: any) => r.status === 'completed').length,
+      pending: rows.filter((r: any) => r.status === 'pending').length,
+      waitlisted: rows.filter((r: any) => r.status === 'waitlisted').length,
+      noShow: rows.filter((r: any) => r.status === 'no_show').length,
       revenue: rows.reduce((s: number, r: any) => s + (r.amount_paid ?? 0), 0),
     }
   },

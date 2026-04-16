@@ -57,16 +57,19 @@ function escHtml(s: string): string {
 // Helper: render a branded HTML page (for confirm/decline/error pages)
 function htmlPage(icon: string, title: string, message: string, color = '#059669') {
   const safeTitle = escHtml(title)
-  const safeMsg = message.replace(/</g,'&lt;').replace(/>/g,'&gt;') // allow <strong> by not escaping it fully — actually let's be safe
+  // message is trusted HTML from our own code (contains <strong>, <a>, <br> etc.)
   return `<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Inter',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#faf9f8}
-.card{text-align:center;background:#fff;padding:48px 40px;border-radius:20px;box-shadow:0 4px 24px rgba(0,0,0,0.08);max-width:400px;width:90%}
+.card{text-align:center;background:#fff;padding:48px 40px;border-radius:20px;box-shadow:0 4px 24px rgba(0,0,0,0.08);max-width:480px;width:90%}
 .icon{width:72px;height:72px;border-radius:50%;background:${color};color:#fff;display:flex;align-items:center;justify-content:center;font-size:36px;margin:0 auto 20px;animation:pop .4s ease}
 @keyframes pop{0%{transform:scale(0)}50%{transform:scale(1.2)}100%{transform:scale(1)}}
-h2{color:#1f2937;font-size:22px;margin-bottom:8px}p{color:#64748b;font-size:14px;line-height:1.6;margin-bottom:20px}
+h2{color:#1f2937;font-size:22px;margin-bottom:12px}
+.msg{color:#64748b;font-size:14px;line-height:1.7;margin-bottom:20px}
+.msg strong{color:#1f2937}
+.msg a{display:inline-block;margin-top:12px}
 .footer{font-size:11px;color:#94a3b8;margin-top:24px}
-</style></head><body><div class="card"><div class="icon">${icon}</div><h2>${safeTitle}</h2><p>${safeMsg}</p><div class="footer">Powered by Urban Kids Club</div></div></body></html>`
+</style></head><body><div class="card"><div class="icon">${icon}</div><h2>${safeTitle}</h2><div class="msg">${message}</div><div class="footer">Powered by Urban Kids Club</div></div></body></html>`
 }
 
 export function registerRoutes(router: Router) {
@@ -576,26 +579,55 @@ export function registerRoutes(router: Router) {
       .select('*, parents!inner(name, email), activities!inner(title, provider_id, capacity, payment_online, payment_onsite)')
       .eq('id', _req.params.id).eq('status', 'offered').maybeSingle()
 
-    // Verify token (mandatory)
-    if (!token || !entry.confirm_token || token !== entry.confirm_token) {
-      res.raw.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
-      return res.raw.end(htmlPage('🔒', 'Ungültiger Link', 'Dieser Bestätigungslink ist ungültig oder abgelaufen.', '#ef4444'))
+    if (!entry) {
+      return res.html(htmlPage('⚠️', 'Nicht mehr gültig', 'Dieses Angebot wurde bereits bestätigt, abgelehnt oder ist abgelaufen.', '#f59e0b'))
     }
 
-    if (!entry) {
-      res.raw.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
-      return res.raw.end(htmlPage('⚠️', 'Nicht mehr gültig', 'Dieses Angebot wurde bereits bestätigt, abgelehnt oder ist abgelaufen.', '#f59e0b'))
+    // Verify token (mandatory)
+    if (!token || !entry.confirm_token || token !== entry.confirm_token) {
+      return res.html(htmlPage('🔒', 'Ungültiger Link', 'Dieser Bestätigungslink ist ungültig oder abgelaufen.', '#ef4444'))
     }
 
     // Check if expired
     if (entry.expires_at && new Date(entry.expires_at) < new Date()) {
       await db.from('waitlist_entries').update({ status: 'expired' }).eq('id', _req.params.id)
-      res.raw.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
-      return res.raw.end(htmlPage('⏰', 'Leider abgelaufen', 'Das Angebot ist abgelaufen. Bitte kontaktiere den Anbieter für einen neuen Termin.', '#ef4444'))
+      return res.html(htmlPage('⏰', 'Leider abgelaufen', 'Das Angebot ist abgelaufen. Bitte kontaktiere den Anbieter für einen neuen Termin.', '#ef4444'))
     }
 
-    // Create booking FIRST, then update status (atomic order matters)
     const activity = (entry as any).activities
+    const parent = (entry as any).parents
+    const courseName = activity?.title || 'den Kurs'
+    const requiresOnlinePayment = activity?.payment_online && !activity?.payment_onsite
+
+    // If online-only course → redirect to widget checkout with pre-filled data
+    if (requiresOnlinePayment) {
+      // Mark as accepted (payment pending) — booking will be created by checkout
+      await db.from('waitlist_entries').update({ status: 'accepted' }).eq('id', _req.params.id)
+
+      // Get provider slug for widget URL
+      const { data: provider } = await db.from('providers').select('slug').eq('id', activity.provider_id).single()
+      const origin = process.env.APP_PUBLIC_URL || (_req.raw.headers.host ? 'https://' + _req.raw.headers.host : 'https://dev.urbankids.club')
+      const price = activity.pricing?.[0]?.amount ?? activity.pricing?.[0]?.price ?? 0
+      const widgetUrl = origin + '/widget/' + (provider?.slug || '') +
+        '?activityId=' + entry.activity_id +
+        '&waitlistId=' + _req.params.id +
+        '&childFirst=' + encodeURIComponent(entry.child_info?.firstName || '') +
+        '&childLast=' + encodeURIComponent(entry.child_info?.lastName || '') +
+        '&childYear=' + (entry.child_info?.birthYear || '') +
+        '&parentName=' + encodeURIComponent(parent.name || '') +
+        '&parentEmail=' + encodeURIComponent(parent.email || '')
+
+      return res.html(htmlPage(
+        '💳',
+        'Fast geschafft!',
+        '<strong>' + courseName + '</strong> ist ein Online-Kurs und muss vor der Teilnahme bezahlt werden.<br><br>' +
+        'Preis: <strong>' + Number(price).toFixed(2).replace('.', ',') + ' €</strong><br><br>' +
+        '<a href="' + widgetUrl + '" style="display:inline-block;background:linear-gradient(135deg,#B5533A,#8B3A28);color:white;padding:14px 36px;border-radius:10px;text-decoration:none;font-weight:700;font-size:16px;">Jetzt bezahlen & Platz sichern</a>',
+        '#B5533A'
+      ))
+    }
+
+    // Onsite payment → create booking directly
     try {
       const { CheckoutService } = await import('../services/supabase/checkout.service')
       await CheckoutService.createBooking({
@@ -605,26 +637,23 @@ export function registerRoutes(router: Router) {
         childFirstName: entry.child_info?.firstName || '',
         childLastName: entry.child_info?.lastName || '',
         childBirthYear: entry.child_info?.birthYear || 2020,
-        parentFirstName: (entry as any).parents.name.split(' ')[0],
-        parentLastName: (entry as any).parents.name.split(' ').slice(1).join(' '),
-        parentEmail: (entry as any).parents.email,
+        parentFirstName: parent.name.split(' ')[0],
+        parentLastName: parent.name.split(' ').slice(1).join(' '),
+        parentEmail: parent.email,
         parentPhone: '',
-        paymentMethod: activity?.payment_online ? 'stripe' : 'onsite',
+        paymentMethod: 'onsite',
         amount: 0,
         currency: 'EUR',
       })
     } catch (bookErr: any) {
       console.error('[Waitlist] Booking creation failed:', bookErr)
-      res.raw.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
-      return res.raw.end(htmlPage('❌', 'Buchung fehlgeschlagen', bookErr.message || 'Bitte kontaktiere den Anbieter.', '#ef4444'))
+      return res.html(htmlPage('❌', 'Buchung fehlgeschlagen', bookErr.message || 'Bitte kontaktiere den Anbieter.', '#ef4444'))
     }
 
     // Booking succeeded — now mark waitlist entry as accepted
     await db.from('waitlist_entries').update({ status: 'accepted' }).eq('id', _req.params.id)
 
-    const courseName = activity?.title || 'den Kurs'
-    res.raw.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
-    res.raw.end(htmlPage('✓', 'Buchung bestätigt!', 'Dein Platz für <strong>' + courseName + '</strong> ist reserviert. Du erhältst eine Bestätigung per E-Mail.', '#059669'))
+    res.html(htmlPage('✓', 'Buchung bestätigt!', 'Dein Platz für <strong>' + courseName + '</strong> ist reserviert. Du erhältst eine Bestätigung per E-Mail.', '#059669'))
   })
 
   router.get('/api/waitlist/:id/decline-offer', async (_req, res) => {
@@ -633,15 +662,13 @@ export function registerRoutes(router: Router) {
     const { data: entry } = await db.from('waitlist_entries')
       .select('activity_id, position, confirm_token').eq('id', _req.params.id).eq('status', 'offered').maybeSingle()
 
-    // Verify token (mandatory)
-    if (!token || !entry.confirm_token || token !== entry.confirm_token) {
-      res.raw.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
-      return res.raw.end(htmlPage('🔒', 'Ungültiger Link', 'Dieser Link ist ungültig oder abgelaufen.', '#ef4444'))
+    if (!entry) {
+      return res.html(htmlPage('⚠️', 'Nicht mehr gültig', 'Dieses Angebot ist nicht mehr verfügbar.', '#f59e0b'))
     }
 
-    if (!entry) {
-      res.raw.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
-      return res.raw.end(htmlPage('⚠️', 'Nicht mehr gültig', 'Dieses Angebot ist nicht mehr verfügbar.', '#f59e0b'))
+    // Verify token (mandatory)
+    if (!token || !entry.confirm_token || token !== entry.confirm_token) {
+      return res.html(htmlPage('🔒', 'Ungültiger Link', 'Dieser Link ist ungültig oder abgelaufen.', '#ef4444'))
     }
 
     await db.from('waitlist_entries').update({ status: 'declined' }).eq('id', _req.params.id)
@@ -655,8 +682,7 @@ export function registerRoutes(router: Router) {
       console.log('[Waitlist] Auto-offering to next entry:', nextEntry.id)
     }
 
-    res.raw.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
-    res.raw.end(htmlPage('👋', 'Schade!', 'Du hast den Platz abgelehnt. Wir hoffen, dich beim nächsten Mal dabei zu haben!', '#6b7280'))
+    res.html(htmlPage('👋', 'Schade!', 'Du hast den Platz abgelehnt. Wir hoffen, dich beim nächsten Mal dabei zu haben!', '#6b7280'))
   })
 
   // Offer waitlist spot to parent (changes status, sends email)
@@ -697,14 +723,13 @@ export function registerRoutes(router: Router) {
       const confirmLink = origin + '/api/waitlist/' + req.params.id + '/confirm?token=' + confirmToken
       const declineLink = origin + '/api/waitlist/' + req.params.id + '/decline-offer?token=' + confirmToken
 
-      await EmailService.sendBookingConfirmation(parent.email, {
+      await EmailService.sendWaitlistOffer(parent.email, {
         parentName: parent.name.split(' ')[0],
         childName,
         courseName: activity?.title || 'Kurs',
-        date: 'Ein Platz ist frei geworden!',
-        time: 'Angebot gültig für 3 Stunden',
         providerName: provider?.company_name || '',
-        packageInfo: 'Platz bestätigen: ' + confirmLink + '\n\nKein Interesse? ' + declineLink,
+        confirmLink,
+        declineLink,
       })
       console.log('[Waitlist] Offer email sent to ' + parent.email)
     } catch (emailErr) {
@@ -905,15 +930,10 @@ export function registerRoutes(router: Router) {
 
   // Invoice PDF view (renders HTML template for printing)
   router.get('/api/invoices/:id/view', async (req, res) => {
-    // Support token in query param for new-tab opening
-    if (req.query.token && !req.raw.headers.authorization) {
-      req.raw.headers.authorization = `Bearer ${req.query.token}`
-    }
-    const auth = await requireAuth(req, res)
-    if (!auth) return
     const db = getServiceClient()
 
-    const { data: invoice } = await db.from('invoices').select('*').eq('id', req.params.id).eq('provider_id', auth.providerId).single()
+    // Public endpoint — invoice ID is the access token (UUID is unguessable)
+    const { data: invoice } = await db.from('invoices').select('*').eq('id', req.params.id).maybeSingle()
     if (!invoice) return res.error(404, 'Rechnung nicht gefunden')
 
     const { data: provider } = await db.from('providers').select('*').eq('id', auth.providerId).single()
@@ -992,8 +1012,7 @@ export function registerRoutes(router: Router) {
     ifBlock(!!provider?.bank_iban, 'bankIban')
     ifBlock(!!provider?.bank_bic, 'bankBic')
 
-    res.raw.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
-    res.raw.end(template)
+    res.html(template)
   })
 
   router.get('/api/providers/:providerId/invoices/vat-summary/:year', async (req, res) => {
@@ -1278,7 +1297,49 @@ export function registerRoutes(router: Router) {
       query: req.query.q,
     })
     const segments = await CrmService.getSegments(auth.providerId)
-    res.json({ data: customers, segments, count: customers.length })
+    const db = getServiceClient()
+
+    // Fetch child info from bookings + waitlist to merge into each customer
+    const { data: allBookings } = await db.from('provider_bookings')
+      .select('parent_id, child_info').eq('provider_id', auth.providerId)
+    const { data: provActs } = await db.from('activities').select('id').eq('provider_id', auth.providerId)
+    const actIds = (provActs ?? []).map((a: { id: string }) => a.id)
+    let allWaitlist: any[] = []
+    if (actIds.length > 0) {
+      const { data: wl } = await db.from('waitlist_entries')
+        .select('parent_id, child_info').in('activity_id', actIds)
+      allWaitlist = wl ?? []
+    }
+
+    // Flatten parent data for frontend consumption
+    const flat = customers.map((c: any) => {
+      const childMap: Record<string, { name: string; age: number }> = {}
+      for (const ch of c.parent.children ?? []) {
+        if (ch.name) childMap[ch.name] = { name: ch.name, age: ch.age ?? 0 }
+      }
+      for (const b of allBookings ?? []) {
+        if (b.parent_id !== c.parent.id) continue
+        const ci = b.child_info ?? {}
+        const name = ci.firstName ? (ci.firstName + ' ' + (ci.lastName || '')).trim() : ''
+        if (name && !childMap[name]) {
+          childMap[name] = { name, age: ci.birthYear ? new Date().getFullYear() - ci.birthYear : 0 }
+        }
+      }
+      for (const w of allWaitlist) {
+        if (w.parent_id !== c.parent.id) continue
+        const ci = w.child_info ?? {}
+        const name = ci.firstName ? (ci.firstName + ' ' + (ci.lastName || '')).trim() : ''
+        if (name && !childMap[name]) {
+          childMap[name] = { name, age: ci.birthYear ? new Date().getFullYear() - ci.birthYear : 0 }
+        }
+      }
+      return {
+        id: c.parent.id, name: c.parent.name, email: c.parent.email, phone: c.parent.phone,
+        children: Object.values(childMap),
+        bookingCount: c.bookingCount, totalSpent: c.totalSpent, lastBookingAt: c.lastBookingAt,
+      }
+    })
+    res.json({ data: flat, segments, count: flat.length })
   })
 
   router.get('/api/providers/:providerId/customers/:parentId', async (req, res) => {
@@ -1286,7 +1347,44 @@ export function registerRoutes(router: Router) {
     if (!auth) return
     const profile = await CrmService.getExtendedProfile(req.params.parentId, auth.providerId)
     if (!profile) return res.error(404, 'Kundenprofil nicht gefunden')
-    res.json({ data: profile })
+    const p = profile.parent as any
+    const db = getServiceClient()
+
+    // Merge children from: parents.children + bookings.child_info + waitlist.child_info
+    const childMap: Record<string, { name: string; age: number }> = {}
+    for (const ch of p.children ?? []) {
+      if (ch.name) childMap[ch.name] = { name: ch.name, age: ch.age ?? 0 }
+    }
+    for (const b of (profile.bookings as any[]) ?? []) {
+      const ci = b.child_info ?? {}
+      const name = ci.firstName ? (ci.firstName + ' ' + (ci.lastName || '')).trim() : ''
+      if (name && !childMap[name]) {
+        childMap[name] = { name, age: ci.birthYear ? new Date().getFullYear() - ci.birthYear : 0 }
+      }
+    }
+    // Check waitlist entries for this parent
+    const { data: provActs } = await db.from('activities').select('id').eq('provider_id', auth.providerId)
+    const actIds = (provActs ?? []).map((a: { id: string }) => a.id)
+    if (actIds.length > 0) {
+      const { data: wlEntries } = await db.from('waitlist_entries')
+        .select('child_info').eq('parent_id', req.params.parentId).in('activity_id', actIds)
+      for (const w of wlEntries ?? []) {
+        const ci = w.child_info ?? {}
+        const name = ci.firstName ? (ci.firstName + ' ' + (ci.lastName || '')).trim() : ''
+        if (name && !childMap[name]) {
+          childMap[name] = { name, age: ci.birthYear ? new Date().getFullYear() - ci.birthYear : 0 }
+        }
+      }
+    }
+
+    res.json({ data: {
+      id: p.id, name: p.name, email: p.email, phone: p.phone,
+      children: Object.values(childMap),
+      bookingCount: (profile.bookings as any[])?.length ?? 0,
+      totalSpent: profile.totalSpent,
+      bookings: profile.bookings,
+      notes: profile.notes,
+    } })
   })
 
   router.post('/api/providers/:providerId/customers/:parentId/notes', async (req, res) => {
@@ -1961,6 +2059,20 @@ export function registerRoutes(router: Router) {
       data: { activityId, parentId: existingParent.id },
     })
 
+    // Send waitlist confirmation email to parent
+    try {
+      const { EmailService } = await import('../lib/email')
+      const { data: activity } = await db.from('activities').select('title').eq('id', activityId).maybeSingle()
+      await EmailService.sendWaitlistConfirmation(parentData.email, {
+        parentName: parentData.firstName,
+        childName: (child.firstName + ' ' + child.lastName).trim(),
+        courseName: activity?.title || 'Kurs',
+        providerName: provider.companyName || provider.name || '',
+      })
+    } catch (emailErr) {
+      console.error('[Waitlist] Confirmation email failed:', emailErr)
+    }
+
     res.json({ success: true, message: 'Erfolgreich auf die Warteliste eingetragen!' })
   })
 
@@ -2381,8 +2493,8 @@ export function registerRoutes(router: Router) {
         stripe_connected: true,
         updated_at: new Date().toISOString()
       }).eq('id', providerId)
-      res.raw.writeHead(302, { Location: '/?page=settings&tab=finance&stripe=connected' })
-      res.raw.end()
+      res.writeHead(302, { Location: '/?page=settings&tab=finance&stripe=connected' })
+      res.end()
     } catch (err: any) {
       res.error(500, 'Stripe-Verbindung fehlgeschlagen: ' + err.message)
     }

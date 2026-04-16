@@ -23,6 +23,7 @@ export interface ApiResponse {
   status(code: number): ApiResponse
   json(data: unknown): void
   error(code: number, message: string): void
+  html(content: string, code?: number): void
 }
 
 interface Route {
@@ -112,6 +113,10 @@ export class Router {
         error(code: number, message: string) {
           res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' })
           res.end(JSON.stringify({ error: message }))
+        },
+        html(content: string, code?: number) {
+          res.writeHead(code ?? statusCode, { 'Content-Type': 'text/html; charset=utf-8' })
+          res.end(content)
         },
       }
 

@@ -32,7 +32,7 @@ export const SupabaseParentService = {
   async getById(id: ID, providerId?: ID): Promise<Parent | undefined> {
     const sb = getServiceClient()
     if (providerId) {
-      // Verify parent has bookings with this provider before returning
+      // Verify parent has bookings OR waitlist entries with this provider
       const { data: bookingRows, error: bErr } = await sb
         .from('provider_bookings')
         .select('parent_id')
@@ -40,7 +40,18 @@ export const SupabaseParentService = {
         .eq('parent_id', id)
         .limit(1)
       if (bErr) throw bErr
-      if (!bookingRows?.length) return undefined
+      if (!bookingRows?.length) {
+        // Check waitlist entries (parent may only be on waitlist, no bookings yet)
+        const { data: provActs } = await sb.from('activities').select('id').eq('provider_id', providerId)
+        const actIds = (provActs ?? []).map((a: { id: string }) => a.id)
+        if (actIds.length > 0) {
+          const { data: wlRows } = await sb.from('waitlist_entries')
+            .select('parent_id').eq('parent_id', id).in('activity_id', actIds).limit(1)
+          if (!wlRows?.length) return undefined
+        } else {
+          return undefined
+        }
+      }
     }
     const { data, error } = await sb.from(TABLE).select('*').eq('id', id).maybeSingle()
     if (error) throw error

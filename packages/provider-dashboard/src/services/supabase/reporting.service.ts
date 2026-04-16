@@ -11,13 +11,13 @@ export const SupabaseReportingService = {
   async getOverview(providerId: ID): Promise<{
     totalActivities: number; publishedActivities: number;
     totalBookings: number; confirmedBookings: number;
-    totalRevenue: number; unpaidBookings: number;
+    totalRevenue: number; unpaidBookings: number; unpaidRevenue: number;
   }> {
     const sb = getServiceClient()
 
     const [actRes, bookRes] = await Promise.all([
-      sb.from('activities').select('status').eq('provider_id', providerId),
-      sb.from('provider_bookings').select('status, payment_status, amount_paid').eq('provider_id', providerId),
+      sb.from('activities').select('status, id, pricing').eq('provider_id', providerId),
+      sb.from('provider_bookings').select('status, payment_status, amount_paid, activity_id').eq('provider_id', providerId),
     ])
 
     if (actRes.error) throw new Error('Aktivitäten konnten nicht geladen werden: ' + actRes.error.message)
@@ -26,13 +26,24 @@ export const SupabaseReportingService = {
     const activities = actRes.data ?? []
     const bookings = bookRes.data ?? []
 
+    // Build activity price map for unpaid revenue calculation
+    const actPriceMap = new Map<string, number>()
+    for (const a of activities) {
+      const pricing = a.pricing as any[]
+      if (pricing?.length) actPriceMap.set(a.id, pricing[0].amount ?? pricing[0].price ?? 0)
+    }
+
     let totalRevenue = 0
     let unpaidBookings = 0
+    let unpaidRevenue = 0
     let confirmedBookings = 0
 
     for (const b of bookings) {
       if (b.payment_status === 'paid') totalRevenue += b.amount_paid ?? 0
-      if (b.payment_status === 'unpaid' && b.status === 'confirmed') unpaidBookings++
+      if (b.payment_status === 'unpaid' && b.status === 'confirmed') {
+        unpaidBookings++
+        unpaidRevenue += b.amount_paid > 0 ? b.amount_paid : (actPriceMap.get(b.activity_id) ?? 0)
+      }
       if (b.status === 'confirmed') confirmedBookings++
     }
 
@@ -43,6 +54,7 @@ export const SupabaseReportingService = {
       confirmedBookings,
       totalRevenue: Math.round(totalRevenue * 100) / 100,
       unpaidBookings,
+      unpaidRevenue: Math.round(unpaidRevenue * 100) / 100,
     }
   },
 

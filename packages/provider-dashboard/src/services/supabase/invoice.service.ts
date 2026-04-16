@@ -108,12 +108,29 @@ export const SupabaseInvoiceService = {
       const { data: provider } = await sb.from('providers').select('company_name').eq('id', invoiceRow.provider_id).single()
       if (parent?.email) {
         const { EmailService } = await import('../../lib/email')
+        // Fetch booking info for course name + child name
+        let courseName = ''
+        let childName = ''
+        if (invoiceRow.booking_id) {
+          const { data: booking } = await sb.from('provider_bookings')
+            .select('activity_id, child_info').eq('id', invoiceRow.booking_id).maybeSingle()
+          if (booking) {
+            const ci = booking.child_info as any
+            childName = ci?.firstName ? (ci.firstName + ' ' + (ci.lastName || '')).trim() : ''
+            const { data: activity } = await sb.from('activities').select('title').eq('id', booking.activity_id).maybeSingle()
+            courseName = activity?.title || ''
+          }
+        }
+        const origin = process.env.APP_PUBLIC_URL || 'https://dev.urbankids.club'
         await EmailService.sendInvoice(parent.email, {
           parentName: parent.name,
           invoiceNumber: invoiceRow.number,
-          amount: `${Number(invoiceRow.total).toFixed(2).replace('.', ',')} €`,
+          amount: Number(invoiceRow.total).toFixed(2).replace('.', ',') + ' €',
           dueDate: new Date(invoiceRow.due_date).toLocaleDateString('de-DE'),
           providerName: provider?.company_name || '',
+          courseName,
+          childName,
+          invoiceLink: origin + '/api/invoices/' + id + '/view',
         })
         console.log(`[Invoice] Email sent to ${parent.email} for invoice ${invoiceRow.number}`)
       }

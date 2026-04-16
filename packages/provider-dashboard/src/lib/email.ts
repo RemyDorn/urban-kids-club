@@ -149,29 +149,41 @@ export const EmailService = {
     amount: string
     dueDate: string
     providerName: string
+    courseName?: string
+    childName?: string
+    invoiceLink?: string
   }): Promise<EmailResult> {
+    const courseInfo = data.courseName ? ` für die Teilnahme an <strong>"${data.courseName}"</strong>` : ''
+    const childInfo = data.childName ? ` von ${data.childName}` : ''
+    const pdfButton = data.invoiceLink ? `
+      <div style="text-align: center; margin: 20px 0;">
+        <a href="${data.invoiceLink}" style="display: inline-block; background: linear-gradient(135deg, #B5533A, #8B3A28); color: white; padding: 12px 32px; border-radius: 10px; text-decoration: none; font-weight: 700; font-size: 14px;">📄 Rechnung als PDF ansehen</a>
+      </div>
+    ` : ''
     return this.send({
       to,
       subject: `Rechnung ${data.invoiceNumber} – ${data.providerName}`,
       html: `
-        <div style="font-family: 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto;">
-          <div style="background: #1e293b; padding: 24px; border-radius: 12px 12px 0 0;">
-            <h1 style="color: white; margin: 0; font-size: 20px;">📄 Rechnung ${data.invoiceNumber}</h1>
+        <div style="font-family: 'Inter', 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; color: #3C2225;">
+          <div style="background: linear-gradient(135deg, #1e293b, #334155); padding: 32px; border-radius: 16px 16px 0 0; text-align: center;">
+            <div style="font-size: 48px; margin-bottom: 8px;">📄</div>
+            <h1 style="color: white; margin: 0; font-size: 24px; font-weight: 700;">Rechnung ${data.invoiceNumber}</h1>
           </div>
-          <div style="padding: 24px; background: #f8fafc; border-radius: 0 0 12px 12px;">
-            <p>Hallo ${data.parentName},</p>
-            <p>Sie haben eine neue Rechnung von <strong>${data.providerName}</strong> erhalten:</p>
-            <div style="background: white; padding: 16px; border-radius: 8px; text-align: center;">
-              <div style="font-size: 32px; font-weight: bold; color: #0ea5e9;">${data.amount} €</div>
-              <div style="color: #64748b;">Fällig am ${data.dueDate}</div>
+          <div style="padding: 32px; background: #FFF9F5; border-radius: 0 0 16px 16px;">
+            <p style="font-size: 16px;">Hey ${data.parentName.split(' ')[0]},</p>
+            <p>hier ist deine Rechnung${courseInfo}${childInfo} bei <strong>${data.providerName}</strong>.</p>
+            <div style="background: white; padding: 20px; border-radius: 12px; border-left: 4px solid #B5533A; margin: 20px 0; text-align: center;">
+              <div style="font-size: 32px; font-weight: bold; color: #B5533A;">${data.amount}</div>
+              <div style="color: #64748b; margin-top: 4px;">Fällig am ${data.dueDate}</div>
             </div>
-            <p style="color: #64748b; font-size: 12px; margin-top: 16px;">
-              Bei Fragen wenden Sie sich bitte direkt an ${data.providerName}.
-            </p>
+            ${pdfButton}
+            <p style="color: #64748b; font-size: 13px;">Bei Fragen wende dich bitte direkt an ${data.providerName}.</p>
+            <hr style="border: none; border-top: 1px solid #F2E6E2; margin: 24px 0;">
+            <p style="color: #94a3b8; font-size: 12px; text-align: center;">Powered by Urban Kids Club – Kinderkurse entdecken & buchen</p>
           </div>
         </div>
       `,
-      text: `Rechnung ${data.invoiceNumber} über ${data.amount} € von ${data.providerName}. Fällig am ${data.dueDate}.`,
+      text: `Hey ${data.parentName.split(' ')[0]}! Hier ist deine Rechnung ${data.invoiceNumber} über ${data.amount}${courseInfo} bei ${data.providerName}. Fällig am ${data.dueDate}.`,
     })
   },
 
@@ -227,6 +239,81 @@ export const EmailService = {
         </div>
       `,
       text: `Erinnerung: ${data.childName} hat morgen um ${data.time} eine Probestunde bei "${data.courseName}".`,
+    })
+  },
+
+  async sendWaitlistOffer(to: string, data: {
+    parentName: string
+    childName: string
+    courseName: string
+    providerName: string
+    confirmLink: string
+    declineLink: string
+  }): Promise<EmailResult> {
+    return this.send({
+      to,
+      subject: `Platz frei – ${data.courseName} 🎉`,
+      html: `
+        <div style="font-family: 'Inter', 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; color: #3C2225;">
+          <div style="background: linear-gradient(135deg, #10b981, #059669); padding: 32px; border-radius: 16px 16px 0 0; text-align: center;">
+            <div style="font-size: 48px; margin-bottom: 8px;">🎉</div>
+            <h1 style="color: white; margin: 0; font-size: 24px; font-weight: 700;">Platz frei geworden!</h1>
+          </div>
+          <div style="padding: 32px; background: #FFF9F5; border-radius: 0 0 16px 16px;">
+            <p style="font-size: 16px;">Hey ${data.parentName},</p>
+            <p>Gute Nachrichten! Ein Platz in <strong>"${data.courseName}"</strong> ist frei geworden und <strong>${data.childName}</strong> kann dabei sein!</p>
+            <div style="background: white; padding: 20px; border-radius: 12px; border-left: 4px solid #10b981; margin: 20px 0;">
+              <div style="font-weight: 700; font-size: 16px;">${data.courseName}</div>
+              <div style="color: #64748b; margin-top: 4px;">🏫 ${data.providerName}</div>
+              <div style="color: #f59e0b; margin-top: 8px; font-weight: 600;">⏰ Angebot gültig für 3 Stunden</div>
+            </div>
+            <div style="text-align: center; margin: 28px 0;">
+              <a href="${data.confirmLink}" style="display: inline-block; background: linear-gradient(135deg, #10b981, #059669); color: white; padding: 14px 36px; border-radius: 10px; text-decoration: none; font-weight: 700; font-size: 16px; margin-right: 12px;">✓ Platz bestätigen</a>
+              <a href="${data.declineLink}" style="display: inline-block; background: #f1f5f9; color: #64748b; padding: 14px 36px; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 16px;">✗ Ablehnen</a>
+            </div>
+            <p style="color: #94a3b8; font-size: 13px; text-align: center;">Falls du nicht innerhalb von 3 Stunden bestätigst, wird der Platz automatisch an die nächste Person weitergegeben.</p>
+            <hr style="border: none; border-top: 1px solid #F2E6E2; margin: 24px 0;">
+            <p style="color: #94a3b8; font-size: 12px; text-align: center;">Powered by Urban Kids Club – Kinderkurse entdecken & buchen</p>
+          </div>
+        </div>
+      `,
+      text: `Hey ${data.parentName}! Ein Platz in "${data.courseName}" ist frei geworden für ${data.childName}. Bestätigen: ${data.confirmLink} — Ablehnen: ${data.declineLink} — Angebot gültig für 3 Stunden.`,
+    })
+  },
+
+  async sendWaitlistConfirmation(to: string, data: {
+    parentName: string
+    childName: string
+    courseName: string
+    providerName: string
+  }): Promise<EmailResult> {
+    return this.send({
+      to,
+      subject: `Warteliste – ${data.courseName} ✨`,
+      html: `
+        <div style="font-family: 'Inter', 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; color: #3C2225;">
+          <div style="background: linear-gradient(135deg, #B5533A, #8B3A28); padding: 32px; border-radius: 16px 16px 0 0; text-align: center;">
+            <div style="font-size: 48px; margin-bottom: 8px;">✨</div>
+            <h1 style="color: white; margin: 0; font-size: 24px; font-weight: 700;">Du bist auf der Warteliste!</h1>
+          </div>
+          <div style="padding: 32px; background: #FFF9F5; border-radius: 0 0 16px 16px;">
+            <p style="font-size: 16px;">Hey ${data.parentName},</p>
+            <p>Vielen Dank für dein Interesse! Wir haben <strong>${data.childName}</strong> auf die Warteliste für <strong>"${data.courseName}"</strong> gesetzt.</p>
+            <div style="background: white; padding: 20px; border-radius: 12px; border-left: 4px solid #B5533A; margin: 20px 0;">
+              <div style="font-weight: 700; font-size: 16px;">${data.courseName}</div>
+              <div style="color: #64748b; margin-top: 4px;">🏫 ${data.providerName}</div>
+              <div style="color: #B5533A; margin-top: 8px; font-weight: 600;">📋 Status: Warteliste</div>
+            </div>
+            <p>Sobald ein Platz frei wird, melden wir uns sofort bei dir per E-Mail — du bekommst dann einen Link zum Bestätigen. Easy!</p>
+            <p>Wir drücken die Daumen, dass es bald klappt! 🤞</p>
+            <p style="margin-top: 24px;">Liebe Grüße und einen wunderschönen Tag! ☀️</p>
+            <p style="color: #64748b; font-style: italic;">Dein Team von ${data.providerName}</p>
+            <hr style="border: none; border-top: 1px solid #F2E6E2; margin: 24px 0;">
+            <p style="color: #94a3b8; font-size: 12px; text-align: center;">Powered by Urban Kids Club – Kinderkurse entdecken & buchen</p>
+          </div>
+        </div>
+      `,
+      text: `Hey ${data.parentName}! Vielen Dank – ${data.childName} steht jetzt auf der Warteliste für "${data.courseName}" bei ${data.providerName}. Sobald ein Platz frei wird, melden wir uns sofort bei dir. Liebe Grüße und einen wunderschönen Tag!`,
     })
   },
 

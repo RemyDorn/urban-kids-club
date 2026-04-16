@@ -55,12 +55,18 @@ export const SupabaseCrmService = {
       parentStats.set(b.parent_id, existing)
     }
 
-    // Also include parents from waitlist (no bookings yet)
-    const { data: waitlistParents } = await sb.from('waitlist_entries')
-      .select('parent_id').in('status', ['waiting', 'offered'])
-    for (const w of waitlistParents ?? []) {
-      if (!parentStats.has(w.parent_id)) {
-        parentStats.set(w.parent_id, { count: 0, spent: 0, last: '' })
+    // Also include parents from waitlist (no bookings yet) — scoped to this provider's activities
+    const { data: providerActivities } = await sb.from('activities')
+      .select('id').eq('provider_id', providerId)
+    const activityIds = (providerActivities ?? []).map((a: { id: string }) => a.id)
+    if (activityIds.length > 0) {
+      const { data: waitlistParents } = await sb.from('waitlist_entries')
+        .select('parent_id, child_info').in('status', ['waiting', 'offered'])
+        .in('activity_id', activityIds)
+      for (const w of waitlistParents ?? []) {
+        if (!parentStats.has(w.parent_id)) {
+          parentStats.set(w.parent_id, { count: 0, spent: 0, last: '' })
+        }
       }
     }
 
@@ -114,12 +120,17 @@ export const SupabaseCrmService = {
       if (b.payment_status === 'paid' && (b.amount_paid ?? 0) >= 200) vipIds.add(b.parent_id)
     }
 
-    // Also count waitlist parents
-    const { data: waitlistParents } = await sb.from('waitlist_entries')
-      .select('parent_id').in('status', ['waiting', 'offered'])
+    // Also count waitlist parents — scoped to this provider's activities
+    const { data: provActs } = await sb.from('activities').select('id').eq('provider_id', providerId)
+    const provActIds = (provActs ?? []).map((a: { id: string }) => a.id)
     const prospectIds = new Set<string>()
-    for (const w of waitlistParents ?? []) {
-      if (!parentIds.has(w.parent_id)) prospectIds.add(w.parent_id)
+    if (provActIds.length > 0) {
+      const { data: waitlistParents } = await sb.from('waitlist_entries')
+        .select('parent_id').in('status', ['waiting', 'offered'])
+        .in('activity_id', provActIds)
+      for (const w of waitlistParents ?? []) {
+        if (!parentIds.has(w.parent_id)) prospectIds.add(w.parent_id)
+      }
     }
 
     const total = parentIds.size + prospectIds.size

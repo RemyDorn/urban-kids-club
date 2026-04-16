@@ -131,13 +131,13 @@ export class CheckoutService {
         recipient_type: 'provider', recipient_id: params.providerId,
         type: 'new_booking', channel: 'in_app',
         title: 'Neue Buchung!',
-        body: params.childFirstName + ' ' + params.childLastName + ' hat gebucht (' + (params.paymentMethod === 'onsite' ? 'Vor-Ort-Zahlung' : 'Online bezahlt') + ').',
+        body: params.childFirstName + ' ' + params.childLastName + ' hat gebucht (' + (params.paymentMethod === 'onsite' ? 'Vor-Ort-Zahlung' : (params.amount > 0 ? 'Online bezahlt' : 'Zahlung ausstehend')) + ').',
         data: { bookingId: booking.id, activityId: params.activityId },
       })
     } catch(e) { /* non-blocking */ }
 
-    // 4. Auto-enroll in the active block
-    try {
+    // 4. Auto-enroll in the active block (only if a block exists)
+    if (activeBlock) try {
       // Check if provider has makeup system enabled
       const { data: providerSettings } = await db.from('providers')
         .select('makeup_enabled').eq('id', params.providerId).single()

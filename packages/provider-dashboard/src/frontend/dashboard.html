@@ -1161,10 +1161,12 @@
         const notifs = (res.data || res || []).slice(0, 20)
 
         const typeIcons = { waitlist_entry: '📋', block_full: '🔴', new_block_available: '🟢', invoice_sent: '📄' }
-        const content = notifs.length ? notifs.map(n => {
-          const icon = typeIcons[n.type] || '🔔'
-          const time = new Date(n.sentAt || n.sent_at).toLocaleString('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })
-          return '<div class="flex gap-3 py-3 px-3 border-b border-gray-100 ' + (n.read ? '' : 'bg-brand-50/30') + '">' +
+        const content = notifs.length ? notifs.map(function(n) {
+          var icon = typeIcons[n.type] || '🔔'
+          var time = new Date(n.sentAt || n.sent_at).toLocaleString('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })
+          var actId = n.data?.activityId || ''
+          var clickAttr = actId ? ' onclick="document.getElementById(\'calModal\').className=\'hidden\'; showCalEvent(\'' + actId + '\')" style="cursor:pointer"' : ''
+          return '<div class="flex gap-3 py-3 px-3 border-b border-gray-100 hover:bg-gray-50 ' + (n.read ? '' : 'bg-brand-50/30') + '"' + clickAttr + '>' +
             '<div class="text-lg flex-shrink-0">' + icon + '</div>' +
             '<div class="flex-1"><div class="text-sm font-medium text-gray-900">' + escapeHtml(n.title) + '</div>' +
             '<div class="text-xs text-gray-500 mt-0.5">' + escapeHtml(n.body) + '</div>' +
@@ -1182,6 +1184,19 @@
       } catch(e) {
         modal.innerHTML = '<div class="cal-modal fade-in"><div class="text-red-500 text-center py-8">Fehler beim Laden</div></div>'
       }
+    }
+
+    async function showCalEvent(activityId) {
+      try {
+        var actRes = await api('/providers/' + currentProvider.id + '/activities')
+        var activity = (actRes.data || []).find(function(a) { return a.id === activityId })
+        if (!activity) { alert('Kurs nicht gefunden'); return }
+        var occRes = await api('/providers/' + currentProvider.id + '/reports/occupancy')
+        var occ = (occRes.data || []).find(function(o) { return o.activityId === activityId })
+        var today = fmtDate(new Date())
+        var ev = { date: today, startTime: activity.schedule?.slots?.[0]?.startTime || '', endTime: activity.schedule?.slots?.[0]?.endTime || '' }
+        showEventDetail(ev, activity, occ || { booked: 0, capacity: activity.capacity, occupancy: 0 })
+      } catch(e) { alert('Fehler: ' + (e.message || 'Unbekannt')) }
     }
 
     async function acceptWaitlistEntry(waitlistId, activityId) {
@@ -1209,14 +1224,15 @@
       modal.innerHTML = '<div class="cal-modal fade-in" style="max-width:500px"><div class="text-center text-gray-400 py-8">Lade Profil...</div></div>'
 
       try {
-        const [parentRes, bookingsRes] = await Promise.all([
-          api('/parents/' + parentId),
-          api('/parents/' + parentId + '/bookings'),
-        ])
+        const parentRes = await api('/parents/' + parentId)
         const parent = parentRes.data || parentRes
-        const bookings = (bookingsRes.data || bookingsRes || []).filter(b => b.status !== 'cancelled')
+        let bookings = []
+        try {
+          const bookingsRes = await api('/parents/' + parentId + '/bookings')
+          bookings = (bookingsRes.data || bookingsRes || []).filter(b => b.status !== 'cancelled')
+        } catch(e) { /* waitlist-only parent has no bookings */ }
 
-        // Extract unique children from bookings
+        // Extract unique children from bookings + parent.children
         const childMap = {}
         bookings.forEach(b => {
           const key = (b.child?.firstName || '') + ' ' + (b.child?.lastName || '')
@@ -1225,13 +1241,41 @@
           }
           if (childMap[key]) childMap[key].bookings++
         })
-        const children = Object.values(childMap)
+        // Also include children from parent profile
+        if (parent.children && parent.children.length) {
+          parent.children.forEach(function(ch) {
+            var key = ch.name || ''
+            if (key && !childMap[key]) {
+              childMap[key] = { name: ch.name, age: ch.age || 0, bookings: 0 }
+            }
+          })
+        }
 
-        // Load activity names
-        let actRes = null
+        // Load activity names + check waitlist for child info
+        var actRes = null
         try { actRes = await api('/providers/' + currentProvider.id + '/activities') } catch(e) {}
-        const actMap = {}
-        if (actRes?.data) actRes.data.forEach(a => { actMap[a.id] = a })
+        var actMap = {}
+        if (actRes && actRes.data) actRes.data.forEach(function(a) { actMap[a.id] = a })
+
+        // Check waitlist entries for this parent (covers waitlist-only parents with child_info)
+        if (Object.keys(childMap).length === 0 && actRes && actRes.data) {
+          for (var ai = 0; ai < actRes.data.length; ai++) {
+            try {
+              var wlRes = await api('/activities/' + actRes.data[ai].id + '/waitlist')
+              var wlEntries = (wlRes.data || wlRes || []).filter(function(e) { return e.parentId === parentId })
+              wlEntries.forEach(function(e) {
+                if (e.child && e.child.firstName) {
+                  var key = e.child.firstName + ' ' + (e.child.lastName || '')
+                  if (!childMap[key.trim()]) {
+                    var age = e.child.birthYear ? (new Date().getFullYear() - e.child.birthYear) : 0
+                    childMap[key.trim()] = { name: key.trim(), age: age, bookings: 0 }
+                  }
+                }
+              })
+            } catch(e) {}
+          }
+        }
+        var children = Object.values(childMap)
 
         const totalSpent = bookings.reduce((s, b) => s + (b.amountPaid || 0), 0)
 
@@ -1330,20 +1374,20 @@
         const sEnd = a.schedule.endDate || '2099-12-31'
         let hasSessionInRange = false
 
-        a.schedule.slots.forEach(slot => {
-          const targetDay = dayToNum[slot.day]
+        var occ = occMap[a.id]
+        var hasByDate = occ && occ.byDate && Object.keys(occ.byDate).length > 0
+        a.schedule.slots.forEach(function(slot) {
+          var targetDay = dayToNum[slot.day]
           if (targetDay === undefined) return
-          // Check each day in range
-          const cur = new Date(startDate)
+          var cur = new Date(startDate)
           while (cur <= endDate) {
             if (cur.getDay() === targetDay) {
-              const ds = fmtDate(cur)
+              var ds = fmtDate(cur)
               if (ds >= sStart && ds <= sEnd) {
                 hasSessionInRange = true
                 courseSlots++
-                // Count bookings for this date
-                const occ = occMap[a.id]
-                const dateBooked = occ?.byDate?.[ds] ?? 0
+                // Count bookings for this date — use byDate if available, else use total booked count
+                var dateBooked = hasByDate ? (occ.byDate[ds] || 0) : (occ ? occ.booked : 0)
                 totalBooked += dateBooked
                 totalCapacity += a.capacity || 0
               }
@@ -1365,8 +1409,8 @@
           ${kpiCard('Auslastung', occPct + '%', totalBooked + '/' + totalCapacity + ' · ' + viewLabel, 'bg-brand-100 text-brand-400', '📊')}
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
-          ${kpiCard('Umsatz', formatCurrency(window._dashData?.totalRevenue || 0), 'Gesamt', 'bg-emerald-50 text-emerald-600', '💶')}
-          ${kpiCard('Offene Rechnungen', formatCurrency(window._dashData?.outstandingInvoices || 0), '', 'bg-orange-50 text-orange-600', '📄')}
+          ${kpiCard('Umsatz', formatCurrency(window._dashData?.totalRevenue || 0), 'bezahlt', 'bg-emerald-50 text-emerald-600', '💶')}
+          ${kpiCard('Offener Umsatz', formatCurrency(window._dashData?.unpaidRevenue || 0), (window._dashData?.unpaidBookings || 0) + ' Buchungen offen', 'bg-orange-50 text-orange-600', '💰')}
           ${kpiCard('Warteliste', window._waitlistCount || 0, 'Interessenten', 'bg-amber-50 text-amber-600', '📋')}
           ${kpiCard('Probestunden', window._dashData?.upcomingTrials || 0, 'anstehend', 'bg-brand-100 text-brand-500', '🎯')}
         </div>
@@ -1402,7 +1446,11 @@
         api(`/providers/${currentProvider.id}/activities`).then(async actRes => {
           let total = 0
           for (const a of (actRes.data || [])) {
-            try { const w = await api('/activities/' + a.id + '/waitlist'); total += (w.data || w || []).length } catch(e) {}
+            try {
+              const w = await api('/activities/' + a.id + '/waitlist')
+              var entries = (w.data || w || []).filter(function(e) { return e.status === 'waiting' || e.status === 'offered' })
+              total += entries.length
+            } catch(e) {}
           }
           return { count: total }
         }).catch(() => ({ count: 0 })),
@@ -1436,42 +1484,28 @@
             ${kpiCard('Auslastung', weeklyOccPct + '%', totalBooked + '/' + totalCapacity + ' Plätze', 'bg-brand-100 text-brand-400', '📊')}
           </div>
           <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
-            ${kpiCard('Umsatz', formatCurrency(d.totalRevenue), 'Gesamt', 'bg-emerald-50 text-emerald-600', '💶')}
-            ${kpiCard('Offene Rechnungen', formatCurrency(d.outstandingInvoices), '', 'bg-orange-50 text-orange-600', '📄')}
+            ${kpiCard('Umsatz', formatCurrency(d.totalRevenue), 'bezahlt', 'bg-emerald-50 text-emerald-600', '💶')}
+            ${kpiCard('Offener Umsatz', formatCurrency(d.unpaidRevenue || 0), (d.unpaidBookings || 0) + ' Buchungen offen', 'bg-orange-50 text-orange-600', '💰')}
             ${kpiCard('Warteliste', waitlistRes.count, 'Interessenten', 'bg-amber-50 text-amber-600', '📋')}
             ${kpiCard('Probestunden', d.upcomingTrials || 0, 'anstehend', 'bg-brand-100 text-brand-500', '🎯')}
           </div>
         </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <!-- Booking Stats -->
-          <div class="bg-white rounded-xl border border-brand-200 p-6">
-            <h3 class="font-semibold text-gray-900 mb-4">Buchungs-Status</h3>
-            <div class="space-y-3">
-              ${statusBar('Bestätigt', s.confirmed, s.total, 'bg-green-500')}
-              ${statusBar('Warteliste', s.waitlisted, s.total, 'bg-amber-500')}
-              ${statusBar('Abgeschlossen', s.completed, s.total, 'bg-brand-400')}
-              ${statusBar('Storniert', s.cancelled, s.total, 'bg-red-400')}
-              ${statusBar('No-Show', s.noShow, s.total, 'bg-gray-400')}
-            </div>
-          </div>
-
-          <!-- Occupancy -->
-          <div class="bg-white rounded-xl border border-brand-200 p-6">
-            <h3 class="font-semibold text-gray-900 mb-4">Auslastung pro Kurs</h3>
-            <div class="space-y-3">
-              ${occupancy.data.map(o => `
-                <div class="flex items-center justify-between">
-                  <span class="text-sm text-gray-700 truncate flex-1">${escapeHtml(o.title)}</span>
-                  <div class="flex items-center gap-3 ml-4">
-                    <div class="w-32 bg-gray-100 rounded-full h-2">
-                      <div class="h-2 rounded-full ${o.occupancy > 0.8 ? 'bg-red-500' : o.occupancy > 0.5 ? 'bg-amber-500' : 'bg-green-500'}" style="width: ${Math.round(o.occupancy * 100)}%"></div>
-                    </div>
-                    <span class="text-xs font-medium text-gray-500 w-16 text-right">${o.booked}/${o.capacity}${o.waitlisted > 0 ? ` (+${o.waitlisted})` : ''}</span>
+        <!-- Auslastung pro Kurs -->
+        <div class="bg-white rounded-xl border border-brand-200 p-6">
+          <h3 class="font-semibold text-gray-900 mb-4">Auslastung pro Kurs</h3>
+          <div class="space-y-3">
+            ${occupancy.data.map(o => `
+              <div class="flex items-center justify-between">
+                <span class="text-sm text-gray-700 truncate flex-1">${escapeHtml(o.title)}</span>
+                <div class="flex items-center gap-3 ml-4">
+                  <div class="w-32 bg-gray-100 rounded-full h-2">
+                    <div class="h-2 rounded-full ${o.occupancy > 0.8 ? 'bg-red-500' : o.occupancy > 0.5 ? 'bg-amber-500' : 'bg-green-500'}" style="width: ${Math.round(o.occupancy * 100)}%"></div>
                   </div>
+                  <span class="text-xs font-medium text-gray-500 w-16 text-right">${o.booked}/${o.capacity}</span>
                 </div>
-              `).join('')}
-            </div>
+              </div>
+            `).join('')}
           </div>
         </div>
 
