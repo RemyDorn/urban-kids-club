@@ -1293,51 +1293,106 @@
 
     function updateKPIsForView() {
       const kpiSection = document.getElementById('kpiSection')
-      if (!kpiSection || !window._occData) return
+      if (!kpiSection || !window._occData || !window._activitiesData) return
+
+      const dayToNum = { SU: 0, MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6 }
+      const activities = window._activitiesData
       const occData = window._occData
+      const occMap = {}
+      occData.forEach(o => { occMap[o.activityId] = o })
+
+      // Determine visible date range based on calView
+      let startDate, endDate
+      const ws = calWeekStart || new Date()
+      if (calView === 'day') {
+        startDate = new Date(ws); endDate = new Date(ws)
+      } else if (calView === 'month') {
+        startDate = new Date(ws.getFullYear(), ws.getMonth(), 1)
+        endDate = new Date(ws.getFullYear(), ws.getMonth() + 1, 0)
+      } else {
+        startDate = new Date(ws)
+        endDate = new Date(ws); endDate.setDate(endDate.getDate() + 6)
+      }
+
       const viewLabel = calView === 'day' ? 'Heute' : calView === 'month' ? 'Dieser Monat' : 'Diese Woche'
 
-      // Calculate occupancy based on current view dates
-      let booked = 0, capacity = 0
-      // For now show total — the byDate data handles per-date in the calendar itself
-      occData.forEach(o => { booked += o.booked || 0; capacity += o.capacity || 0 })
-      const pct = capacity > 0 ? Math.round((booked / capacity) * 100) : 0
+      // Count courses that have at least one session in the visible range
+      let activeCourses = 0, totalBooked = 0, totalCapacity = 0, courseSlots = 0
+      activities.forEach(a => {
+        if (a.status !== 'published' || !a.schedule?.slots) return
+        const sStart = a.schedule.startDate || '2020-01-01'
+        const sEnd = a.schedule.endDate || '2099-12-31'
+        let hasSessionInRange = false
 
-      // Update the occupancy KPI card
-      const cards = kpiSection.querySelectorAll('.stat-card, [class*="rounded-xl"]')
-      // Find and update the Auslastung card text
-      kpiSection.querySelectorAll('div').forEach(el => {
-        if (el.textContent && el.textContent.includes('Plätze') && el.previousElementSibling) {
-          el.textContent = booked + '/' + capacity + ' Plätze · ' + viewLabel
-        }
+        a.schedule.slots.forEach(slot => {
+          const targetDay = dayToNum[slot.day]
+          if (targetDay === undefined) return
+          // Check each day in range
+          const cur = new Date(startDate)
+          while (cur <= endDate) {
+            if (cur.getDay() === targetDay) {
+              const ds = fmtDate(cur)
+              if (ds >= sStart && ds <= sEnd) {
+                hasSessionInRange = true
+                courseSlots++
+                // Count bookings for this date
+                const occ = occMap[a.id]
+                const dateBooked = occ?.byDate?.[ds] ?? 0
+                totalBooked += dateBooked
+                totalCapacity += a.capacity || 0
+              }
+            }
+            cur.setDate(cur.getDate() + 1)
+          }
+        })
+        if (hasSessionInRange) activeCourses++
       })
+
+      const occPct = totalCapacity > 0 ? Math.round((totalBooked / totalCapacity) * 100) : 0
+
+      // Re-render KPI section
+      kpiSection.innerHTML = `
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+          ${kpiCard('Kurse', activeCourses, courseSlots + ' Termine · ' + viewLabel, 'bg-brand-100 text-brand-500', '📚')}
+          ${kpiCard('Gebucht', totalBooked, totalCapacity + ' Plätze · ' + viewLabel, 'bg-green-50 text-green-600', '✅')}
+          ${kpiCard('Frei', Math.max(0, totalCapacity - totalBooked), viewLabel, 'bg-amber-50 text-amber-600', '💺')}
+          ${kpiCard('Auslastung', occPct + '%', totalBooked + '/' + totalCapacity + ' · ' + viewLabel, 'bg-brand-100 text-brand-400', '📊')}
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+          ${kpiCard('Umsatz', formatCurrency(window._dashData?.totalRevenue || 0), 'Gesamt', 'bg-emerald-50 text-emerald-600', '💶')}
+          ${kpiCard('Offene Rechnungen', formatCurrency(window._dashData?.outstandingInvoices || 0), '', 'bg-orange-50 text-orange-600', '📄')}
+          ${kpiCard('Warteliste', window._waitlistCount || 0, 'Interessenten', 'bg-amber-50 text-amber-600', '📋')}
+          ${kpiCard('Probestunden', window._dashData?.upcomingTrials || 0, 'anstehend', 'bg-brand-100 text-brand-500', '🎯')}
+        </div>
+      `
     }
     let activeCalContainer = 'dashboardCalendar'
     function calPrev() {
       if (calView === 'day') calWeekStart = addDays(calWeekStart, -1)
       else if (calView === 'week') calWeekStart = addDays(calWeekStart, -7)
       else calWeekStart = new Date(calWeekStart.getFullYear(), calWeekStart.getMonth() - 1, 1)
-      renderCalendarInto(activeCalContainer)
+      renderCalendarInto(activeCalContainer); updateKPIsForView()
     }
     function calNext() {
       if (calView === 'day') calWeekStart = addDays(calWeekStart, 1)
       else if (calView === 'week') calWeekStart = addDays(calWeekStart, 7)
       else calWeekStart = new Date(calWeekStart.getFullYear(), calWeekStart.getMonth() + 1, 1)
-      renderCalendarInto(activeCalContainer)
+      renderCalendarInto(activeCalContainer); updateKPIsForView()
     }
     function calToday() {
       if (calView === 'day') calWeekStart = new Date()
       else if (calView === 'week') calWeekStart = getMonday(new Date())
       else calWeekStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
-      renderCalendarInto(activeCalContainer)
+      renderCalendarInto(activeCalContainer); updateKPIsForView()
     }
 
     // --- Dashboard ---
     async function renderDashboard() {
-      const [dash, stats, occupancy, waitlistRes] = await Promise.all([
+      const [dash, stats, occupancy, activitiesRes, waitlistRes] = await Promise.all([
         api(`/providers/${currentProvider.id}/dashboard`),
         api(`/providers/${currentProvider.id}/bookings/stats`),
         api(`/providers/${currentProvider.id}/reports/occupancy`),
+        api(`/providers/${currentProvider.id}/activities`),
         api(`/providers/${currentProvider.id}/activities`).then(async actRes => {
           let total = 0
           for (const a of (actRes.data || [])) {
@@ -1349,10 +1404,12 @@
       const d = dash.data
       const s = stats.data
 
-      // Store occupancy data globally for KPI updates on view change
+      // Store data globally for KPI updates on view change
       window._occData = occupancy.data || []
+      window._activitiesData = activitiesRes.data || []
       window._dashData = d
       window._bookingStats = s
+      window._waitlistCount = waitlistRes.count
 
       // Calculate occupancy for current view
       const occData = window._occData
@@ -1418,6 +1475,7 @@
 
       // Kalender ins Dashboard rendern
       await renderCalendarInto('dashboardCalendar')
+      updateKPIsForView()
     }
 
     // --- Activities ---
