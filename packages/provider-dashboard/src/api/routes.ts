@@ -582,7 +582,7 @@ export function registerRoutes(router: Router) {
     const db = getServiceClient()
     const token = _req.query.token
     const { data: entry } = await db.from('waitlist_entries')
-      .select('*, parents!inner(name, email), activities!inner(title, provider_id, capacity, payment_online, payment_onsite)')
+      .select('*, parents!inner(name, email), activities!inner(title, provider_id, capacity, pricing, payment_online, payment_onsite)')
       .eq('id', _req.params.id).eq('status', 'offered').maybeSingle()
 
     if (!entry) {
@@ -605,30 +605,56 @@ export function registerRoutes(router: Router) {
     const courseName = escHtml(activity?.title || 'den Kurs')
     const requiresOnlinePayment = activity?.payment_online && !activity?.payment_onsite
 
-    // If online-only course → redirect to widget checkout with pre-filled data
+    // If online-only course → show payment page with Stripe checkout
     if (requiresOnlinePayment) {
-      // Mark as accepted (payment pending) — booking will be created by checkout
-      await db.from('waitlist_entries').update({ status: 'accepted' }).eq('id', _req.params.id)
+      const pricing = activity.pricing as any[] | undefined
+      const price = pricing?.[0]?.amount ?? pricing?.[0]?.price ?? 0
+      const { data: provider } = await db.from('providers').select('company_name, slug').eq('id', activity.provider_id).single()
 
-      // Get provider slug for widget URL
-      const { data: provider } = await db.from('providers').select('slug').eq('id', activity.provider_id).single()
-      const origin = process.env.APP_PUBLIC_URL || (_req.raw.headers.host ? 'https://' + _req.raw.headers.host : 'https://dev.urbankids.club')
-      const price = activity.pricing?.[0]?.amount ?? activity.pricing?.[0]?.price ?? 0
-      const widgetUrl = origin + '/widget/' + (provider?.slug || '') +
-        '?activityId=' + entry.activity_id +
-        '&waitlistId=' + _req.params.id +
-        '&childFirst=' + encodeURIComponent(entry.child_info?.firstName || '') +
-        '&childLast=' + encodeURIComponent(entry.child_info?.lastName || '') +
-        '&childYear=' + (entry.child_info?.birthYear || '') +
-        '&parentName=' + encodeURIComponent(parent.name || '') +
-        '&parentEmail=' + encodeURIComponent(parent.email || '')
+      // Create Stripe checkout session
+      let checkoutUrl = ''
+      try {
+        const { stripe } = await import('../lib/stripe')
+        if (stripe) {
+          const origin = process.env.APP_PUBLIC_URL || 'https://dev.urbankids.club'
+          const session = await stripe.checkout.sessions.create({
+            payment_method_types: ['card'],
+            line_items: [{
+              price_data: {
+                currency: 'eur',
+                product_data: { name: activity.title || 'Kurs' },
+                unit_amount: Math.round(price * 100), // Stripe expects cents
+              },
+              quantity: 1,
+            }],
+            mode: 'payment',
+            success_url: origin + '/api/waitlist/' + _req.params.id + '/payment-success?session_id={CHECKOUT_SESSION_ID}&token=' + token,
+            cancel_url: origin + '/api/waitlist/' + _req.params.id + '/confirm?token=' + token,
+            customer_email: parent.email,
+            metadata: {
+              waitlistId: _req.params.id,
+              activityId: entry.activity_id,
+              providerId: activity.provider_id,
+              parentId: entry.parent_id,
+            },
+          })
+          checkoutUrl = session.url || ''
+        }
+      } catch (stripeErr) {
+        console.error('[Waitlist] Stripe checkout creation failed:', stripeErr)
+      }
 
+      if (checkoutUrl) {
+        // Redirect directly to Stripe checkout
+        return res.html('<!DOCTYPE html><html><head><meta http-equiv="refresh" content="0;url=' + checkoutUrl + '"></head><body><p>Weiterleitung zur Zahlung...</p></body></html>')
+      }
+
+      // Stripe not available — show info page
       return res.html(htmlPage(
         '💳',
         'Fast geschafft!',
-        '<strong>' + courseName + '</strong> ist ein Online-Kurs und muss vor der Teilnahme bezahlt werden.<br><br>' +
-        'Preis: <strong>' + Number(price).toFixed(2).replace('.', ',') + ' €</strong><br><br>' +
-        '<a href="' + widgetUrl + '" style="display:inline-block;background:linear-gradient(135deg,#B5533A,#8B3A28);color:white;padding:14px 36px;border-radius:10px;text-decoration:none;font-weight:700;font-size:16px;">Jetzt bezahlen & Platz sichern</a>',
+        '<strong>' + courseName + '</strong> kostet <strong>' + Number(price).toFixed(2).replace('.', ',') + ' €</strong> und muss vor der Teilnahme bezahlt werden.<br><br>' +
+        'Bitte kontaktiere <strong>' + escHtml(provider?.company_name || '') + '</strong> direkt für die Zahlungsabwicklung.',
         '#B5533A'
       ))
     }
@@ -660,6 +686,58 @@ export function registerRoutes(router: Router) {
     await db.from('waitlist_entries').update({ status: 'accepted' }).eq('id', _req.params.id)
 
     res.html(htmlPage('✓', 'Buchung bestätigt!', 'Dein Platz für <strong>' + courseName + '</strong> ist reserviert. Du erhältst eine Bestätigung per E-Mail.', '#059669'))
+  })
+
+  // Payment success callback after Stripe checkout for waitlist confirmations
+  router.get('/api/waitlist/:id/payment-success', async (_req, res) => {
+    const db = getServiceClient()
+    const token = _req.query.token
+    const sessionId = _req.query.session_id
+
+    const { data: entry } = await db.from('waitlist_entries')
+      .select('*, parents!inner(name, email), activities!inner(title, provider_id, pricing)')
+      .eq('id', _req.params.id).maybeSingle()
+
+    if (!entry) {
+      return res.html(htmlPage('⚠️', 'Nicht gefunden', 'Wartelisten-Eintrag nicht gefunden.', '#f59e0b'))
+    }
+    if (!token || entry.confirm_token !== token) {
+      return res.html(htmlPage('🔒', 'Ungültiger Link', 'Dieser Link ist ungültig.', '#ef4444'))
+    }
+
+    const activity = (entry as any).activities
+    const parent = (entry as any).parents
+    const pricing = activity.pricing as any[] | undefined
+    const price = pricing?.[0]?.amount ?? 0
+
+    // Create the booking with payment info
+    try {
+      const { CheckoutService } = await import('../services/supabase/checkout.service')
+      await CheckoutService.createBooking({
+        providerId: activity.provider_id,
+        activityId: entry.activity_id,
+        skipBlockCheck: true,
+        childFirstName: entry.child_info?.firstName || '',
+        childLastName: entry.child_info?.lastName || '',
+        childBirthYear: entry.child_info?.birthYear || 2020,
+        parentFirstName: parent.name.split(' ')[0],
+        parentLastName: parent.name.split(' ').slice(1).join(' '),
+        parentEmail: parent.email,
+        parentPhone: '',
+        paymentMethod: 'stripe',
+        amount: Math.round(price * 100), // cents for checkout service
+        currency: 'EUR',
+        stripeSessionId: sessionId as string || undefined,
+      })
+    } catch (bookErr: any) {
+      console.error('[Waitlist] Payment-success booking failed:', bookErr)
+      return res.html(htmlPage('❌', 'Buchung fehlgeschlagen', escHtml(bookErr.message || 'Bitte kontaktiere den Anbieter.'), '#ef4444'))
+    }
+
+    await db.from('waitlist_entries').update({ status: 'accepted' }).eq('id', _req.params.id)
+
+    const courseName = escHtml(activity?.title || 'den Kurs')
+    res.html(htmlPage('✓', 'Zahlung erfolgreich!', 'Dein Platz für <strong>' + courseName + '</strong> ist bestätigt und bezahlt. Du erhältst eine Bestätigung per E-Mail. 🎉', '#059669'))
   })
 
   router.get('/api/waitlist/:id/decline-offer', async (_req, res) => {
