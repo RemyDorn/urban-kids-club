@@ -1708,15 +1708,21 @@ export function registerRoutes(router: Router) {
     const db = getServiceClient()
     const activityIds = activities.map((a: any) => a.id)
     const { data: activeBlocks } = await db.from('course_blocks')
-      .select('activity_id').in('activity_id', activityIds).in('status', ['active', 'upcoming'])
-    const blockedIds = new Set((activeBlocks ?? []).map((b: any) => b.activity_id))
-    // Only return public-safe fields + block availability
+      .select('activity_id, start_date, end_date').in('activity_id', activityIds).in('status', ['active', 'upcoming'])
+    // Build map: activity_id → [{start_date, end_date}]
+    const blockDateRanges: Record<string, Array<{start: string, end: string}>> = {}
+    for (const b of activeBlocks ?? []) {
+      if (!blockDateRanges[b.activity_id]) blockDateRanges[b.activity_id] = []
+      blockDateRanges[b.activity_id].push({ start: b.start_date, end: b.end_date })
+    }
+    // Only return public-safe fields + block date ranges for per-date checking
     const safe = activities.map((a: any) => ({
       id: a.id, title: a.title, description: a.description, category: a.category,
       ageRange: a.ageRange || { min: a.age_group_min, max: a.age_group_max },
       duration: a.duration || a.duration_minutes, schedule: a.schedule,
       pricing: a.pricing, status: a.status, color: a.color, images: a.images,
-      hasActiveBlock: blockedIds.has(a.id),
+      hasActiveBlock: !!blockDateRanges[a.id]?.length,
+      blockDateRanges: blockDateRanges[a.id] || [],
     }))
     res.json({ data: safe, count: safe.length })
   })

@@ -181,7 +181,11 @@ function getCoursesForDate(d){
     const sd=a.schedule.startDate||'',ed=a.schedule.endDate||'9999-12-31'
     if(ds<sd||ds>ed)return
     a.schedule.slots.forEach(s=>{
-      if(DN[s.day]===dow)res.push({title:a.title,start:s.startTime,end:s.endTime,cat:a.category,age:(a.ageRange?.min||0)+'-'+(a.ageRange?.max||0)+' J.',price:a.pricing?.[0]?.amount?a.pricing[0].amount.toFixed(0)+'€':'',color:a.color||BC,desc:a.description||'',hasActiveBlock:a.hasActiveBlock||false})
+      if(DN[s.day]===dow){
+        // Check if any block covers this specific date
+        const hasBlockForDate=(a.blockDateRanges||[]).some(r=>ds>=r.start&&ds<=r.end)
+        res.push({title:a.title,start:s.startTime,end:s.endTime,cat:a.category,age:(a.ageRange?.min||0)+'-'+(a.ageRange?.max||0)+' J.',price:a.pricing?.[0]?.amount?a.pricing[0].amount.toFixed(0)+'€':'',color:a.color||BC,desc:a.description||'',hasActiveBlock:hasBlockForDate})
+      }
     })
   })
   return res.sort((a,b)=>a.start.localeCompare(b.start))
@@ -220,9 +224,11 @@ function render(){
     if(evts.length){
       slotsHtml+=evts.map(e=>{
         const hasBlock=e.hasActiveBlock
-        const btnLabel=hasBlock?'Buchen':'Vormerken'
-        const btnClass=hasBlock?'book-btn':'book-btn'
-        return '<div class="slot-card"><div class="slot-time">'+esc(e.start)+' Uhr</div><div class="slot-info"><div class="slot-title">'+esc(e.title)+'</div><div class="slot-meta">'+esc(e.start)+' – '+esc(e.end)+' Uhr · <span class="slot-badge">'+esc(e.cat)+'</span> · '+esc(e.age)+(e.price?' · '+esc(e.price):'')+'</div></div><button class="'+btnClass+'" data-title="'+esc(e.title)+'" data-date="'+selDate+'" data-time="'+esc(e.start)+'" onclick="window._bookCourse(this.dataset.title,this.dataset.date,this.dataset.time)">'+btnLabel+'</button></div>'
+        if (hasBlock) {
+          return '<div class="slot-card"><div class="slot-time">'+esc(e.start)+' Uhr</div><div class="slot-info"><div class="slot-title">'+esc(e.title)+'</div><div class="slot-meta">'+esc(e.start)+' – '+esc(e.end)+' Uhr · <span class="slot-badge">'+esc(e.cat)+'</span> · '+esc(e.age)+(e.price?' · '+esc(e.price):'')+'</div></div><button class="book-btn" data-title="'+esc(e.title)+'" data-date="'+selDate+'" data-time="'+esc(e.start)+'" onclick="window._bookCourse(this.dataset.title,this.dataset.date,this.dataset.time)">Buchen</button></div>'
+        } else {
+          return '<div class="slot-card"><div class="slot-time">'+esc(e.start)+' Uhr</div><div class="slot-info"><div class="slot-title">'+esc(e.title)+'</div><div class="slot-meta">'+esc(e.start)+' – '+esc(e.end)+' Uhr · <span class="slot-badge">'+esc(e.cat)+'</span> · '+esc(e.age)+'</div></div><button class="book-btn" style="background:#6b7280" data-title="'+esc(e.title)+'" data-date="'+selDate+'" onclick="window._waitlistCourse(this.dataset.title,this.dataset.date)">Warteliste</button></div>'
+        }
       }).join('')
     }else{slotsHtml+='<div class="empty-state">Keine Kurse an diesem Tag.</div>'}
     slotsHtml+='</div>'
@@ -231,6 +237,45 @@ function render(){
 }
 window._navMonth=function(dir){curMonth+=dir;if(curMonth>11){curMonth=0;curYear++}if(curMonth<0){curMonth=11;curYear--};selDate=null;render()}
 window._selectDay=function(ds){selDate=selDate===ds?null:ds;render()}
+window._waitlistCourse=async function(title,date){
+  const sd=new Date(+date.split('-')[0],+date.split('-')[1]-1,+date.split('-')[2])
+  const dateStr=sd.getDate()+'. '+ML[sd.getMonth()]+' '+sd.getFullYear()
+  const course=courses.find(c=>c.title===title)
+  if(!course){alert('Kurs nicht gefunden');return}
+  const html='<div class="book-modal"><div class="book-modal-inner">'+
+    '<h3>Warteliste: '+esc(title)+'</h3>'+
+    '<p>'+dateStr+' — Aktuell kein Kursblock verfügbar. Tragen Sie sich ein und wir benachrichtigen Sie, sobald der Kurs startet.</p>'+
+    '<input id="wlChildFirst" placeholder="Vorname Kind *" required>'+
+    '<input id="wlChildLast" placeholder="Nachname Kind *" required>'+
+    '<input id="wlChildYear" type="number" placeholder="Geburtsjahr Kind *" min="2010" max="2025" required>'+
+    '<input id="wlParentFirst" placeholder="Vorname Elternteil *" required>'+
+    '<input id="wlParentLast" placeholder="Nachname Elternteil *" required>'+
+    '<input id="wlEmail" type="email" placeholder="E-Mail *" required>'+
+    '<input id="wlPhone" placeholder="Telefon (optional)">'+
+    '<div class="btn-row">'+
+    '<button class="btn-send" onclick="window._submitWaitlist(\''+course.id+'\')">Auf Warteliste eintragen</button>'+
+    '<button class="btn-cancel" onclick="this.closest(\'.book-modal\').remove()">Abbrechen</button>'+
+    '</div></div></div>'
+  app.insertAdjacentHTML('beforeend',html)
+}
+window._submitWaitlist=async function(activityId){
+  const f=s=>document.getElementById(s)?.value?.trim()||''
+  const childFirst=f('wlChildFirst'),childLast=f('wlChildLast'),childYear=f('wlChildYear')
+  const parentFirst=f('wlParentFirst'),parentLast=f('wlParentLast'),email=f('wlEmail'),phone=f('wlPhone')
+  if(!childFirst||!childLast||!childYear||!parentFirst||!parentLast||!email){alert('Bitte alle Pflichtfelder ausfüllen');return}
+  try{
+    const r=await fetch('/api/checkout/create-session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({slug:slug,activityId:activityId,child:{firstName:childFirst,lastName:childLast,birthYear:parseInt(childYear)},parent:{firstName:parentFirst,lastName:parentLast,email:email,phone:phone},paymentMethod:'onsite'})})
+    const data=await r.json()
+    document.querySelector('.book-modal').remove()
+    if(data.error&&data.error.includes('Warteliste')){
+      app.insertAdjacentHTML('beforeend','<div class="book-modal"><div class="book-modal-inner" style="text-align:center"><div style="font-size:32px;margin-bottom:12px">✅</div><h3>Auf der Warteliste!</h3><p style="margin:12px 0">Sie werden benachrichtigt, sobald ein Kursblock verfügbar ist.</p><button class="btn-send" onclick="this.closest(\'.book-modal\').remove()">OK</button></div></div>')
+    } else if(data.success){
+      app.insertAdjacentHTML('beforeend','<div class="book-modal"><div class="book-modal-inner" style="text-align:center"><div style="font-size:32px;margin-bottom:12px">✅</div><h3>Buchung bestätigt!</h3><p style="margin:12px 0">Vielen Dank für Ihre Buchung.</p><button class="btn-send" onclick="this.closest(\'.book-modal\').remove()">OK</button></div></div>')
+    } else {
+      alert(data.error||'Fehler')
+    }
+  }catch(e){alert('Verbindungsfehler')}
+}
 window._bookCourse=async function(title,date,time){
   const sd=new Date(+date.split('-')[0],+date.split('-')[1]-1,+date.split('-')[2])
   const dateStr=sd.getDate()+'. '+ML[sd.getMonth()]+' '+sd.getFullYear()

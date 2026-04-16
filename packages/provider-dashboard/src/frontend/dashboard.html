@@ -3507,7 +3507,13 @@
             <input type="hidden" name="totalSessions" value="8">
             <input type="hidden" name="pricePerBlock" value="140">
             <input type="hidden" name="capacity" value="10">
-            <input type="hidden" name="makeupCapacity" value="2">
+            <div class="flex gap-3">
+              <div class="flex-1">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Nachholplätze</label>
+                <input type="number" name="makeupCapacity" min="0" max="10" value="0" class="w-full border rounded-lg px-3 py-2 text-sm">
+                <p class="text-xs text-gray-400 mt-1">Plätze für Nachhol-Termine (0 = keine)</p>
+              </div>
+            </div>
             <input type="hidden" name="maxCreditsPerEnrollment" value="2">
             <button type="button" id="btnCreateBlock" class="w-full bg-brand-500 text-white py-2.5 rounded-lg font-semibold hover:bg-brand-600 transition">Block erstellen</button>
           </div>
@@ -3541,7 +3547,7 @@
           <div>📋 ${d.sessions} Termine</div>
           <div>💰 ${d.price}€ pro Block</div>
           <div>👥 ${d.capacity} Plätze</div>
-          <div>🔄 +2 Nachhol-Plätze</div>
+          <div>🔄 Nachholplätze: konfigurierbar</div>
           ${endDateHint}
         </div>
       `
