@@ -107,7 +107,7 @@ export class CheckoutService {
         .eq('activity_id', params.activityId)
         .in('status', ['confirmed', 'pending'])
       if ((currentBookings ?? 0) >= maxTotal) {
-        throw new Error('Dieser Kurs ist leider ausgebucht. Auch die Makeup-Plätze sind vergeben.')
+        throw new Error('Dieser Kurs ist leider ausgebucht. Wir informieren dich sofort, wenn ein Platz frei wird!')
       }
 
       const { data: directBooking, error: directErr } = await db.from('provider_bookings').insert({

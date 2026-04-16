@@ -2341,11 +2341,72 @@ export function registerRoutes(router: Router) {
       return res.error(400, 'Online-Zahlung ist für diesen Kurs nicht aktiviert')
     }
 
-    // Capacity + duplicate checks are now handled atomically in create_booking_atomic()
-    // No separate check needed here — the Postgres function does it in one transaction
-    const duplicate = null // placeholder for flow control below
-    if (duplicate) {
-      return res.error(400, 'Dieses Kind ist bereits für diesen Kurs angemeldet')
+    // Pre-check capacity BEFORE creating Stripe session or booking
+    // Only check base capacity (NOT makeup) — makeup slots are provider-assigned only
+    const { count: currentBookings } = await db.from('provider_bookings')
+      .select('*', { count: 'exact', head: true })
+      .eq('activity_id', activityId)
+      .in('status', ['confirmed', 'pending'])
+    if ((currentBookings ?? 0) >= (activity.capacity || 0)) {
+      // Course full → auto-add to waitlist
+      let parentId = ''
+      const { data: existingParent } = await db.from('parents').select('id').eq('email', parent.email).maybeSingle()
+      if (existingParent) {
+        parentId = existingParent.id
+      } else {
+        const { data: newParent } = await db.from('parents').insert({
+          name: (parent.firstName + ' ' + parent.lastName).trim(),
+          email: parent.email, phone: parent.phone || null,
+        }).select('id').single()
+        parentId = newParent?.id || ''
+      }
+      if (parentId) {
+        const { data: existingWl } = await db.from('waitlist_entries')
+          .select('id').eq('activity_id', activityId).eq('parent_id', parentId)
+          .in('status', ['waiting', 'offered']).maybeSingle()
+        if (!existingWl) {
+          const { count: wlCount } = await db.from('waitlist_entries')
+            .select('*', { count: 'exact', head: true })
+            .eq('activity_id', activityId).in('status', ['waiting', 'offered'])
+          await db.from('waitlist_entries').insert({
+            activity_id: activityId, parent_id: parentId,
+            child_info: { firstName: child.firstName, lastName: child.lastName, birthYear: child.birthYear },
+            position: (wlCount ?? 0) + 1, priority: 'normal', status: 'waiting',
+          })
+          // Notify provider
+          await db.from('notifications').insert({
+            recipient_type: 'provider', recipient_id: provider.id,
+            type: 'waitlist_entry', channel: 'in_app',
+            title: 'Neue Wartelisten-Anmeldung!',
+            body: child.firstName + ' ' + child.lastName + ' möchte am Kurs teilnehmen.',
+            data: { activityId, parentId },
+          })
+          // Send waitlist email
+          try {
+            const { EmailService } = await import('../lib/email')
+            await EmailService.sendWaitlistConfirmation(parent.email, {
+              parentName: parent.firstName,
+              childName: (child.firstName + ' ' + child.lastName).trim(),
+              courseName: activity.title || 'Kurs',
+              providerName: provider.companyName || provider.name || '',
+            })
+          } catch(e) {}
+        }
+      }
+      return res.error(400, 'Tut uns leid — da war leider jemand schneller! 😅 Aber keine Sorge, wir haben ' + child.firstName + ' auf die Warteliste gesetzt. Sobald ein Platz frei wird, melden wir uns sofort bei dir!')
+    }
+
+    // Duplicate check
+    if (parent.email) {
+      const { data: existingParent2 } = await db.from('parents').select('id').eq('email', parent.email).maybeSingle()
+      if (existingParent2) {
+        const { data: dupBooking } = await db.from('provider_bookings')
+          .select('id').eq('activity_id', activityId).eq('parent_id', existingParent2.id)
+          .in('status', ['confirmed', 'pending']).maybeSingle()
+        if (dupBooking) {
+          return res.error(400, 'Dieses Kind ist bereits für diesen Kurs angemeldet.')
+        }
+      }
     }
 
     // Price is stored in euros (e.g. 140), Stripe expects cents (14000)
