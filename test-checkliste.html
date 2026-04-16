@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UKC Provider Dashboard — Test-Checkliste</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #faf9f8; color: #1a1a1a; line-height: 1.6; }
+  .container { max-width: 900px; margin: 0 auto; padding: 24px; }
+  h1 { font-size: 28px; font-weight: 700; color: #3C2225; margin-bottom: 4px; }
+  .subtitle { color: #94a3b8; font-size: 14px; margin-bottom: 32px; }
+  .progress-bar { background: #e2e8f0; border-radius: 99px; height: 12px; margin-bottom: 24px; overflow: hidden; }
+  .progress-fill { height: 100%; background: linear-gradient(90deg, #059669, #10b981); border-radius: 99px; transition: width 0.3s; }
+  .progress-text { text-align: center; font-size: 14px; color: #64748b; margin-bottom: 24px; }
+  .section { background: #fff; border-radius: 16px; border: 1px solid #e2e8f0; margin-bottom: 20px; overflow: hidden; }
+  .section-header { padding: 16px 20px; background: #f8f9fa; border-bottom: 1px solid #e2e8f0; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+  .section-header h2 { font-size: 16px; font-weight: 600; }
+  .section-header .count { font-size: 13px; color: #94a3b8; }
+  .section-body { padding: 12px 20px; }
+  .item { display: flex; align-items: flex-start; gap: 12px; padding: 10px 0; border-bottom: 1px solid #f1f5f9; }
+  .item:last-child { border-bottom: none; }
+  .item input[type="checkbox"] { margin-top: 3px; width: 18px; height: 18px; accent-color: #059669; cursor: pointer; flex-shrink: 0; }
+  .item label { cursor: pointer; flex: 1; }
+  .item .title { font-weight: 500; font-size: 14px; }
+  .item .desc { font-size: 12px; color: #94a3b8; margin-top: 2px; }
+  .item.checked .title { text-decoration: line-through; color: #94a3b8; }
+  .item .status { font-size: 11px; padding: 2px 8px; border-radius: 99px; font-weight: 600; flex-shrink: 0; }
+  .status-pass { background: #dcfce7; color: #166534; }
+  .status-fail { background: #fef2f2; color: #991b1b; }
+  .status-skip { background: #f1f5f9; color: #64748b; }
+  .note { margin-top: 4px; }
+  .note textarea { width: 100%; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px; font-size: 12px; font-family: inherit; resize: vertical; min-height: 40px; }
+  .links { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 16px 20px; margin-bottom: 24px; }
+  .links a { color: #059669; font-weight: 600; text-decoration: none; }
+  .links a:hover { text-decoration: underline; }
+  .actions { display: flex; gap: 12px; margin-top: 24px; }
+  .btn { padding: 10px 20px; border-radius: 10px; border: none; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .btn-primary { background: #3C2225; color: #fff; }
+  .btn-secondary { background: #f1f5f9; color: #374151; }
+  .btn:hover { opacity: 0.85; }
+  @media print { .actions, .note { display: none; } }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>UKC Provider Dashboard — Test-Checkliste</h1>
+  <p class="subtitle">Session 15–16. April 2026 · Dev-Umgebung · Alle Features auf Herz und Nieren testen</p>
+
+  <div class="links">
+    <strong>Test-URLs:</strong><br>
+    Dashboard: <a href="https://dev.urbankids.club" target="_blank">https://dev.urbankids.club</a> — E-Mail: <code>dev@urbankids.club</code> / Passwort: <code>DevTest2026!</code><br>
+    Widget: <a href="https://dev.urbankids.club/embed/socialy/calendar" target="_blank">https://dev.urbankids.club/embed/socialy/calendar</a><br>
+    Stripe Testkarte: <code>4242 4242 4242 4242</code> / <code>12/27</code> / <code>123</code>
+  </div>
+
+  <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+  <div class="progress-text" id="progressText">0 / 0 Tests abgeschlossen</div>
+
+  <div id="sections"></div>
+
+  <div class="actions">
+    <button class="btn btn-primary" onclick="resetAll()">Alle zurücksetzen</button>
+    <button class="btn btn-secondary" onclick="exportResults()">Ergebnisse exportieren</button>
+  </div>
+</div>
+
+<script>
+const sections = [
+  { title: '1. Login & Dashboard', items: [
+    { id: 'login', title: 'Login funktioniert', desc: 'dev@urbankids.club / DevTest2026! — Dashboard lädt ohne Fehler' },
+    { id: 'dashboard-kpis', title: 'Dashboard KPIs korrekt', desc: 'Aktive Kurse, Buchungen, Auslastung, Warteliste — keine "undefined"' },
+    { id: 'dashboard-calendar', title: 'Kalender zeigt Kurse', desc: 'Wochenansicht mit Kursen, Auslastung unter Kurstitel (keine doppelte Uhrzeit)' },
+    { id: 'notification-bell', title: 'Glocke oben rechts', desc: 'Klick öffnet Benachrichtigungs-Panel mit Warteliste-Einträgen etc.' },
+  ]},
+  { title: '2. Kurse erstellen', items: [
+    { id: 'create-course', title: 'Kurs erstellen', desc: 'Neuen Kurs mit Titel, Kategorie, Preis, Zeitplan, Kapazität anlegen' },
+    { id: 'course-schedule', title: 'Zeitplan korrekt', desc: 'Kurs erscheint im Kalender an den richtigen Tagen' },
+    { id: 'course-enddate', title: 'Enddatum setzen', desc: 'Kurs mit Enddatum: nach dem Datum keine Termine mehr im Kalender' },
+    { id: 'payment-options', title: 'Zahlungsoptionen', desc: 'Online/Vor-Ort Checkbox speichert korrekt (auch beim Erstellen, nicht nur Bearbeiten)' },
+  ]},
+  { title: '3. Kursblöcke', items: [
+    { id: 'create-block', title: 'Kursblock erstellen', desc: 'Block für einen Kurs mit Startdatum, Nachholplätze konfigurierbar' },
+    { id: 'block-sessions', title: 'Sessions korrekt', desc: 'Block zeigt die richtigen Termine (nur für den Block-Zeitraum)' },
+    { id: 'block-lock', title: 'Vergangene Blöcke gesperrt', desc: 'Abgeschlossene Blöcke zeigen "abgeschlossen", keine Buttons' },
+    { id: 'block-participants', title: 'Teilnehmer in Block-Karte', desc: 'Block-Karte zeigt "X/Y Teilnehmer" in der Übersicht' },
+    { id: 'followup-block', title: 'Folge-Block erstellen', desc: 'Bei vollem Block: Banner "Neuen Folge-Block erstellen?" erscheint' },
+  ]},
+  { title: '4. Widget — Warteliste (kein Block)', items: [
+    { id: 'widget-empty', title: 'Leerer Kalender sichtbar', desc: 'Ohne Kurse: Kalender wird trotzdem angezeigt' },
+    { id: 'widget-waitlist-btn', title: '"Warteliste" Button', desc: 'Kurs ohne Block zeigt "Warteliste" statt "Buchen"' },
+    { id: 'widget-waitlist-form', title: 'Warteliste-Formular', desc: 'Klick auf "Warteliste" → Formular mit Kind/Eltern-Daten (kein Checkout!)' },
+    { id: 'widget-waitlist-success', title: 'Erfolgs-Meldung', desc: '"Auf der Warteliste!" Meldung nach Eintragung' },
+    { id: 'waitlist-in-dashboard', title: 'Warteliste im Dashboard', desc: 'Eintrag erscheint in: Kalender-Modal, Buchungen-Seite, Kunden-Seite' },
+    { id: 'waitlist-customer', title: 'Kunde angelegt', desc: 'Wartelisten-Eltern erscheinen als Kunden (Kunden-Seite)' },
+  ]},
+  { title: '5. Widget — Buchung (mit Block)', items: [
+    { id: 'widget-book-btn', title: '"Buchen" Button', desc: 'Kurs MIT Block für dieses Datum zeigt "Buchen"' },
+    { id: 'widget-book-onsite', title: 'Vor-Ort-Buchung', desc: 'Onsite-Buchung geht durch, Buchung erscheint im Dashboard' },
+    { id: 'widget-book-stripe', title: 'Stripe-Buchung', desc: 'Online-Zahlung mit Testkarte 4242... geht durch' },
+    { id: 'booking-in-bookings', title: 'Buchung in Buchungsliste', desc: 'Neue Buchung erscheint unter Buchungen mit Kind, Kurs, Status' },
+    { id: 'booking-occupancy', title: 'Auslastung steigt', desc: 'Kalender zeigt erhöhte Auslastung NUR für den gebuchten Termin' },
+    { id: 'booking-enrollment', title: 'Block-Enrollment', desc: 'Teilnehmer erscheint im Kursblock-Detail' },
+    { id: 'booking-invoice', title: 'Auto-Rechnung', desc: 'Rechnung wird automatisch erstellt (Rechnungen-Seite)' },
+  ]},
+  { title: '6. Warteliste → Buchung Flow', items: [
+    { id: 'waitlist-accept', title: '"Annehmen" klicken', desc: 'Im Kalender-Modal oder Buchungen-Seite auf "Annehmen" klicken' },
+    { id: 'waitlist-offered', title: 'Status → "Ausstehend"', desc: 'Eintrag wechselt von Warteliste zu Ausstehend (blau)' },
+    { id: 'waitlist-email', title: 'E-Mail gesendet', desc: 'Bestätigungs-E-Mail mit Confirm/Decline Links (in Logs prüfen)' },
+    { id: 'waitlist-confirm', title: 'Confirm-Link funktioniert', desc: 'Klick auf Confirm → schöne HTML-Seite "Buchung bestätigt!"' },
+    { id: 'waitlist-decline', title: 'Decline-Link funktioniert', desc: 'Klick auf Decline → "Schade!" Seite, Status → declined' },
+    { id: 'waitlist-timer', title: '3h Timer', desc: 'Angebot nach 3 Stunden abgelaufen (Confirm gibt "Abgelaufen" zurück)' },
+  ]},
+  { title: '7. Rechnungen', items: [
+    { id: 'invoice-auto', title: 'Auto-Erstellung bei Buchung', desc: 'Rechnung wird automatisch als Entwurf erstellt' },
+    { id: 'invoice-send', title: 'Versenden funktioniert', desc: 'Klick auf "Versenden" → E-Mail wird gesendet, Status → "Versendet"' },
+    { id: 'invoice-pdf', title: 'PDF-Ansicht', desc: 'Klick auf "PDF" → öffnet Rechnung in neuem Tab zum Drucken' },
+    { id: 'invoice-paid', title: 'Bezahlt markieren', desc: 'Klick auf "Bezahlt" → Status ändert sich' },
+    { id: 'invoice-cancel', title: 'Stornieren', desc: 'Klick auf "Stornieren" → Status ändert sich (nicht bei bezahlten)' },
+    { id: 'invoice-kleinunternehmer', title: 'Kleinunternehmer (0% MwSt)', desc: 'In Einstellungen Kleinunternehmer aktivieren → Rechnung ohne MwSt' },
+  ]},
+  { title: '8. Kursblock — Credit-System', items: [
+    { id: 'makeup-toggle', title: 'Makeup-Toggle in Einstellungen', desc: 'Einstellungen → Kurse & Blöcke → Makeup an/aus' },
+    { id: 'session-cancel', title: 'Session absagen', desc: 'Im Block-Detail: Session absagen → "Mit Guthaben" Option (nur wenn Makeup an)' },
+    { id: 'credits-issued', title: 'Credits vergeben', desc: 'Nach Absage: Credits an alle eingeschriebenen Kinder' },
+    { id: 'block-locked', title: 'Vergangene Sessions gesperrt', desc: 'Kein Absagen/Verschieben von vergangenen Terminen (Frontend + Server)' },
+  ]},
+  { title: '9. Elternprofil', items: [
+    { id: 'profile-click-bookings', title: 'Klick aus Buchungsliste', desc: 'Kindername in Buchungen anklicken → Profil-Modal öffnet sich' },
+    { id: 'profile-click-calendar', title: 'Klick aus Kalender', desc: 'Teilnehmer in Kalender-Modal anklicken → Profil öffnet sich' },
+    { id: 'profile-data', title: 'Profil-Daten korrekt', desc: 'Name, E-Mail, Telefon, Kinder, Buchungshistorie, Umsatz' },
+    { id: 'price-display', title: 'Preis korrekt (Euro, nicht Cent)', desc: 'Buchungsliste zeigt 15,00€ statt 0,15€' },
+    { id: 'child-age', title: 'Kind-Alter korrekt', desc: 'Zeigt "7 Jahre" statt "undefined Jahre"' },
+  ]},
+  { title: '10. Einstellungen', items: [
+    { id: 'settings-company', title: 'Unternehmensprofil speichern', desc: 'Name, Adresse etc. speichern und nach Reload noch da' },
+    { id: 'settings-finance', title: 'Finanzdaten speichern', desc: 'Steuernummer, USt-IdNr, IBAN, BIC → in DB persistiert' },
+    { id: 'settings-courses', title: 'Kurse & Blöcke Tab', desc: 'Makeup-Toggle sichtbar und funktional' },
+    { id: 'settings-stripe', title: 'Stripe-Validierung', desc: 'Server warnt bei falschem Key-Typ (Test vs Live)' },
+  ]},
+  { title: '11. Kalender — Details', items: [
+    { id: 'cal-past-locked', title: 'Vergangene Termine gesperrt', desc: 'Klick auf vergangenen Termin: "Hat bereits stattgefunden", nur Buchungen-Button' },
+    { id: 'cal-occupancy-date', title: 'Auslastung pro Datum', desc: 'Buchung am 20.4. → nur 20.4. zeigt erhöhte Auslastung, nicht 27.4.' },
+    { id: 'cal-participants', title: 'Teilnehmerliste', desc: 'Klick auf Termin → Liste der gebuchten Kinder mit Namen + Alter' },
+    { id: 'cal-waitlist', title: 'Warteliste im Modal', desc: 'Amber-Box mit Wartelisten-Einträgen + "Annehmen" Button' },
+  ]},
+  { title: '12. Kunden (CRM)', items: [
+    { id: 'customers-segments', title: 'Segments korrekt', desc: 'Gesamt, Aktiv, Inaktiv, VIP, Interessenten — keine "undefined"' },
+    { id: 'customers-waitlist', title: 'Warteliste sichtbar', desc: 'Amber-Box oben mit Wartelisten-Einträgen' },
+    { id: 'customers-profile', title: 'Kundenprofil klickbar', desc: 'Klick auf Kunde → Detail-Ansicht' },
+  ]},
+]
+
+function render() {
+  const container = document.getElementById('sections')
+  const saved = JSON.parse(localStorage.getItem('ukc-test-results') || '{}')
+  let total = 0, checked = 0
+
+  container.innerHTML = sections.map(section => {
+    const sectionChecked = section.items.filter(i => saved[i.id]?.status === 'pass').length
+    total += section.items.length
+    checked += sectionChecked
+    return `<div class="section">
+      <div class="section-header" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">
+        <h2>${section.title}</h2>
+        <span class="count">${sectionChecked}/${section.items.length}</span>
+      </div>
+      <div class="section-body">${section.items.map(item => {
+        const state = saved[item.id] || {}
+        const isChecked = state.status === 'pass'
+        return `<div class="item ${isChecked ? 'checked' : ''}">
+          <input type="checkbox" ${isChecked ? 'checked' : ''} onchange="toggleItem('${item.id}', this.checked)">
+          <label onclick="this.previousElementSibling.click()">
+            <div class="title">${item.title}</div>
+            <div class="desc">${item.desc}</div>
+          </label>
+          ${state.status === 'pass' ? '<span class="status status-pass">OK</span>' : state.status === 'fail' ? '<span class="status status-fail">FEHLER</span>' : ''}
+          <div class="note"><textarea placeholder="Notiz..." oninput="saveNote('${item.id}', this.value)">${state.note || ''}</textarea></div>
+        </div>`
+      }).join('')}</div>
+    </div>`
+  }).join('')
+
+  document.getElementById('progressFill').style.width = (total ? Math.round(checked/total*100) : 0) + '%'
+  document.getElementById('progressText').textContent = checked + ' / ' + total + ' Tests abgeschlossen (' + (total ? Math.round(checked/total*100) : 0) + '%)'
+}
+
+function toggleItem(id, checked) {
+  const saved = JSON.parse(localStorage.getItem('ukc-test-results') || '{}')
+  saved[id] = { ...saved[id], status: checked ? 'pass' : null }
+  localStorage.setItem('ukc-test-results', JSON.stringify(saved))
+  render()
+}
+
+function saveNote(id, note) {
+  const saved = JSON.parse(localStorage.getItem('ukc-test-results') || '{}')
+  saved[id] = { ...saved[id], note }
+  localStorage.setItem('ukc-test-results', JSON.stringify(saved))
+}
+
+function resetAll() {
+  if (!confirm('Alle Test-Ergebnisse zurücksetzen?')) return
+  localStorage.removeItem('ukc-test-results')
+  render()
+}
+
+function exportResults() {
+  const saved = JSON.parse(localStorage.getItem('ukc-test-results') || '{}')
+  let text = 'UKC Test-Ergebnisse — ' + new Date().toLocaleDateString('de-DE') + '\n\n'
+  sections.forEach(s => {
+    text += s.title + '\n'
+    s.items.forEach(i => {
+      const state = saved[i.id] || {}
+      text += (state.status === 'pass' ? '  ✅ ' : '  ⬜ ') + i.title + (state.note ? ' — ' + state.note : '') + '\n'
+    })
+    text += '\n'
+  })
+  navigator.clipboard.writeText(text).then(() => alert('In Zwischenablage kopiert!')).catch(() => {
+    const blob = new Blob([text], { type: 'text/plain' })
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'ukc-test-ergebnisse.txt'; a.click()
+  })
+}
+
+render()
+</script>
+</body>
+</html>
