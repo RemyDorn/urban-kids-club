@@ -55,10 +55,16 @@ function escHtml(s: string): string {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
 }
 // Helper: render a branded HTML page (for confirm/decline/error pages)
-function htmlPage(icon: string, title: string, message: string, color = '#059669') {
+function successPageWithRedirect(title: string, message: string, redirectUrl?: string | null) {
+  const redirect = redirectUrl ? `<meta http-equiv="refresh" content="5;url=${escHtml(redirectUrl)}">` : ''
+  const redirectNote = redirectUrl ? '<p style="color:#94a3b8;font-size:12px;margin-top:16px;">Du wirst in 5 Sekunden weitergeleitet...</p>' : ''
+  return htmlPage('✓', title, message + redirectNote, '#059669', redirect)
+}
+
+function htmlPage(icon: string, title: string, message: string, color = '#059669', extraHead = '') {
   const safeTitle = escHtml(title)
   // message is trusted HTML from our own code (contains <strong>, <a>, <br> etc.)
-  return `<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  return `<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">${extraHead}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
 <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Inter',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#faf9f8}
 .card{text-align:center;background:#fff;padding:48px 40px;border-radius:20px;box-shadow:0 4px 24px rgba(0,0,0,0.08);max-width:480px;width:90%}
@@ -356,8 +362,57 @@ export function registerRoutes(router: Router) {
   router.post('/api/bookings/:id/cancel', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
+    const db = getServiceClient()
+
+    // Fetch booking details before cancelling (for refund + email)
+    const { data: bookingRow } = await db.from('provider_bookings')
+      .select('*, parents!inner(name, email), activities!inner(title)')
+      .eq('id', req.params.id).eq('provider_id', auth.providerId).maybeSingle()
+
     const booking = await BookingService.cancel(req.params.id, auth.providerId)
     if (!booking) return res.error(400, 'Buchung konnte nicht storniert werden')
+
+    // Stripe refund if paid via Stripe
+    let refundInfo = ''
+    if (bookingRow?.payment_method === 'stripe' && bookingRow?.payment_status === 'paid' && bookingRow?.stripe_session_id) {
+      try {
+        const { stripe } = await import('../lib/stripe')
+        if (stripe) {
+          // Get payment intent from session
+          const session = await stripe.checkout.sessions.retrieve(bookingRow.stripe_session_id)
+          if (session.payment_intent) {
+            await stripe.refunds.create({ payment_intent: session.payment_intent as string })
+            await db.from('provider_bookings').update({ payment_status: 'refunded' }).eq('id', req.params.id)
+            refundInfo = 'Der Betrag von ' + Number(bookingRow.amount_paid).toFixed(2).replace('.', ',') + ' € wird auf dein Zahlungsmittel zurückerstattet. Dies kann 5-10 Werktage dauern.'
+            console.log('[Cancel] Stripe refund initiated for booking ' + req.params.id)
+          }
+        }
+      } catch (refundErr) {
+        console.error('[Cancel] Stripe refund failed:', refundErr)
+        refundInfo = 'Die Rückerstattung konnte nicht automatisch verarbeitet werden. Bitte kontaktiere den Anbieter.'
+      }
+    }
+
+    // Send cancellation email
+    try {
+      const { EmailService } = await import('../lib/email')
+      const parent = (bookingRow as any)?.parents
+      const activity = (bookingRow as any)?.activities
+      const ci = bookingRow?.child_info as any
+      const { data: provider } = await db.from('providers').select('company_name').eq('id', auth.providerId).single()
+      if (parent?.email) {
+        await EmailService.sendCancellation(parent.email, {
+          parentName: parent.name?.split(' ')[0] || '',
+          childName: ci?.firstName ? (ci.firstName + ' ' + (ci.lastName || '')).trim() : '',
+          courseName: activity?.title || 'Kurs',
+          providerName: provider?.company_name || '',
+          refundInfo: refundInfo || undefined,
+        })
+      }
+    } catch (emailErr) {
+      console.error('[Cancel] Email failed:', emailErr)
+    }
+
     res.json({ data: booking })
   })
 
@@ -685,7 +740,11 @@ export function registerRoutes(router: Router) {
     // Booking succeeded — now mark waitlist entry as accepted
     await db.from('waitlist_entries').update({ status: 'accepted' }).eq('id', _req.params.id)
 
-    res.html(htmlPage('✓', 'Buchung bestätigt!', 'Dein Platz für <strong>' + courseName + '</strong> ist reserviert. Du erhältst eine Bestätigung per E-Mail.', '#059669'))
+    // Check for redirect URL
+    const { data: provRedir } = await db.from('providers').select('redirect_after_booking, booking_redirect_url').eq('id', activity.provider_id).single()
+    const redirectUrl = provRedir?.redirect_after_booking || provRedir?.booking_redirect_url || null
+
+    res.html(successPageWithRedirect('Buchung bestätigt!', 'Dein Platz für <strong>' + courseName + '</strong> ist reserviert. Du erhältst eine Bestätigung per E-Mail.', redirectUrl))
   })
 
   // Payment success callback after Stripe checkout for waitlist confirmations
@@ -736,8 +795,12 @@ export function registerRoutes(router: Router) {
 
     await db.from('waitlist_entries').update({ status: 'accepted' }).eq('id', _req.params.id)
 
+    // Check for redirect URL
+    const { data: provRedir } = await db.from('providers').select('redirect_after_booking, booking_redirect_url').eq('id', activity.provider_id).single()
+    const redirectUrl = provRedir?.redirect_after_booking || provRedir?.booking_redirect_url || null
+
     const courseName = escHtml(activity?.title || 'den Kurs')
-    res.html(htmlPage('✓', 'Zahlung erfolgreich!', 'Dein Platz für <strong>' + courseName + '</strong> ist bestätigt und bezahlt. Du erhältst eine Bestätigung per E-Mail. 🎉', '#059669'))
+    res.html(successPageWithRedirect('Zahlung erfolgreich!', 'Dein Platz für <strong>' + courseName + '</strong> ist bestätigt und bezahlt. Du erhältst eine Bestätigung per E-Mail. 🎉', redirectUrl))
   })
 
   router.get('/api/waitlist/:id/decline-offer', async (_req, res) => {

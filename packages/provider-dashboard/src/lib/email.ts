@@ -344,4 +344,41 @@ export const EmailService = {
       text: `Platz frei in "${data.courseName}" für ${data.childName}. Bitte innerhalb von ${data.deadlineHours}h bestätigen.`,
     })
   },
+
+  async sendCancellation(to: string, data: {
+    parentName: string
+    childName: string
+    courseName: string
+    providerName: string
+    refundInfo?: string
+  }): Promise<EmailResult> {
+    const refundBlock = data.refundInfo ? `
+      <div style="background: #ecfdf5; padding: 16px; border-radius: 12px; border-left: 4px solid #10b981; margin: 20px 0;">
+        <div style="font-weight: 600; color: #065f46;">💸 Rückerstattung</div>
+        <div style="color: #047857; margin-top: 4px;">${data.refundInfo}</div>
+      </div>
+    ` : ''
+    return this.send({
+      to,
+      subject: `Stornierung – ${data.courseName}`,
+      html: `
+        <div style="font-family: 'Inter', 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; color: #3C2225;">
+          <div style="background: linear-gradient(135deg, #64748b, #475569); padding: 32px; border-radius: 16px 16px 0 0; text-align: center;">
+            <div style="font-size: 48px; margin-bottom: 8px;">📭</div>
+            <h1 style="color: white; margin: 0; font-size: 24px; font-weight: 700;">Buchung storniert</h1>
+          </div>
+          <div style="padding: 32px; background: #FFF9F5; border-radius: 0 0 16px 16px;">
+            <p style="font-size: 16px;">Hey ${data.parentName},</p>
+            <p>die Buchung von <strong>${data.childName}</strong> für <strong>"${data.courseName}"</strong> bei ${data.providerName} wurde storniert.</p>
+            ${refundBlock}
+            <p>Falls du Fragen hast, wende dich bitte direkt an ${data.providerName}.</p>
+            <p style="margin-top: 24px;">Wir hoffen, euch bald wiederzusehen! 👋</p>
+            <hr style="border: none; border-top: 1px solid #F2E6E2; margin: 24px 0;">
+            <p style="color: #94a3b8; font-size: 12px; text-align: center;">Powered by Urban Kids Club – Kinderkurse entdecken & buchen</p>
+          </div>
+        </div>
+      `,
+      text: `Hey ${data.parentName}, die Buchung von ${data.childName} für "${data.courseName}" wurde storniert.${data.refundInfo ? ' ' + data.refundInfo : ''} Bei Fragen wende dich an ${data.providerName}.`,
+    })
+  },
 }
