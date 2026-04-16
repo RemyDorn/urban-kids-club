@@ -1578,6 +1578,28 @@
           ${kpiCard('Probestunden', window._dashData?.upcomingTrials || 0, 'anstehend', 'bg-brand-100 text-brand-500', '🎯')}
         </div>
       `
+
+      // Update Auslastung pro Kurs (scoped to visible range)
+      var occSection = document.getElementById('occPerCourseSection')
+      if (occSection) {
+        var courseRows = ''
+        occData.forEach(function(o) {
+          // Calculate per-date booked for visible range
+          var rangeBooked = 0
+          if (o.byDate && Object.keys(o.byDate).length > 0) {
+            for (var dk in o.byDate) {
+              if (dk >= startStr && dk <= endStr) rangeBooked = Math.max(rangeBooked, o.byDate[dk])
+            }
+          } else {
+            // No byDate → check if activity has sessions in range
+            if (actSessionsInRange[o.activityId] > 0) rangeBooked = o.booked || 0
+          }
+          var pct = o.capacity > 0 ? Math.min(100, Math.round((rangeBooked / o.capacity) * 100)) : 0
+          var color = pct > 80 ? 'bg-red-500' : pct > 50 ? 'bg-amber-500' : 'bg-green-500'
+          courseRows += '<div class="flex items-center justify-between"><span class="text-sm text-gray-700 truncate flex-1">' + escapeHtml(o.title) + '</span><div class="flex items-center gap-3 ml-4"><div class="w-32 bg-gray-100 rounded-full h-2"><div class="h-2 rounded-full ' + color + '" style="width:' + pct + '%"></div></div><span class="text-xs font-medium text-gray-500 w-16 text-right">' + rangeBooked + '/' + o.capacity + '</span></div></div>'
+        })
+        occSection.innerHTML = '<div class="bg-white rounded-xl border border-brand-200 p-6"><h3 class="font-semibold text-gray-900 mb-4">Auslastung pro Kurs</h3><div class="space-y-3">' + courseRows + '</div></div>'
+      }
     }
     let activeCalContainer = 'dashboardCalendar'
     function calPrev() {
@@ -1656,23 +1678,8 @@
           </div>
         </div>
 
-        <!-- Auslastung pro Kurs -->
-        <div class="bg-white rounded-xl border border-brand-200 p-6">
-          <h3 class="font-semibold text-gray-900 mb-4">Auslastung pro Kurs</h3>
-          <div class="space-y-3">
-            ${occupancy.data.map(o => `
-              <div class="flex items-center justify-between">
-                <span class="text-sm text-gray-700 truncate flex-1">${escapeHtml(o.title)}</span>
-                <div class="flex items-center gap-3 ml-4">
-                  <div class="w-32 bg-gray-100 rounded-full h-2">
-                    <div class="h-2 rounded-full ${o.occupancy > 0.8 ? 'bg-red-500' : o.occupancy > 0.5 ? 'bg-amber-500' : 'bg-green-500'}" style="width: ${Math.round(o.occupancy * 100)}%"></div>
-                  </div>
-                  <span class="text-xs font-medium text-gray-500 w-16 text-right">${o.booked}/${o.capacity}</span>
-                </div>
-              </div>
-            `).join('')}
-          </div>
-        </div>
+        <!-- Auslastung pro Kurs (dynamic — updates with calendar view) -->
+        <div id="occPerCourseSection"></div>
 
         <!-- Event Detail Modal -->
         <div id="calModal" class="hidden"></div>
