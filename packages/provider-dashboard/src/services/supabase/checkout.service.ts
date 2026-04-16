@@ -86,12 +86,79 @@ export class CheckoutService {
       }
     }
 
-    // 3. Create booking atomically (capacity + duplicate check in one transaction)
+    // 3. Create booking
     const childInfo = {
       firstName: params.childFirstName,
       lastName: params.childLastName,
       birthYear: params.childBirthYear,
     }
+
+    // Waitlist confirmations bypass capacity check (provider manually approved)
+    if (params.skipBlockCheck) {
+      const { data: directBooking, error: directErr } = await db.from('provider_bookings').insert({
+        provider_id: params.providerId,
+        activity_id: params.activityId,
+        parent_id: parent.id,
+        child_info: childInfo,
+        payment_method: params.paymentMethod,
+        amount_paid: params.paymentMethod !== 'onsite' ? params.amount / 100 : 0,
+        currency: params.currency || 'EUR',
+        status: 'confirmed',
+        payment_status: params.paymentMethod !== 'onsite' && params.amount > 0 ? 'paid' : 'unpaid',
+        source: 'waitlist',
+        stripe_session_id: params.stripeSessionId || null,
+        paypal_order_id: params.paypalOrderId || null,
+        booked_date: params.bookedDate || null,
+      }).select().single()
+      if (directErr) throw new Error(directErr.message)
+
+      const booking = { id: directBooking.id, ...directBooking }
+
+      // Notify + email + invoice (skip to step 3b)
+      try {
+        await db.from('notifications').insert({
+          recipient_type: 'provider', recipient_id: params.providerId,
+          type: 'new_booking', channel: 'in_app',
+          title: 'Neue Buchung!',
+          body: params.childFirstName + ' ' + params.childLastName + ' hat gebucht (Warteliste bestätigt).',
+          data: { bookingId: booking.id, activityId: params.activityId },
+        })
+      } catch(e) {}
+
+      // Send confirmation email
+      try {
+        const { EmailService } = await import('../../lib/email')
+        const { data: activity } = await db.from('activities').select('title, pricing, schedule').eq('id', params.activityId).single()
+        const { data: provider } = await db.from('providers').select('company_name').eq('id', params.providerId).single()
+        const slot = activity?.schedule?.slots?.[0]
+        const dayMap: Record<string, string> = { MO: 'Montags', TU: 'Dienstags', WE: 'Mittwochs', TH: 'Donnerstags', FR: 'Freitags', SA: 'Samstags', SU: 'Sonntags' }
+        await EmailService.sendBookingConfirmation(params.parentEmail, {
+          parentName: params.parentFirstName,
+          childName: `${params.childFirstName} ${params.childLastName}`,
+          courseName: activity?.title || 'Kurs',
+          date: activity?.schedule?.startDate || '',
+          time: slot ? `${slot.startTime}–${slot.endTime}` : '',
+          providerName: provider?.company_name || '',
+        })
+      } catch (emailErr) {
+        console.error('Confirmation email failed:', emailErr)
+      }
+
+      // Auto-invoice
+      try {
+        const { data: provTax } = await db.from('providers')
+          .select('kleinunternehmer, vat_rate').eq('id', params.providerId).single()
+        const vatRate = provTax?.kleinunternehmer ? 0 : (provTax?.vat_rate ? provTax.vat_rate / 100 : 0.19)
+        const { SupabaseInvoiceService } = await import('./invoice.service')
+        await SupabaseInvoiceService.createFromBooking(booking.id, params.providerId, vatRate)
+      } catch (invoiceErr) {
+        console.error('[Checkout] Auto-invoice failed:', invoiceErr)
+      }
+
+      return booking
+    }
+
+    // Normal checkout: atomic capacity check
     const { data: rpcResult, error: rpcError } = await db.rpc('create_booking_atomic', {
       p_provider_id: params.providerId,
       p_activity_id: params.activityId,
