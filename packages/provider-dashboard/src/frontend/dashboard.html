@@ -5241,6 +5241,7 @@
         <!-- Settings Tabs -->
         <div class="flex gap-1 mb-6 border-b border-gray-200">
           <button onclick="settingsTab='company'; renderSettings()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${settingsTab === 'company' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}">Unternehmen</button>
+          <button onclick="settingsTab='hours'; renderSettings()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${settingsTab === 'hours' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}">Öffnungszeiten</button>
           <button onclick="settingsTab='finance'; renderSettings()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${settingsTab === 'finance' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}">Steuern & Finanzen</button>
           <button onclick="settingsTab='loyalty'; renderSettings()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${settingsTab === 'loyalty' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}">Treueprogramm</button>
           <button onclick="settingsTab='courses'; renderSettings()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${settingsTab === 'courses' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}">Kurse & Blöcke</button>
@@ -5252,13 +5253,96 @@
       `
 
       const sc = document.getElementById('settingsContent')
-      if (settingsTab === 'company') sc.innerHTML = renderCompanyTab(p, s)
+      if (settingsTab === 'hours') { sc.innerHTML = '<div id="hoursContainer">Lade...</div>'; loadOpeningHours() }
+      else if (settingsTab === 'company') sc.innerHTML = renderCompanyTab(p, s)
       else if (settingsTab === 'finance') { sc.innerHTML = renderFinanceTab(p, s); loadPaymentConfig() }
       else if (settingsTab === 'loyalty') sc.innerHTML = renderLoyaltyTab()
       else if (settingsTab === 'courses') sc.innerHTML = renderCoursesSettingsTab(p)
       else if (settingsTab === 'legal') sc.innerHTML = renderLegalTab(s)
       else if (settingsTab === 'rooms') { sc.innerHTML = '<div id="roomsContainer">Lade...</div>'; loadRooms() }
       else if (settingsTab === 'checkin') { sc.innerHTML = renderCheckinTab(); setTimeout(renderQRCode, 50) }
+    }
+
+    // --- Öffnungszeiten ---
+    async function loadOpeningHours() {
+      try {
+        const r = await api('/opening-hours')
+        const oh = r.data || {}
+        renderOpeningHours(oh)
+      } catch(e) { document.getElementById('hoursContainer').innerHTML = '<p class="text-red-500">Fehler beim Laden.</p>' }
+    }
+
+    function renderOpeningHours(oh) {
+      const days = [
+        { code: 'MO', label: 'Montag' },
+        { code: 'TU', label: 'Dienstag' },
+        { code: 'WE', label: 'Mittwoch' },
+        { code: 'TH', label: 'Donnerstag' },
+        { code: 'FR', label: 'Freitag' },
+        { code: 'SA', label: 'Samstag' },
+        { code: 'SU', label: 'Sonntag' },
+      ]
+      const el = document.getElementById('hoursContainer')
+      el.innerHTML = `
+        <div class="max-w-2xl space-y-6">
+          <div class="bg-white rounded-xl border border-brand-200 p-6">
+            <h3 class="font-semibold text-gray-900 mb-2">Öffnungszeiten</h3>
+            <p class="text-sm text-gray-500 mb-4">Kurse können nur innerhalb deiner Öffnungszeiten erstellt werden. Deaktivierte Tage = geschlossen.</p>
+            <div class="space-y-3">
+              ${days.map(d => {
+                const h = oh[d.code]
+                const isOpen = h !== null && h !== undefined
+                return `
+                  <div class="flex items-center gap-4 py-2 px-3 rounded-lg ${isOpen ? 'bg-green-50' : 'bg-gray-50'}">
+                    <label class="flex items-center gap-2 w-32">
+                      <input type="checkbox" class="oh-toggle rounded border-gray-300" data-day="${d.code}" ${isOpen ? 'checked' : ''} onchange="toggleOHDay('${d.code}', this.checked)">
+                      <span class="text-sm font-medium ${isOpen ? 'text-gray-900' : 'text-gray-400'}">${d.label}</span>
+                    </label>
+                    <div class="flex items-center gap-2 ${isOpen ? '' : 'opacity-30 pointer-events-none'}" id="ohTimes_${d.code}">
+                      <input type="time" id="ohOpen_${d.code}" value="${isOpen ? h.open : '09:00'}" class="border border-gray-200 rounded-lg px-2 py-1.5 text-sm">
+                      <span class="text-gray-400">–</span>
+                      <input type="time" id="ohClose_${d.code}" value="${isOpen ? h.close : '18:00'}" class="border border-gray-200 rounded-lg px-2 py-1.5 text-sm">
+                    </div>
+                    <span class="text-xs ${isOpen ? 'text-green-600' : 'text-gray-400'} ml-auto">${isOpen ? 'Geöffnet' : 'Geschlossen'}</span>
+                  </div>
+                `
+              }).join('')}
+            </div>
+            <button onclick="saveOpeningHours()" class="mt-4 bg-brand-500 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-brand-600">Öffnungszeiten speichern</button>
+          </div>
+        </div>
+      `
+    }
+
+    function toggleOHDay(day, isOpen) {
+      const times = document.getElementById('ohTimes_' + day)
+      if (times) {
+        times.classList.toggle('opacity-30', !isOpen)
+        times.classList.toggle('pointer-events-none', !isOpen)
+      }
+      const row = times?.closest('.flex')
+      if (row) {
+        row.className = row.className.replace(/bg-\w+-50/g, '') + (isOpen ? ' bg-green-50' : ' bg-gray-50')
+        const label = row.querySelector('span.text-xs')
+        if (label) { label.textContent = isOpen ? 'Geöffnet' : 'Geschlossen'; label.className = 'text-xs ' + (isOpen ? 'text-green-600' : 'text-gray-400') + ' ml-auto' }
+      }
+    }
+
+    async function saveOpeningHours() {
+      const days = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU']
+      const oh = {}
+      for (const d of days) {
+        const toggle = document.querySelector('.oh-toggle[data-day="' + d + '"]')
+        if (toggle && toggle.checked) {
+          oh[d] = { open: document.getElementById('ohOpen_' + d).value, close: document.getElementById('ohClose_' + d).value }
+        } else {
+          oh[d] = null
+        }
+      }
+      try {
+        await api('/opening-hours', 'PUT', oh)
+        alert('Öffnungszeiten gespeichert!')
+      } catch(e) { alert('Fehler beim Speichern.') }
     }
 
     // --- Räume-Verwaltung ---

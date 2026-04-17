@@ -79,6 +79,31 @@ h2{color:#1f2937;font-size:22px;margin-bottom:12px}
 </style></head><body><div class="card"><div class="icon">${icon}</div><h2>${safeTitle}</h2><div class="msg">${message}</div><div class="footer">Powered by Urban Kids Club</div></div></body></html>`
 }
 
+// Helper: Check if activity schedule fits within provider opening hours
+async function checkOpeningHours(providerId: string, schedule: any): Promise<string | null> {
+  if (!schedule?.slots) return null
+  const sb = getServiceClient()
+  const { data: prov } = await sb.from('providers').select('opening_hours').eq('id', providerId).maybeSingle()
+  const oh = prov?.opening_hours as Record<string, { open: string; close: string } | null> | null
+  if (!oh) return null // no opening hours set = no restriction
+
+  const dayLabels: Record<string, string> = { MO: 'Montag', TU: 'Dienstag', WE: 'Mittwoch', TH: 'Donnerstag', FR: 'Freitag', SA: 'Samstag', SU: 'Sonntag' }
+  const slots = Array.isArray(schedule) ? schedule : (schedule.slots ?? [])
+  for (const slot of slots) {
+    const day = slot.day?.toUpperCase()
+    const dayHours = oh[day]
+    if (!dayHours) return `${dayLabels[day] || day} ist geschlossen. Kein Kurs an diesem Tag möglich.`
+    const toMin = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + (m || 0) }
+    const slotStart = toMin(slot.startTime)
+    const slotEnd = toMin(slot.endTime)
+    const ohOpen = toMin(dayHours.open)
+    const ohClose = toMin(dayHours.close)
+    if (slotStart < ohOpen) return `Kurs startet um ${slot.startTime}, aber ${dayLabels[day] || day} öffnet erst um ${dayHours.open} Uhr.`
+    if (slotEnd > ohClose) return `Kurs endet um ${slot.endTime}, aber ${dayLabels[day] || day} schließt um ${dayHours.close} Uhr.`
+  }
+  return null
+}
+
 export function registerRoutes(router: Router) {
 
   // ============================================================
@@ -282,6 +307,11 @@ export function registerRoutes(router: Router) {
     if (!auth) return
     const parsed = validate(CreateActivitySchema, req.body)
     if ('error' in parsed) return res.error(400, parsed.error)
+
+    // Check opening hours
+    const ohError = await checkOpeningHours(auth.providerId, (parsed.data as any).schedule)
+    if (ohError) return res.error(400, ohError)
+
     const activity = await ActivityService.create({ ...parsed.data as any, providerId: auth.providerId })
     res.status(201).json({ data: activity })
   })
@@ -3088,6 +3118,27 @@ export function registerRoutes(router: Router) {
       custom_text: customText || '',
       updated_at: new Date().toISOString()
     }, { onConflict: 'provider_id' })
+    if (error) return res.error(500, error.message)
+    res.json({ success: true })
+  })
+
+  // ============================================================
+  // OPENING HOURS (Öffnungszeiten)
+  // ============================================================
+
+  router.get('/api/opening-hours', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    const sb = getServiceClient()
+    const { data } = await sb.from('providers').select('opening_hours').eq('id', auth.providerId).maybeSingle()
+    res.json({ data: data?.opening_hours || {} })
+  })
+
+  router.put('/api/opening-hours', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    const sb = getServiceClient()
+    const { error } = await sb.from('providers').update({ opening_hours: req.body }).eq('id', auth.providerId)
     if (error) return res.error(500, error.message)
     res.json({ success: true })
   })
