@@ -55,6 +55,14 @@ try {
   adminHtml = '<html><body><h1>Admin not found</h1></body></html>'
 }
 
+// Portal HTML laden
+let portalHtml: string
+try {
+  portalHtml = readFileSync(resolve(__dirname, '../frontend/portal.html'), 'utf-8')
+} catch {
+  portalHtml = '<html><body><h1>Portal not found</h1></body></html>'
+}
+
 // Widget HTML laden
 let parentWidgetHtml: string
 try {
@@ -684,6 +692,13 @@ const server = createServer((req, res) => {
     const embedType = parts[2] || 'calendar'
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
     res.end(generateEmbedHtml(slug, embedType, url))
+    return
+  }
+
+  // Parent Portal
+  if (path === '/portal' || path === '/portal/' || path.startsWith('/portal/?')) {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+    res.end(portalHtml)
     return
   }
 

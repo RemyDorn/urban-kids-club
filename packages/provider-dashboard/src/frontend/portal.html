@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mein Bereich — Urban Kids Club</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root { --primary: #D4956A; --primary-hover: #c4854a; --bg: #faf9f8; --card: #fff; --text: #3C2225; --muted: #8B7355; --border: #e8e0d8; }
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
+.header { background:white; border-bottom:1px solid var(--border); padding:16px 24px; display:flex; align-items:center; justify-content:space-between; }
+.header h1 { font-size:18px; font-weight:700; }
+.header .user { font-size:13px; color:var(--muted); }
+.container { max-width:720px; margin:0 auto; padding:20px; }
+.tabs { display:flex; gap:4px; background:white; border-radius:12px; padding:4px; margin-bottom:20px; border:1px solid var(--border); }
+.tab { flex:1; padding:10px; text-align:center; font-size:13px; font-weight:600; border-radius:8px; cursor:pointer; color:var(--muted); transition:all .2s; }
+.tab.active { background:var(--primary); color:white; }
+.tab:hover:not(.active) { background:#f5f0eb; }
+.card { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:20px; margin-bottom:12px; }
+.card h3 { font-size:15px; font-weight:600; margin-bottom:8px; }
+.badge { display:inline-block; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:600; }
+.badge-green { background:#ecfdf5; color:#059669; }
+.badge-amber { background:#fffbeb; color:#d97706; }
+.badge-red { background:#fef2f2; color:#ef4444; }
+.badge-gray { background:#f3f4f6; color:#6b7280; }
+.btn { padding:12px 24px; background:var(--primary); color:white; border:none; border-radius:12px; font-size:14px; font-weight:600; cursor:pointer; font-family:inherit; transition:background .2s; }
+.btn:hover { background:var(--primary-hover); }
+.btn-sm { padding:8px 16px; font-size:12px; border-radius:8px; }
+.btn-outline { background:transparent; border:2px solid var(--border); color:var(--text); }
+.btn-outline:hover { border-color:var(--primary); color:var(--primary); background:transparent; }
+input[type=email], input[type=text], textarea { width:100%; padding:12px 16px; border:2px solid var(--border); border-radius:12px; font-size:14px; font-family:inherit; outline:none; }
+input:focus, textarea:focus { border-color:var(--primary); }
+.empty { text-align:center; padding:40px; color:var(--muted); }
+.empty .icon { font-size:48px; margin-bottom:12px; }
+.msg { padding:12px 16px; border-radius:12px; margin-bottom:8px; max-width:80%; }
+.msg-provider { background:#f0ebe6; margin-right:auto; }
+.msg-parent { background:var(--primary); color:white; margin-left:auto; }
+.msg-time { font-size:10px; opacity:.6; margin-top:4px; }
+.login-card { max-width:400px; margin:80px auto; text-align:center; }
+.login-card .logo { font-size:48px; margin-bottom:16px; }
+#app { display:none; }
+.footer { text-align:center; font-size:11px; color:#94a3b8; margin-top:32px; padding:16px; }
+</style>
+</head>
+<body>
+
+<!-- Login Screen -->
+<div id="loginScreen">
+  <div class="container login-card">
+    <div class="card" style="padding:40px">
+      <div class="logo">👋</div>
+      <h2 style="margin-bottom:8px">Willkommen!</h2>
+      <p style="color:var(--muted);font-size:14px;margin-bottom:24px">Gib deine E-Mail-Adresse ein — wir senden dir einen Login-Link.</p>
+      <form id="loginForm">
+        <input type="email" id="loginEmail" placeholder="deine@email.de" required autocomplete="email" style="margin-bottom:12px">
+        <button type="submit" class="btn" style="width:100%" id="loginBtn">Login-Link senden</button>
+      </form>
+      <div id="loginMsg" style="margin-top:16px"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Main App (hidden until logged in) -->
+<div id="app">
+  <div class="header">
+    <h1>Mein Bereich</h1>
+    <div class="flex" style="display:flex;align-items:center;gap:12px">
+      <span class="user" id="userName"></span>
+      <button onclick="logout()" class="btn-sm btn-outline">Abmelden</button>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('bookings')">Buchungen</div>
+      <div class="tab" onclick="switchTab('invoices')">Rechnungen</div>
+      <div class="tab" onclick="switchTab('messages')">Nachrichten</div>
+    </div>
+    <div id="content"></div>
+  </div>
+
+  <div class="footer">Powered by Urban Kids Club</div>
+</div>
+
+<script>
+const API = '';
+let sessionToken = localStorage.getItem('ukc_parent_session') || null;
+let parentData = null;
+
+// Check for magic link token in URL
+const urlParams = new URLSearchParams(window.location.search);
+const magicToken = urlParams.get('token');
+
+async function init() {
+  if (magicToken) {
+    // Verify magic link
+    try {
+      const r = await fetch(API + '/api/portal/verify', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ token: magicToken }) });
+      const d = await r.json();
+      if (d.data?.sessionToken) {
+        sessionToken = d.data.sessionToken;
+        parentData = d.data.parent;
+        localStorage.setItem('ukc_parent_session', sessionToken);
+        history.replaceState({}, '', '/portal/');
+        showApp();
+        return;
+      }
+    } catch(e) {}
+    document.getElementById('loginMsg').innerHTML = '<p style="color:#ef4444">Link ungültig oder abgelaufen. Bitte fordere einen neuen an.</p>';
+  }
+
+  if (sessionToken) {
+    try {
+      const r = await fetch(API + '/api/portal/me', { headers: { 'Authorization': 'Bearer ' + sessionToken } });
+      if (r.ok) {
+        const d = await r.json();
+        parentData = d.data;
+        showApp();
+        return;
+      }
+    } catch(e) {}
+    // Session invalid
+    localStorage.removeItem('ukc_parent_session');
+    sessionToken = null;
+  }
+
+  // Show login
+  document.getElementById('loginScreen').style.display = '';
+}
+
+function showApp() {
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('app').style.display = '';
+  document.getElementById('userName').textContent = parentData?.name || '';
+  switchTab('bookings');
+}
+
+function logout() {
+  localStorage.removeItem('ukc_parent_session');
+  sessionToken = null;
+  parentData = null;
+  location.reload();
+}
+
+// Login form
+document.getElementById('loginForm').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  const email = document.getElementById('loginEmail').value.trim();
+  const btn = document.getElementById('loginBtn');
+  btn.disabled = true; btn.textContent = 'Wird gesendet...';
+  try {
+    await fetch(API + '/api/portal/login', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ email }) });
+    document.getElementById('loginMsg').innerHTML = '<div class="card" style="background:#ecfdf5;border-color:#a7f3d0"><p style="font-weight:600;color:#059669">Login-Link gesendet!</p><p style="font-size:13px;color:#047857;margin-top:4px">Schau in dein E-Mail-Postfach und klicke auf den Link.</p></div>';
+    document.getElementById('loginForm').style.display = 'none';
+  } catch(e) {
+    document.getElementById('loginMsg').innerHTML = '<p style="color:#ef4444">Fehler beim Senden.</p>';
+    btn.disabled = false; btn.textContent = 'Login-Link senden';
+  }
+});
+
+async function apiFetch(path) {
+  const r = await fetch(API + path, { headers: { 'Authorization': 'Bearer ' + sessionToken } });
+  if (!r.ok) throw new Error('API error');
+  return (await r.json()).data;
+}
+
+async function apiPost(path, body) {
+  const r = await fetch(API + path, { method: 'POST', headers: { 'Authorization': 'Bearer ' + sessionToken, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  return (await r.json()).data;
+}
+
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+let currentTab = 'bookings';
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab').forEach((t,i) => {
+    t.classList.toggle('active', ['bookings','invoices','messages'][i] === tab);
+  });
+  if (tab === 'bookings') renderBookings();
+  else if (tab === 'invoices') renderInvoices();
+  else if (tab === 'messages') renderMessages();
+}
+
+async function renderBookings() {
+  const el = document.getElementById('content');
+  el.innerHTML = '<div class="empty"><div class="icon">⏳</div>Lade...</div>';
+  try {
+    const bookings = await apiFetch('/api/portal/bookings');
+    if (!bookings.length) {
+      el.innerHTML = '<div class="empty"><div class="icon">📅</div><p>Noch keine Buchungen.</p></div>';
+      return;
+    }
+    const statusLabels = { confirmed: 'Bestätigt', pending: 'Ausstehend', cancelled: 'Storniert', completed: 'Abgeschlossen', waitlisted: 'Warteliste' };
+    const statusBadge = { confirmed: 'badge-green', pending: 'badge-amber', cancelled: 'badge-red', completed: 'badge-gray', waitlisted: 'badge-amber' };
+    const payLabels = { paid: 'Bezahlt', unpaid: 'Offen', refunded: 'Erstattet' };
+    const payBadge = { paid: 'badge-green', unpaid: 'badge-amber', refunded: 'badge-gray' };
+
+    el.innerHTML = bookings.map(function(b) {
+      const ci = b.child_info || {};
+      const childName = ci.firstName ? (ci.firstName + ' ' + (ci.lastName||'')).trim() : 'Kind';
+      const date = new Date(b.created_at).toLocaleDateString('de-DE');
+      return '<div class="card"><div style="display:flex;justify-content:space-between;align-items:start">' +
+        '<div><h3>' + esc(b.activityTitle) + '</h3>' +
+        '<p style="font-size:13px;color:var(--muted)">' + esc(b.providerName) + ' · ' + esc(childName) + ' · Gebucht am ' + date + '</p></div>' +
+        '<div style="display:flex;gap:6px">' +
+        '<span class="badge ' + (statusBadge[b.status]||'badge-gray') + '">' + (statusLabels[b.status]||b.status) + '</span>' +
+        '<span class="badge ' + (payBadge[b.payment_status]||'badge-gray') + '">' + (payLabels[b.payment_status]||b.payment_status) + '</span>' +
+        '</div></div>' +
+        (b.payment_status === 'unpaid' && b.amount_paid === 0 ? '<p style="font-size:13px;color:#d97706;margin-top:8px">Zahlung ausstehend — bitte vor Ort begleichen.</p>' : '') +
+        '</div>';
+    }).join('');
+  } catch(e) { el.innerHTML = '<div class="empty"><div class="icon">⚠️</div>Fehler beim Laden.</div>'; }
+}
+
+async function renderInvoices() {
+  const el = document.getElementById('content');
+  el.innerHTML = '<div class="empty"><div class="icon">⏳</div>Lade...</div>';
+  try {
+    const invoices = await apiFetch('/api/portal/invoices');
+    if (!invoices.length) {
+      el.innerHTML = '<div class="empty"><div class="icon">🧾</div><p>Noch keine Rechnungen.</p></div>';
+      return;
+    }
+    const statusLabels = { draft: 'Entwurf', sent: 'Gesendet', paid: 'Bezahlt', cancelled: 'Storniert' };
+    const statusBadge = { draft: 'badge-gray', sent: 'badge-amber', paid: 'badge-green', cancelled: 'badge-red' };
+
+    el.innerHTML = invoices.map(function(inv) {
+      const issued = inv.issued_at ? new Date(inv.issued_at).toLocaleDateString('de-DE') : '';
+      const due = inv.due_date ? new Date(inv.due_date).toLocaleDateString('de-DE') : '';
+      return '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center">' +
+        '<div><h3>Rechnung ' + esc(inv.number) + '</h3>' +
+        '<p style="font-size:13px;color:var(--muted)">Erstellt: ' + issued + (due ? ' · Fällig: ' + due : '') + '</p></div>' +
+        '<div style="display:flex;align-items:center;gap:12px">' +
+        '<span style="font-size:18px;font-weight:700">' + Number(inv.total||0).toFixed(2).replace('.',',') + ' €</span>' +
+        '<span class="badge ' + (statusBadge[inv.status]||'badge-gray') + '">' + (statusLabels[inv.status]||inv.status) + '</span>' +
+        '</div></div>' +
+        (inv.status === 'sent' ? '<a href="/api/invoices/' + inv.id + '/view" target="_blank" style="display:inline-block;margin-top:8px;font-size:13px;color:var(--primary);font-weight:600">Rechnung ansehen →</a>' : '') +
+        '</div>';
+    }).join('');
+  } catch(e) { el.innerHTML = '<div class="empty"><div class="icon">⚠️</div>Fehler beim Laden.</div>'; }
+}
+
+let _messages = [];
+let _msgProviders = new Map();
+let _selectedProvider = null;
+
+async function renderMessages() {
+  const el = document.getElementById('content');
+  el.innerHTML = '<div class="empty"><div class="icon">⏳</div>Lade...</div>';
+  try {
+    _messages = await apiFetch('/api/portal/messages');
+    // Group by provider
+    _msgProviders = new Map();
+    for (const m of _messages) {
+      if (!_msgProviders.has(m.provider_id)) _msgProviders.set(m.provider_id, { name: m.providerName, messages: [] });
+      _msgProviders.get(m.provider_id).messages.push(m);
+    }
+
+    // Also get providers from bookings (to start new conversations)
+    const bookings = await apiFetch('/api/portal/bookings');
+    for (const b of bookings) {
+      if (!_msgProviders.has(b.provider_id)) _msgProviders.set(b.provider_id, { name: b.providerName, messages: [] });
+    }
+
+    if (_msgProviders.size === 0) {
+      el.innerHTML = '<div class="empty"><div class="icon">💬</div><p>Noch keine Nachrichten.</p></div>';
+      return;
+    }
+
+    if (!_selectedProvider) _selectedProvider = _msgProviders.keys().next().value;
+    renderMessageView(el);
+  } catch(e) { el.innerHTML = '<div class="empty"><div class="icon">⚠️</div>Fehler beim Laden.</div>'; }
+}
+
+function renderMessageView(el) {
+  let html = '<div style="display:grid;grid-template-columns:200px 1fr;gap:12px;min-height:400px">';
+
+  // Provider list
+  html += '<div class="card" style="padding:8px">';
+  for (const [id, prov] of _msgProviders) {
+    const unread = prov.messages.filter(m => m.sender_type === 'provider' && !m.read_at).length;
+    html += '<div onclick="_selectedProvider=\'' + id + '\';renderMessageView(document.getElementById(\'content\'))" class="' + (id === _selectedProvider ? 'tab active' : 'tab') + '" style="text-align:left;padding:10px 12px;font-size:13px">' +
+      esc(prov.name) + (unread ? ' <span class="badge badge-amber" style="font-size:10px">' + unread + '</span>' : '') + '</div>';
+  }
+  html += '</div>';
+
+  // Messages
+  const prov = _msgProviders.get(_selectedProvider);
+  html += '<div class="card" style="display:flex;flex-direction:column">';
+  html += '<h3 style="margin-bottom:12px">' + esc(prov?.name || '') + '</h3>';
+  html += '<div style="flex:1;overflow-y:auto;max-height:300px;display:flex;flex-direction:column;gap:8px" id="msgList">';
+  if (!prov?.messages.length) {
+    html += '<div class="empty" style="padding:20px"><p style="font-size:13px">Noch keine Nachrichten. Schreibe die erste!</p></div>';
+  } else {
+    for (const m of prov.messages.sort((a,b) => new Date(a.created_at) - new Date(b.created_at))) {
+      const time = new Date(m.created_at).toLocaleString('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+      html += '<div class="msg msg-' + m.sender_type + '">' + esc(m.content) + '<div class="msg-time">' + time + '</div></div>';
+    }
+  }
+  html += '</div>';
+  html += '<div style="display:flex;gap:8px;margin-top:12px"><input type="text" id="msgInput" placeholder="Nachricht schreiben..." style="flex:1"><button onclick="sendMessage()" class="btn btn-sm">Senden</button></div>';
+  html += '</div></div>';
+
+  el.innerHTML = html;
+  // Scroll to bottom
+  const list = document.getElementById('msgList');
+  if (list) list.scrollTop = list.scrollHeight;
+}
+
+async function sendMessage() {
+  const input = document.getElementById('msgInput');
+  const content = input?.value?.trim();
+  if (!content || !_selectedProvider) return;
+  input.value = '';
+  try {
+    await apiPost('/api/portal/messages', { providerId: _selectedProvider, content });
+    renderMessages();
+  } catch(e) { alert('Fehler beim Senden.'); }
+}
+
+// Start
+init();
+</script>
+</body>
+</html>
