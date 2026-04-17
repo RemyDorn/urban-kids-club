@@ -120,13 +120,31 @@ export class CheckoutService {
         throw new Error('Dieser Kurs ist leider ausgebucht. Wir informieren dich sofort, wenn ein Platz frei wird!')
       }
 
+      // Check for sibling discount (same parent, another child already booked)
+      let finalAmount = params.paymentMethod !== 'onsite' ? params.amount / 100 : 0
+      const { data: actPricing } = await db.from('activities').select('pricing').eq('id', params.activityId).single()
+      const siblingDiscount = (actPricing?.pricing as any)?.[0]?.siblingDiscount || 0
+      if (siblingDiscount > 0) {
+        const { count: siblingCount } = await db.from('provider_bookings')
+          .select('*', { count: 'exact', head: true })
+          .eq('activity_id', params.activityId).eq('parent_id', parent.id)
+          .in('status', ['confirmed', 'pending'])
+        if ((siblingCount ?? 0) > 0) {
+          const basePrice = (actPricing?.pricing as any)?.[0]?.amount || 0
+          const discountedPrice = Math.round(basePrice * (1 - siblingDiscount / 100) * 100) / 100
+          if (params.paymentMethod === 'onsite') finalAmount = 0
+          else finalAmount = discountedPrice
+          console.log(`[Checkout] Sibling discount ${siblingDiscount}% applied for waitlist booking: ${basePrice}€ → ${discountedPrice}€`)
+        }
+      }
+
       const { data: directBooking, error: directErr } = await db.from('provider_bookings').insert({
         provider_id: params.providerId,
         activity_id: params.activityId,
         parent_id: parent.id,
         child_info: childInfo,
         payment_method: params.paymentMethod,
-        amount_paid: params.paymentMethod !== 'onsite' ? params.amount / 100 : 0,
+        amount_paid: finalAmount,
         currency: params.currency || 'EUR',
         status: 'confirmed',
         payment_status: params.paymentMethod !== 'onsite' && params.amount > 0 ? 'paid' : 'unpaid',
