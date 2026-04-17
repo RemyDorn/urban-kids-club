@@ -86,7 +86,9 @@ import { AttendanceService as MemAttendanceService } from './attendance.service'
 import { SupabaseAttendanceService } from './supabase/attendance.service'
 export const AttendanceService = USE_SUPABASE ? SupabaseAttendanceService : MemAttendanceService as any
 export { SupabaseRoomService as RoomService } from './supabase/room.service'
-export { TeamService } from './team.service'
+import { TeamService as MemTeamService } from './team.service'
+import { SupabaseTeamService } from './supabase/team.service'
+export const TeamService = USE_SUPABASE ? SupabaseTeamService : MemTeamService as any
 export { ReviewService } from './review.service'
 export { MessageService } from './message.service'
 export { TrialService } from './trial.service'

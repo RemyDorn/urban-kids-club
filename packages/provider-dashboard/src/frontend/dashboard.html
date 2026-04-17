@@ -3030,8 +3030,8 @@
     }
 
     // --- Team ---
-    const roleLabels = { owner: 'Inhaber', admin: 'Admin', instructor: 'Trainer', assistant: 'Assistent' }
-    const roleColors = { owner: 'bg-purple-100 text-purple-700', admin: 'bg-brand-100 text-brand-700', instructor: 'bg-green-100 text-green-700', assistant: 'bg-gray-100 text-gray-600' }
+    const roleLabels = { owner: 'Inhaber', admin: 'Administrator', manager: 'Manager', instructor: 'Kursleiter', receptionist: 'Empfang', assistant: 'Assistent' }
+    const roleColors = { owner: 'bg-purple-100 text-purple-700', admin: 'bg-brand-100 text-brand-700', manager: 'bg-blue-100 text-blue-700', instructor: 'bg-green-100 text-green-700', receptionist: 'bg-amber-100 text-amber-700', assistant: 'bg-gray-100 text-gray-600' }
 
     const docTypeLabels = { fuehrungszeugnis: 'Erw. Führungszeugnis', first_aid: 'Erste-Hilfe-Nachweis', qualification: 'Qualifikation', insurance: 'Haftpflicht', custom: 'Sonstiges' }
     const absenceTypeLabels = { vacation: 'Urlaub', sick: 'Krank', training: 'Fortbildung', personal: 'Privat', other: 'Sonstiges' }
@@ -3079,7 +3079,9 @@
                     <span class="px-2 py-0.5 rounded text-xs font-medium ${hasFZ ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}" title="Führungszeugnis">${hasFZ ? '✓' : '✗'} FZ</span>
                     <span class="px-2 py-0.5 rounded text-xs font-medium ${hasFirstAid ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}" title="Erste Hilfe">${hasFirstAid ? '✓' : '✗'} EH</span>
                   </div>
+                  ${!m.userId ? `<button onclick="inviteTeamMember('${m.id}')" class="text-xs bg-brand-100 text-brand-700 px-3 py-1 rounded-lg hover:bg-brand-200 font-medium" title="Einladung senden">Einladen</button>` : '<span class="text-xs text-green-600 font-medium">Angemeldet</span>'}
                   <label class="toggle"><input type="checkbox" ${m.active ? 'checked' : ''} onchange="toggleTeamMember('${m.id}', this.checked)"><span class="slider"></span></label>
+                  <button onclick="deleteTeamMember('${m.id}', '${escapeHtml(m.name)}')" class="text-xs text-red-400 hover:text-red-600 px-1" title="Entfernen">✕</button>
                 </div>
               </div>
 
@@ -3122,7 +3124,12 @@
     }
 
     function showTeamForm() {
-      const roles = ['instructor', 'admin', 'assistant']
+      const roles = [
+        { value: 'admin', label: 'Administrator', desc: 'Voller Zugriff auf alle Bereiche' },
+        { value: 'manager', label: 'Manager', desc: 'Kurse, Buchungen, Kunden, Berichte' },
+        { value: 'instructor', label: 'Kursleiter', desc: 'Kalender, Buchungen einsehen, Check-in' },
+        { value: 'receptionist', label: 'Empfang', desc: 'Buchungen verwalten, Check-in, Rechnungen einsehen' },
+      ]
       const modal = document.getElementById('teamModal')
       modal.className = 'cal-modal-backdrop'
       modal.onclick = (e) => { if (e.target === modal) modal.className = 'hidden' }
@@ -3141,26 +3148,33 @@
             </div>
             <div class="grid grid-cols-2 gap-4">
               <div><label class="block text-sm font-medium text-gray-700 mb-1">Telefon</label><input name="phone" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="+49..."></div>
-              <div><label class="block text-sm font-medium text-gray-700 mb-1">Rolle</label>
+              <div><label class="block text-sm font-medium text-gray-700 mb-1">Rolle *</label>
                 <select name="role" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
-                  ${roles.map(r => `<option value="${r}">${roleLabels[r]}</option>`).join('')}
+                  ${roles.map(r => `<option value="${r.value}">${r.label}</option>`).join('')}
                 </select>
+                <div class="text-xs text-gray-400 mt-1" id="roleDesc">${roles[0].desc}</div>
               </div>
             </div>
             <div><label class="block text-sm font-medium text-gray-700 mb-1">Spezialisierungen</label><input name="specializations" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Ballett, Hip-Hop (kommagetrennt)"></div>
 
-            <div class="border-t border-gray-200 pt-4">
-              <div class="text-sm font-medium text-gray-700 mb-3">Pflichtdokumente</div>
-              <div class="space-y-2">
-                <label class="flex items-center gap-2"><input type="checkbox" name="hasFZ" class="rounded border-gray-300"> <span class="text-sm text-gray-700">Erweitertes Führungszeugnis liegt vor</span></label>
-                <label class="flex items-center gap-2"><input type="checkbox" name="hasFirstAid" class="rounded border-gray-300"> <span class="text-sm text-gray-700">Erste-Hilfe-Nachweis liegt vor</span></label>
-              </div>
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <div class="text-xs font-medium text-blue-800 mb-1">Einladung per E-Mail</div>
+              <div class="text-xs text-blue-700">Nach dem Hinzufügen kann eine Einladung per E-Mail gesendet werden, damit das Mitglied sich anmelden kann.</div>
             </div>
 
             <button type="submit" class="w-full bg-brand-500 text-white py-2.5 rounded-lg font-medium hover:bg-brand-600">Hinzufügen</button>
           </form>
         </div>
       `
+      // Update role description on change
+      const roleSelect = modal.querySelector('[name="role"]')
+      const roleDesc = document.getElementById('roleDesc')
+      if (roleSelect && roleDesc) {
+        roleSelect.addEventListener('change', function() {
+          const r = roles.find(x => x.value === this.value)
+          roleDesc.textContent = r?.desc || ''
+        })
+      }
     }
 
     function showDocForm(memberId) {
@@ -3257,6 +3271,21 @@
     async function toggleTeamMember(id, active) {
       await api(`/team/${id}`, 'PUT', { active })
       navigate('team')
+    }
+
+    async function inviteTeamMember(id) {
+      try {
+        await api('/team/' + id + '/invite', 'POST')
+        alert('Einladung wurde per E-Mail gesendet!')
+      } catch(e) { alert('Fehler beim Senden der Einladung.') }
+    }
+
+    async function deleteTeamMember(id, name) {
+      if (!confirm('Teammitglied "' + name + '" wirklich entfernen?')) return
+      try {
+        await api('/team/' + id, 'DELETE')
+        navigate('team')
+      } catch(e) { alert('Fehler beim Entfernen.') }
     }
 
     // --- Holidays ---

@@ -233,39 +233,48 @@ export function registerRoutes(router: Router) {
   router.get('/api/providers/:providerId/team', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const members = await TeamService.listByProvider(auth.providerId, {
-      role: req.query.role as any,
-      active: req.query.active ? req.query.active === 'true' : undefined,
-    })
+    const members = await TeamService.list(auth.providerId)
     res.json({ data: members })
   })
 
   router.post('/api/providers/:providerId/team', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const parsed = validate(CreateTeamMemberSchema, req.body)
-    if ('error' in parsed) return res.error(400, parsed.error)
-    const result = await TeamService.create({ ...parsed.data as any, providerId: auth.providerId })
-    if ('error' in result) return res.error(400, result.error)
+    const { name, email, phone, role, permissions, specializations } = req.body as any
+    if (!name || !email) return res.error(400, 'Name und E-Mail sind erforderlich')
+    const result = await TeamService.create({ providerId: auth.providerId, name, email, phone, role: role || 'instructor', permissions, specializations })
     res.status(201).json({ data: result })
   })
 
   router.put('/api/team/:id', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    // Verify team member belongs to this provider
-    const existing = await TeamService.getById(req.params.id)
-    if (!existing || existing.providerId !== auth.providerId) return res.error(404, 'Teammitglied nicht gefunden')
-    const member = await TeamService.update(req.params.id, req.body as any)
+    const member = await TeamService.update(req.params.id, req.body as any, auth.providerId)
     if (!member) return res.error(404, 'Teammitglied nicht gefunden')
     res.json({ data: member })
   })
 
-  router.get('/api/team/:id/workload', async (req, res) => {
+  router.delete('/api/team/:id', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const workload = await TeamService.getWorkload(req.params.id)
-    res.json({ data: workload })
+    await TeamService.delete(req.params.id, auth.providerId)
+    res.json({ success: true })
+  })
+
+  router.post('/api/team/:id/invite', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    const result = await TeamService.invite(req.params.id, auth.providerId)
+    if ('error' in result) return res.error(400, result.error)
+    res.json({ data: result })
+  })
+
+  // Get available roles and permissions
+  router.get('/api/roles', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    const { ALL_PERMISSIONS, ROLE_PRESETS } = await import('../services/supabase/team.service')
+    res.json({ data: { permissions: ALL_PERMISSIONS, presets: ROLE_PRESETS } })
   })
 
   // ============================================================
