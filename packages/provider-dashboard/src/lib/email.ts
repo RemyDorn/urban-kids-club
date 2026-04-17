@@ -345,6 +345,93 @@ export const EmailService = {
     })
   },
 
+  // --- Probestunden Follow-up ---
+
+  async sendTrialFollowUp(to: string, data: {
+    parentName: string
+    childName: string
+    courseName: string
+    providerName: string
+    bookingUrl?: string
+  }): Promise<EmailResult> {
+    const ctaBlock = data.bookingUrl ? `
+      <div style="text-align: center; margin: 28px 0;">
+        <a href="${data.bookingUrl}" style="display: inline-block; background: #D4956A; color: white; padding: 14px 32px; border-radius: 12px; text-decoration: none; font-weight: 600; font-size: 16px;">Jetzt Platz sichern</a>
+      </div>
+    ` : ''
+    return this.send({
+      to,
+      subject: `Hat ${data.childName} die Probestunde gefallen? 🌟`,
+      html: `
+        <div style="font-family: 'Inter', 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; color: #3C2225;">
+          <div style="background: linear-gradient(135deg, #D4956A, #c4854a); padding: 32px; border-radius: 16px 16px 0 0; text-align: center;">
+            <div style="font-size: 48px; margin-bottom: 8px;">🌟</div>
+            <h1 style="color: white; margin: 0; font-size: 24px; font-weight: 700;">Wie war die Probestunde?</h1>
+          </div>
+          <div style="padding: 32px; background: #FFF9F5; border-radius: 0 0 16px 16px;">
+            <p style="font-size: 16px;">Hey ${data.parentName},</p>
+            <p>${data.childName} war gestern bei der Probestunde <strong>"${data.courseName}"</strong> bei ${data.providerName}. Wir hoffen, es hat richtig Spaß gemacht!</p>
+            <div style="background: #fdf4ed; padding: 20px; border-radius: 12px; border-left: 4px solid #D4956A; margin: 20px 0;">
+              <div style="font-weight: 600; color: #92400e;">Platz sichern?</div>
+              <div style="color: #78350f; margin-top: 4px;">Wenn ${data.childName} begeistert war, sichere dir jetzt einen festen Platz — die Kurse sind schnell ausgebucht!</div>
+            </div>
+            ${ctaBlock}
+            <p style="color: #8B7355; font-size: 14px;">Falls es nicht gepasst hat, kein Problem — wir haben viele weitere tolle Kurse für euch!</p>
+            <hr style="border: none; border-top: 1px solid #F2E6E2; margin: 24px 0;">
+            <p style="color: #94a3b8; font-size: 12px; text-align: center;">Powered by Urban Kids Club – Kinderkurse entdecken & buchen</p>
+          </div>
+        </div>
+      `,
+      text: `Hey ${data.parentName}, wie war die Probestunde von ${data.childName} bei "${data.courseName}"? Wenn es gefallen hat, sichere dir jetzt einen festen Platz! ${data.bookingUrl || ''} — ${data.providerName}`,
+    })
+  },
+
+  async sendTrialReminder(to: string, data: {
+    parentName: string
+    childName: string
+    courseName: string
+    providerName: string
+    trialDate: string
+    trialTime: string
+  }): Promise<EmailResult> {
+    return this.send({
+      to,
+      subject: `Erinnerung: Probestunde morgen – ${data.courseName} 📋`,
+      html: `
+        <div style="font-family: 'Inter', 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; color: #3C2225;">
+          <div style="background: linear-gradient(135deg, #D4956A, #c4854a); padding: 32px; border-radius: 16px 16px 0 0; text-align: center;">
+            <div style="font-size: 48px; margin-bottom: 8px;">📋</div>
+            <h1 style="color: white; margin: 0; font-size: 24px; font-weight: 700;">Morgen ist es soweit!</h1>
+          </div>
+          <div style="padding: 32px; background: #FFF9F5; border-radius: 0 0 16px 16px;">
+            <p style="font-size: 16px;">Hey ${data.parentName},</p>
+            <p>kurze Erinnerung: ${data.childName} hat morgen eine Probestunde!</p>
+            <div style="background: #f8f5f2; padding: 20px; border-radius: 12px; margin: 20px 0;">
+              <div style="display: flex; gap: 16px;">
+                <div>
+                  <div style="font-size: 12px; color: #8B7355;">Kurs</div>
+                  <div style="font-weight: 600; color: #3C2225;">${data.courseName}</div>
+                </div>
+                <div>
+                  <div style="font-size: 12px; color: #8B7355;">Datum</div>
+                  <div style="font-weight: 600; color: #3C2225;">${data.trialDate}</div>
+                </div>
+                <div>
+                  <div style="font-size: 12px; color: #8B7355;">Uhrzeit</div>
+                  <div style="font-weight: 600; color: #3C2225;">${data.trialTime} Uhr</div>
+                </div>
+              </div>
+            </div>
+            <p style="color: #8B7355; font-size: 14px;">Wir freuen uns auf euch! Bei Fragen wende dich an ${data.providerName}.</p>
+            <hr style="border: none; border-top: 1px solid #F2E6E2; margin: 24px 0;">
+            <p style="color: #94a3b8; font-size: 12px; text-align: center;">Powered by Urban Kids Club – Kinderkurse entdecken & buchen</p>
+          </div>
+        </div>
+      `,
+      text: `Hey ${data.parentName}, Erinnerung: ${data.childName} hat morgen um ${data.trialTime} Uhr eine Probestunde bei "${data.courseName}" (${data.providerName}). Wir freuen uns!`,
+    })
+  },
+
   async sendCancellation(to: string, data: {
     parentName: string
     childName: string

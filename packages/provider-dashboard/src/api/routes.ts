@@ -1004,6 +1004,28 @@ export function registerRoutes(router: Router) {
     const { feedback } = req.body as { feedback?: string }
     const trial = await TrialService.complete(req.params.id, feedback)
     if (!trial) return res.error(400, 'Probestunde konnte nicht abgeschlossen werden')
+
+    // Send follow-up email to parent (async, don't block response)
+    try {
+      const sb = getServiceClient()
+      const { data: parent } = await sb.from('parents').select('name, email').eq('id', (trial as any).parentId).maybeSingle()
+      const { data: activity } = await sb.from('activities').select('title').eq('id', (trial as any).activityId).maybeSingle()
+      const { data: provider } = await sb.from('providers').select('company_name, slug').eq('id', auth.providerId).maybeSingle()
+      if (parent?.email && activity?.title) {
+        const { EmailService } = await import('../lib/email')
+        const origin = process.env.APP_PUBLIC_URL || 'https://dev.urbankids.club'
+        const bookingUrl = `${origin}/widget/${provider?.slug || ''}`
+        EmailService.sendTrialFollowUp(parent.email, {
+          parentName: parent.name,
+          childName: (trial as any).child?.name || 'Ihr Kind',
+          courseName: activity.title,
+          providerName: provider?.company_name || '',
+          bookingUrl,
+        }).then(() => console.log(`[Trial] Follow-up email sent to ${parent.email}`))
+          .catch((e: any) => console.error('[Trial] Follow-up email failed:', e))
+      }
+    } catch (e) { console.error('[Trial] Follow-up email error:', e) }
+
     res.json({ data: trial })
   })
 
