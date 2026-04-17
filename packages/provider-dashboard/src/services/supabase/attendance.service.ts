@@ -186,8 +186,8 @@ export const SupabaseAttendanceService = {
 
     // 4. Filter bookings that are relevant for today
     const todayDow = new Date().getDay() // 0=Sun, 1=Mon, ...
-    const dowNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
-    const todayName = dowNames[todayDow]
+    const dowMap: Record<number, string> = { 0: 'SU', 1: 'MO', 2: 'TU', 3: 'WE', 4: 'TH', 5: 'FR', 6: 'SA' }
+    const todayCode = dowMap[todayDow]
 
     const todayBookings = bookings.filter((b: any) => {
       // If booking has a specific booked_date, check it
@@ -197,8 +197,9 @@ export const SupabaseAttendanceService = {
       // Otherwise check if activity runs on today's weekday
       const activity = activityMap.get(b.activity_id)
       if (!activity?.schedule) return true // no schedule = assume today
-      const sched = activity.schedule as Array<{ day?: string }>
-      return sched.some((s: any) => s.day?.toLowerCase() === todayName)
+      const sched = activity.schedule as any
+      const slots = Array.isArray(sched) ? sched : (sched?.slots ?? [])
+      return slots.some((s: any) => s.day?.toUpperCase() === todayCode)
     })
 
     if (todayBookings.length === 0) {
