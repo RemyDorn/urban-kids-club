@@ -225,6 +225,7 @@ export const SupabaseAttendanceService = {
         const isPaid = b.payment_status === 'paid'
         return {
           bookingId: b.id,
+          activityId: b.activity_id,
           activityTitle: activity?.title ?? 'Kurs',
           childName: ci?.firstName ? `${ci.firstName} ${ci.lastName || ''}`.trim() : 'Kind',
           paymentStatus: isPaid ? 'paid' as const : 'unpaid' as const,
@@ -307,9 +308,9 @@ export const SupabaseAttendanceService = {
         .select('id').eq('booking_id', item.bookingId).eq('date', today).maybeSingle()
 
       if (!existing) {
-        await sb.from(TABLE).insert({
+        const { error: insErr } = await sb.from(TABLE).insert({
           booking_id: item.bookingId,
-          activity_id: null, // not needed for QR check-in
+          activity_id: item.activityId,
           provider_id: providerId,
           parent_id: parent.id,
           date: today,
@@ -317,6 +318,7 @@ export const SupabaseAttendanceService = {
           checked_in_at: new Date().toISOString(),
           checkin_method: 'qr',
         })
+        if (insErr) console.error('[CheckIn] Insert error:', insErr.message)
       } else {
         await sb.from(TABLE).update({
           checked_in: true,
