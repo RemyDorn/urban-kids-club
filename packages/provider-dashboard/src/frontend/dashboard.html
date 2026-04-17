@@ -5027,8 +5027,8 @@
             </p>
 
             <div class="bg-gray-50 rounded-xl p-6 text-center mb-4">
-              <div id="qrCodeContainer" class="inline-block bg-white p-4 rounded-xl shadow-sm mb-3">
-                <canvas id="qrCanvas" width="200" height="200"></canvas>
+              <div id="qrCodeContainer" class="inline-block bg-white p-4 rounded-xl shadow-sm mb-3" style="min-width:216px;min-height:216px">
+                <div id="qrTarget" style="width:200px;height:200px;margin:0 auto"></div>
               </div>
               <p class="text-xs text-gray-500 mt-2 break-all">${checkinUrl}</p>
             </div>
@@ -5073,20 +5073,47 @@
       `
     }
 
-    // Generate QR code on canvas (simple QR via external API rendered as image)
+    // Load QR code library (qrcode-generator, lightweight, no CORS issues)
+    let _qrLibLoaded = false
+    function loadQRLib(cb) {
+      if (_qrLibLoaded) return cb()
+      const s = document.createElement('script')
+      s.src = 'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js'
+      s.onload = function() { _qrLibLoaded = true; cb() }
+      s.onerror = function() { console.error('QR lib load failed'); cb() }
+      document.head.appendChild(s)
+    }
+
     async function renderQRCode() {
-      const canvas = document.getElementById('qrCanvas')
-      if (!canvas) return
+      const target = document.getElementById('qrTarget')
+      if (!target) return
       const checkinUrl = window.location.origin + '/checkin/' + currentProvider.id
-      const img = new Image()
-      img.crossOrigin = 'anonymous'
-      img.onload = function() {
-        const ctx = canvas.getContext('2d')
-        ctx.fillStyle = '#fff'
-        ctx.fillRect(0, 0, 200, 200)
-        ctx.drawImage(img, 0, 0, 200, 200)
-      }
-      img.src = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(checkinUrl)
+
+      loadQRLib(function() {
+        if (typeof qrcode === 'undefined') {
+          target.innerHTML = '<p style="color:#ef4444;font-size:13px">QR-Code konnte nicht geladen werden.</p>'
+          return
+        }
+        const qr = qrcode(0, 'M')
+        qr.addData(checkinUrl)
+        qr.make()
+        // Render as SVG for crisp display + easy download
+        const cellSize = 5
+        const margin = 4
+        const count = qr.getModuleCount()
+        const size = count * cellSize + margin * 2
+        let svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+size+' '+size+'" width="200" height="200">'
+        svg += '<rect width="'+size+'" height="'+size+'" fill="#fff"/>'
+        for (let r = 0; r < count; r++) {
+          for (let c = 0; c < count; c++) {
+            if (qr.isDark(r, c)) {
+              svg += '<rect x="'+(c*cellSize+margin)+'" y="'+(r*cellSize+margin)+'" width="'+cellSize+'" height="'+cellSize+'" fill="#000"/>'
+            }
+          }
+        }
+        svg += '</svg>'
+        target.innerHTML = svg
+      })
 
       // Load today's check-ins
       try {
@@ -5110,23 +5137,36 @@
     }
 
     function downloadQR() {
-      const canvas = document.getElementById('qrCanvas')
-      if (!canvas) return
-      const link = document.createElement('a')
-      link.download = 'checkin-qr-code.png'
-      link.href = canvas.toDataURL('image/png')
-      link.click()
+      const svg = document.querySelector('#qrTarget svg')
+      if (!svg) return
+      // Convert SVG to PNG via canvas
+      const svgData = new XMLSerializer().serializeToString(svg)
+      const canvas = document.createElement('canvas')
+      canvas.width = 400; canvas.height = 400
+      const ctx = canvas.getContext('2d')
+      const img = new Image()
+      img.onload = function() {
+        ctx.fillStyle = '#fff'
+        ctx.fillRect(0, 0, 400, 400)
+        ctx.drawImage(img, 0, 0, 400, 400)
+        const link = document.createElement('a')
+        link.download = 'checkin-qr-code.png'
+        link.href = canvas.toDataURL('image/png')
+        link.click()
+      }
+      img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)))
     }
 
     function printQR() {
-      const canvas = document.getElementById('qrCanvas')
-      if (!canvas) return
+      const svg = document.querySelector('#qrTarget svg')
+      if (!svg) return
+      const svgHtml = svg.outerHTML.replace('width="200"', 'width="280"').replace('height="200"', 'height="280"')
       const checkinUrl = window.location.origin + '/checkin/' + currentProvider.id
       const w = window.open('', '_blank')
-      w.document.write('<html><head><title>QR Check-in</title><style>body{font-family:Inter,sans-serif;text-align:center;padding:60px}h1{font-size:28px;margin-bottom:8px}p{color:#666;font-size:14px;margin-bottom:32px}.qr{display:inline-block;padding:16px;border:3px solid #000;border-radius:16px}img{width:280px;height:280px}.url{font-size:10px;color:#999;margin-top:16px;word-break:break-all}.footer{margin-top:40px;font-size:12px;color:#aaa}</style></head><body>')
+      w.document.write('<html><head><title>QR Check-in</title><style>body{font-family:Inter,sans-serif;text-align:center;padding:60px}h1{font-size:28px;margin-bottom:8px}p{color:#666;font-size:14px;margin-bottom:32px}.qr{display:inline-block;padding:16px;border:3px solid #000;border-radius:16px}.url{font-size:10px;color:#999;margin-top:16px;word-break:break-all}.footer{margin-top:40px;font-size:12px;color:#aaa}</style></head><body>')
       w.document.write('<h1>' + esc(currentProvider.name || 'Check-in') + '</h1>')
       w.document.write('<p>Scanne den QR-Code um dich einzuchecken</p>')
-      w.document.write('<div class="qr"><img src="' + canvas.toDataURL('image/png') + '"></div>')
+      w.document.write('<div class="qr">' + svgHtml + '</div>')
       w.document.write('<p class="url">' + esc(checkinUrl) + '</p>')
       w.document.write('<div class="footer">Powered by Urban Kids Club</div>')
       w.document.write('</body></html>')
