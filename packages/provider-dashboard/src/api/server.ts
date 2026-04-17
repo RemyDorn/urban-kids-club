@@ -319,13 +319,14 @@ window._bookCourse=async function(title,date,time){
     html+='</div>'
 
     if(step===1){
+      var ck=window._checkoutChild||{};var cp=window._checkoutParent||{}
       html+='<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:12px">Kind</div>'
-      html+='<div style="display:flex;gap:8px;margin-bottom:8px"><input id="ckFirst" placeholder="Vorname" style="flex:1;padding:10px 12px;border:1px solid #e2e8f0;border-radius:10px;font-size:13px;outline:none" required><input id="ckLast" placeholder="Nachname" style="flex:1;padding:10px 12px;border:1px solid #e2e8f0;border-radius:10px;font-size:13px;outline:none" required></div>'
-      html+='<input id="ckYear" type="number" placeholder="Geburtsjahr (z.B. 2020)" min="2005" max="2026" style="width:100%;padding:10px 12px;border:1px solid #e2e8f0;border-radius:10px;font-size:13px;outline:none;margin-bottom:16px">'
+      html+='<div style="display:flex;gap:8px;margin-bottom:8px"><input id="ckFirst" placeholder="Vorname" value="'+(ck.firstName||'')+'" style="flex:1;padding:10px 12px;border:1px solid #e2e8f0;border-radius:10px;font-size:13px;outline:none" required><input id="ckLast" placeholder="Nachname" value="'+(ck.lastName||'')+'" style="flex:1;padding:10px 12px;border:1px solid #e2e8f0;border-radius:10px;font-size:13px;outline:none" required></div>'
+      html+='<input id="ckYear" type="number" placeholder="Geburtsjahr (z.B. 2020)" value="'+(ck.birthYear||'')+'" min="2005" max="2026" style="width:100%;padding:10px 12px;border:1px solid #e2e8f0;border-radius:10px;font-size:13px;outline:none;margin-bottom:16px">'
       html+='<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:12px">Elternteil</div>'
-      html+='<div style="display:flex;gap:8px;margin-bottom:8px"><input id="cpFirst" placeholder="Vorname" style="flex:1;padding:10px 12px;border:1px solid #e2e8f0;border-radius:10px;font-size:13px;outline:none" required><input id="cpLast" placeholder="Nachname" style="flex:1;padding:10px 12px;border:1px solid #e2e8f0;border-radius:10px;font-size:13px;outline:none" required></div>'
-      html+='<input id="cpEmail" type="email" placeholder="E-Mail" style="width:100%;padding:10px 12px;border:1px solid #e2e8f0;border-radius:10px;font-size:13px;outline:none;margin-bottom:8px" required>'
-      html+='<input id="cpPhone" type="tel" placeholder="Telefon" style="width:100%;padding:10px 12px;border:1px solid #e2e8f0;border-radius:10px;font-size:13px;outline:none;margin-bottom:16px" required>'
+      html+='<div style="display:flex;gap:8px;margin-bottom:8px"><input id="cpFirst" placeholder="Vorname" value="'+(cp.firstName||'')+'" style="flex:1;padding:10px 12px;border:1px solid #e2e8f0;border-radius:10px;font-size:13px;outline:none" required><input id="cpLast" placeholder="Nachname" value="'+(cp.lastName||'')+'" style="flex:1;padding:10px 12px;border:1px solid #e2e8f0;border-radius:10px;font-size:13px;outline:none" required></div>'
+      html+='<input id="cpEmail" type="email" placeholder="E-Mail" value="'+(cp.email||'')+'" style="width:100%;padding:10px 12px;border:1px solid #e2e8f0;border-radius:10px;font-size:13px;outline:none;margin-bottom:8px" required>'
+      html+='<input id="cpPhone" type="tel" placeholder="Telefon" value="'+(cp.phone||'')+'" style="width:100%;padding:10px 12px;border:1px solid #e2e8f0;border-radius:10px;font-size:13px;outline:none;margin-bottom:16px" required>'
       html+='<button id="btnNext1" style="width:100%;padding:12px;border:none;border-radius:10px;background:${brandColor};color:#fff;font-weight:600;font-size:14px;cursor:pointer">Weiter</button>'
     }
 

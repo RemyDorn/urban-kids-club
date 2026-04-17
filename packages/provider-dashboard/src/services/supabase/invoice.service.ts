@@ -96,10 +96,11 @@ export const SupabaseInvoiceService = {
     if (!invoiceRow) return undefined
 
     // Generate final invoice number (only on send, not on draft creation)
+    // Unique constraint on (provider_id, number) prevents duplicates
     const { data: existingInvoices } = await sb.from(TABLE)
       .select('number').eq('provider_id', invoiceRow.provider_id)
       .not('number', 'like', 'ENTWURF%')
-      .order('created_at', { ascending: false }).limit(1)
+      .order('number', { ascending: false }).limit(1)
     let nextNum = 1
     if (existingInvoices?.length) {
       const match = existingInvoices[0].number?.match(/INV-\d{4}-(\d+)/)

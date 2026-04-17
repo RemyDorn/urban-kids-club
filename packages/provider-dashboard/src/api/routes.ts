@@ -2384,7 +2384,8 @@ export function registerRoutes(router: Router) {
       currentCount = bookingCount ?? 0
     }
 
-    if (currentCount >= (activity.capacity || 0)) {
+    const effectiveCapacity = activeBlock?.capacity || activity.capacity || 0
+    if (currentCount >= effectiveCapacity) {
       // Course full → auto-add to waitlist (scoped to block if available)
       let parentId = ''
       const { data: existingParent } = await db.from('parents').select('id').eq('email', parent.email).maybeSingle()
@@ -2478,6 +2479,24 @@ export function registerRoutes(router: Router) {
       }
     }
     const price = Math.round(priceEur * 100) // Stripe expects cents
+
+    // If sibling discount makes price 0 → treat as free booking (skip Stripe)
+    if (price <= 0 && (paymentMethod === 'stripe' || paymentMethod === 'paypal')) {
+      try {
+        const { CheckoutService } = await import('../services/supabase/checkout.service')
+        const booking = await CheckoutService.createBooking({
+          providerId: provider.id, activityId, blockId,
+          childFirstName: child.firstName, childLastName: child.lastName, childBirthYear: child.birthYear,
+          parentFirstName: parent.firstName, parentLastName: parent.lastName,
+          parentEmail: parent.email, parentPhone: parent.phone || '',
+          bookedDate: bookedDate || undefined,
+          paymentMethod: 'onsite', amount: 0, currency: 'EUR',
+        })
+        return res.json({ success: true, bookingId: booking.id, redirect: provExtra?.booking_redirect_url || null })
+      } catch (bookingErr: any) {
+        return res.error(400, bookingErr.message || 'Buchung fehlgeschlagen')
+      }
+    }
 
     if (paymentMethod === 'onsite') {
       try {
