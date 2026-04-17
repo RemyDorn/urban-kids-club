@@ -8,7 +8,8 @@ import type {
   MakeupBooking, WidgetConfig, Coupon, CouponRedemption, PaymentRecord,
   SepaMandate, Season, Holiday, Notification, AuditLogEntry,
   WaitlistEntry, ExportRequest, ContactNote, AutomationFlow,
-  MessageTemplate, MarketingCampaign,
+  MessageTemplate, MarketingCampaign, TrialLesson, Message,
+  ProviderDocument,
   Address, ContactInfo, AgeRange, PricingOption, Schedule,
   PlatformListing, ChildInfo, InvoiceLineItem,
   ID,
@@ -1067,5 +1068,114 @@ export function marketingCampaignToDb(c: Partial<MarketingCampaign> & { id?: ID 
     row.stats_opened = c.stats.opened
     row.stats_clicked = c.stats.clicked
   }
+  return row
+}
+
+// ============================================================
+// TrialLesson
+// ============================================================
+
+export function trialFromDb(r: Row): TrialLesson {
+  return {
+    id: r.id,
+    activityId: r.activity_id,
+    providerId: r.provider_id,
+    parentId: r.parent_id,
+    child: r.child_info ?? { name: '', age: 0 },
+    scheduledDate: r.scheduled_date ?? '',
+    scheduledTime: r.scheduled_time ?? '',
+    status: r.status ?? 'scheduled',
+    convertedToBookingId: r.converted_to_booking_id ?? undefined,
+    feedback: r.feedback ?? undefined,
+    parentFeedback: r.parent_feedback ?? undefined,
+    createdAt: toDate(r.created_at),
+    updatedAt: toDate(r.updated_at),
+  }
+}
+
+export function trialToDb(t: Partial<TrialLesson> & { id?: ID }): Row {
+  const row: Row = {}
+  if (t.id !== undefined) row.id = t.id
+  if (t.activityId !== undefined) row.activity_id = t.activityId
+  if (t.providerId !== undefined) row.provider_id = t.providerId
+  if (t.parentId !== undefined) row.parent_id = t.parentId
+  if (t.child !== undefined) row.child_info = t.child
+  if (t.scheduledDate !== undefined) row.scheduled_date = t.scheduledDate
+  if (t.scheduledTime !== undefined) row.scheduled_time = t.scheduledTime
+  if (t.status !== undefined) row.status = t.status
+  if (t.convertedToBookingId !== undefined) row.converted_to_booking_id = t.convertedToBookingId
+  if (t.feedback !== undefined) row.feedback = t.feedback
+  if (t.parentFeedback !== undefined) row.parent_feedback = t.parentFeedback
+  return row
+}
+
+// ============================================================
+// Message
+// ============================================================
+
+export function messageFromDb(r: Row): Message {
+  return {
+    id: r.id,
+    providerId: r.provider_id,
+    parentId: r.parent_id ?? undefined,
+    activityId: r.activity_id ?? undefined,
+    type: r.type ?? 'direct',
+    subject: r.subject ?? undefined,
+    body: r.body ?? '',
+    read: r.read ?? false,
+    sentAt: toDate(r.sent_at ?? r.created_at),
+  }
+}
+
+export function messageToDb(m: Partial<Message> & { id?: ID }): Row {
+  const row: Row = {}
+  if (m.id !== undefined) row.id = m.id
+  if (m.providerId !== undefined) row.provider_id = m.providerId
+  if (m.parentId !== undefined) row.parent_id = m.parentId
+  if (m.activityId !== undefined) row.activity_id = m.activityId
+  if (m.type !== undefined) row.type = m.type
+  if (m.subject !== undefined) row.subject = m.subject
+  if (m.body !== undefined) row.body = m.body
+  if (m.read !== undefined) row.read = m.read
+  if (m.sentAt !== undefined) row.sent_at = toIso(m.sentAt)
+  return row
+}
+
+// ============================================================
+// ProviderDocument
+// ============================================================
+
+export function documentFromDb(r: Row): ProviderDocument {
+  return {
+    id: r.id,
+    providerId: r.provider_id,
+    teamMemberId: r.team_member_id ?? undefined,
+    type: r.type ?? 'custom',
+    name: r.name ?? '',
+    fileUrl: r.file_url ?? undefined,
+    issuedAt: toDateOrUndef(r.issued_at),
+    expiresAt: toDateOrUndef(r.expires_at),
+    status: r.status ?? 'pending_review',
+    verifiedBy: r.verified_by ?? undefined,
+    verifiedAt: toDateOrUndef(r.verified_at),
+    notes: r.notes ?? undefined,
+    createdAt: toDate(r.created_at),
+  }
+}
+
+export function documentToDb(d: Partial<ProviderDocument> & { id?: ID }): Row {
+  const row: Row = {}
+  if (d.id !== undefined) row.id = d.id
+  if (d.providerId !== undefined) row.provider_id = d.providerId
+  if (d.teamMemberId !== undefined) row.team_member_id = d.teamMemberId
+  if (d.type !== undefined) row.type = d.type
+  if (d.name !== undefined) row.name = d.name
+  if (d.fileUrl !== undefined) row.file_url = d.fileUrl
+  if (d.issuedAt !== undefined) row.issued_at = toIso(d.issuedAt)
+  if (d.expiresAt !== undefined) row.expires_at = toIso(d.expiresAt)
+  if (d.status !== undefined) row.status = d.status
+  if (d.verifiedBy !== undefined) row.verified_by = d.verifiedBy
+  if (d.verifiedAt !== undefined) row.verified_at = toIso(d.verifiedAt)
+  if (d.notes !== undefined) row.notes = d.notes
   return row
 }

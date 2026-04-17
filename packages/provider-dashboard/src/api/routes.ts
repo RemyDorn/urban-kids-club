@@ -41,6 +41,7 @@ import {
   SessionCreditService,
   MakeupBookingService,
   RoomService,
+  MarketingService,
 } from '../services'
 import { TrialConversionWorkflow, WaitlistConversionWorkflow, BackgroundJobs } from '../services/workflows'
 
@@ -3761,6 +3762,98 @@ export function registerRoutes(router: Router) {
     if (!auth) return
     const overview = await AttendanceService.getTodayOverview(auth.providerId)
     res.json({ data: overview })
+  })
+
+  // ============================================================
+  // MARKETING – Automation Flows, Templates, Campaigns
+  // ============================================================
+
+  // --- Automation Flows ---
+  router.get('/api/providers/:providerId/marketing/flows', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    const flows = await MarketingService.flows.list(auth.providerId)
+    res.json({ data: flows })
+  })
+
+  router.post('/api/providers/:providerId/marketing/flows', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    const flow = await MarketingService.flows.create({ ...req.body, providerId: auth.providerId })
+    res.json({ data: flow })
+  })
+
+  router.put('/api/marketing/flows/:id', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    const flow = await MarketingService.flows.update(req.params.id, req.body)
+    if (!flow) return res.status(404).json({ error: 'Flow nicht gefunden' })
+    res.json({ data: flow })
+  })
+
+  router.post('/api/marketing/flows/:id/toggle', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    const { status } = req.body
+    if (!status || !['active', 'paused', 'draft'].includes(status)) {
+      return res.status(400).json({ error: 'Ungültiger Status' })
+    }
+    const flow = await MarketingService.flows.toggle(req.params.id, status)
+    if (!flow) return res.status(404).json({ error: 'Flow nicht gefunden' })
+    res.json({ data: flow })
+  })
+
+  // --- Message Templates ---
+  router.get('/api/providers/:providerId/marketing/templates', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    const templates = await MarketingService.templates.list(auth.providerId)
+    res.json({ data: templates })
+  })
+
+  router.post('/api/providers/:providerId/marketing/templates', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    const template = await MarketingService.templates.create({ ...req.body, providerId: auth.providerId })
+    res.json({ data: template })
+  })
+
+  router.put('/api/marketing/templates/:id', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    const template = await MarketingService.templates.update(req.params.id, req.body)
+    if (!template) return res.status(404).json({ error: 'Template nicht gefunden' })
+    res.json({ data: template })
+  })
+
+  router.delete('/api/marketing/templates/:id', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    await MarketingService.templates.delete(req.params.id)
+    res.json({ success: true })
+  })
+
+  // --- Campaigns ---
+  router.get('/api/providers/:providerId/marketing/campaigns', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    const campaigns = await MarketingService.campaigns.list(auth.providerId)
+    res.json({ data: campaigns })
+  })
+
+  router.post('/api/providers/:providerId/marketing/campaigns', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    const campaign = await MarketingService.campaigns.create({ ...req.body, providerId: auth.providerId })
+    res.json({ data: campaign })
+  })
+
+  router.put('/api/marketing/campaigns/:id', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    const campaign = await MarketingService.campaigns.update(req.params.id, req.body)
+    if (!campaign) return res.status(404).json({ error: 'Kampagne nicht gefunden' })
+    res.json({ data: campaign })
   })
 
   // ============================================================

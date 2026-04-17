@@ -90,13 +90,27 @@ import { TeamService as MemTeamService } from './team.service'
 import { SupabaseTeamService } from './supabase/team.service'
 export const TeamService = USE_SUPABASE ? SupabaseTeamService : MemTeamService as any
 export { ReviewService } from './review.service'
-export { MessageService } from './message.service'
-export { TrialService } from './trial.service'
-export { DocumentService, ConsentService } from './document.service'
+
+import { MessageService as MemMessageService } from './message.service'
+import { SupabaseMessageService } from './supabase/message.service'
+export const MessageService = USE_SUPABASE ? SupabaseMessageService : MemMessageService as any
+
+import { TrialService as MemTrialService } from './trial.service'
+import { SupabaseTrialService } from './supabase/trial.service'
+export const TrialService = USE_SUPABASE ? SupabaseTrialService : MemTrialService as any
+
+import { DocumentService as MemDocumentService, ConsentService } from './document.service'
+import { SupabaseDocumentService } from './supabase/document.service'
+export const DocumentService = USE_SUPABASE ? SupabaseDocumentService : MemDocumentService as any
+export { ConsentService }
+
 export { EInvoiceService } from './einvoice.service'
 export { BuTVoucherService } from './but-voucher.service'
 export { ContractService } from './contract.service'
-export { MarketingService } from './marketing.service'
+
+import { MarketingService as MemMarketingService } from './marketing.service'
+import { SupabaseMarketingService } from './supabase/marketing.service'
+export const MarketingService = USE_SUPABASE ? SupabaseMarketingService : MemMarketingService as any
 
 // ============================================================
 // Shared Helpers & Validierung – always from in-memory
