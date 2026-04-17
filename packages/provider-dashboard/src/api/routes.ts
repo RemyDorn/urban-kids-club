@@ -40,6 +40,7 @@ import {
   CourseBlockService,
   SessionCreditService,
   MakeupBookingService,
+  RoomService,
 } from '../services'
 import { TrialConversionWorkflow, WaitlistConversionWorkflow, BackgroundJobs } from '../services/workflows'
 
@@ -3068,6 +3069,77 @@ export function registerRoutes(router: Router) {
       custom_text: customText || '',
       updated_at: new Date().toISOString()
     }, { onConflict: 'provider_id' })
+    if (error) return res.error(500, error.message)
+    res.json({ success: true })
+  })
+
+  // ============================================================
+  // ROOMS (Räume-System)
+  // ============================================================
+
+  router.get('/api/rooms', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    const rooms = await RoomService.list(auth.providerId)
+    res.json({ data: rooms, count: rooms.length })
+  })
+
+  router.post('/api/rooms', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    const { name, description, capacity, color } = req.body as any
+    if (!name) return res.error(400, 'Name ist erforderlich')
+    const room = await RoomService.create({ providerId: auth.providerId, name, description, capacity, color })
+    res.status(201).json({ data: room })
+  })
+
+  router.put('/api/rooms/:id', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    const room = await RoomService.update(req.params.id, req.body as any, auth.providerId)
+    if (!room) return res.error(404, 'Raum nicht gefunden')
+    res.json({ data: room })
+  })
+
+  router.delete('/api/rooms/:id', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    await RoomService.delete(req.params.id, auth.providerId)
+    res.json({ success: true })
+  })
+
+  // Check for time conflicts in a room
+  router.post('/api/rooms/:id/check-conflict', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    const { day, startTime, endTime, excludeActivityId } = req.body as any
+    if (!day || !startTime || !endTime) return res.error(400, 'day, startTime, endTime sind erforderlich')
+    const result = await RoomService.checkConflict(auth.providerId, req.params.id, day, startTime, endTime, excludeActivityId)
+    res.json({ data: result })
+  })
+
+  // Assign room to activity
+  router.put('/api/activities/:id/room', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    const { roomId } = req.body as { roomId: string | null }
+    const sb = getServiceClient()
+
+    // If assigning a room, check for conflicts
+    if (roomId) {
+      const { data: activity } = await sb.from('activities').select('schedule').eq('id', req.params.id).eq('provider_id', auth.providerId).maybeSingle()
+      if (!activity) return res.error(404, 'Aktivität nicht gefunden')
+      const sched = activity.schedule as any
+      const slots = Array.isArray(sched) ? sched : (sched?.slots ?? [])
+      for (const slot of slots) {
+        const conflict = await RoomService.checkConflict(auth.providerId, roomId, slot.day, slot.startTime, slot.endTime, req.params.id)
+        if (conflict.conflict) {
+          return res.error(409, `Raumkonflikt: "${conflict.conflictingActivity?.title}" belegt den Raum ${slot.day} ${conflict.conflictingActivity?.startTime}–${conflict.conflictingActivity?.endTime}`)
+        }
+      }
+    }
+
+    const { error } = await sb.from('activities').update({ room_id: roomId }).eq('id', req.params.id).eq('provider_id', auth.providerId)
     if (error) return res.error(500, error.message)
     res.json({ success: true })
   })

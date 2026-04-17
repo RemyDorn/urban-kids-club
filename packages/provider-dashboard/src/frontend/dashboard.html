@@ -1874,6 +1874,15 @@
               </div>
             </div>
 
+            <!-- Raum -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Raum (optional)</label>
+              <select name="roomId" id="actRoomSelect" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                <option value="">Kein Raum zugewiesen</option>
+              </select>
+              <div id="roomConflictMsg" class="text-xs text-red-500 mt-1 hidden"></div>
+            </div>
+
             <!-- Zeitplan (Multi-Tag) -->
             <fieldset class="border border-gray-200 rounded-lg p-4">
               <legend class="text-sm font-medium text-gray-700 px-2">Zeitplan</legend>
@@ -2093,6 +2102,19 @@
         </div>
       `
       togglePackageSize()
+      // Load rooms into the room selector
+      api('/rooms').then(function(r) {
+        const sel = document.getElementById('actRoomSelect')
+        if (!sel) return
+        const rooms = r.data || []
+        rooms.forEach(function(room) {
+          const opt = document.createElement('option')
+          opt.value = room.id
+          opt.textContent = room.name
+          if (a && a.roomId === room.id) opt.selected = true
+          sel.appendChild(opt)
+        })
+      }).catch(function() {})
     }
 
     let slotCount = 1
@@ -2225,10 +2247,35 @@
         } catch(e) {}
       }
 
+      // Room assignment + conflict check
+      const roomId = f.get('roomId') || document.getElementById('actRoomSelect')?.value || null
+      if (roomId) {
+        for (const slot of body.schedule.slots) {
+          try {
+            const conflict = await api('/rooms/' + roomId + '/check-conflict', 'POST', {
+              day: slot.day, startTime: slot.startTime, endTime: slot.endTime,
+              excludeActivityId: editId || undefined
+            })
+            if (conflict.data?.conflict) {
+              alert('Raumkonflikt: "' + conflict.data.conflictingActivity.title + '" belegt den Raum ' + slot.day + ' ' + conflict.data.conflictingActivity.startTime + '–' + conflict.data.conflictingActivity.endTime)
+              return
+            }
+          } catch(e) {}
+        }
+      }
+
       if (editId) {
         await api(`/activities/${editId}`, 'PUT', body)
       } else {
         await api('/activities', 'POST', body)
+      }
+
+      // Assign room after activity is saved
+      if (roomId || editId) {
+        const actId = editId || (await api(`/providers/${currentProvider.id}/activities`)).data?.slice(-1)?.[0]?.id
+        if (actId) {
+          try { await api('/activities/' + actId + '/room', 'PUT', { roomId: roomId || null }) } catch(e) {}
+        }
       }
 
       document.getElementById('activityModal').className = 'hidden'
@@ -5029,6 +5076,7 @@
           <button onclick="settingsTab='loyalty'; renderSettings()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${settingsTab === 'loyalty' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}">Treueprogramm</button>
           <button onclick="settingsTab='courses'; renderSettings()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${settingsTab === 'courses' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}">Kurse & Blöcke</button>
           <button onclick="settingsTab='legal'; renderSettings()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${settingsTab === 'legal' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}">Rechtliches</button>
+          <button onclick="settingsTab='rooms'; renderSettings()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${settingsTab === 'rooms' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}">Räume</button>
           <button onclick="settingsTab='checkin'; renderSettings()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${settingsTab === 'checkin' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}">QR Check-in</button>
         </div>
         <div id="settingsContent"></div>
@@ -5040,7 +5088,141 @@
       else if (settingsTab === 'loyalty') sc.innerHTML = renderLoyaltyTab()
       else if (settingsTab === 'courses') sc.innerHTML = renderCoursesSettingsTab(p)
       else if (settingsTab === 'legal') sc.innerHTML = renderLegalTab(s)
+      else if (settingsTab === 'rooms') { sc.innerHTML = '<div id="roomsContainer">Lade...</div>'; loadRooms() }
       else if (settingsTab === 'checkin') { sc.innerHTML = renderCheckinTab(); setTimeout(renderQRCode, 50) }
+    }
+
+    // --- Räume-Verwaltung ---
+    let _rooms = []
+    async function loadRooms() {
+      try {
+        const r = await api('/rooms')
+        _rooms = r.data || []
+        renderRoomsList()
+      } catch(e) { document.getElementById('roomsContainer').innerHTML = '<p class="text-red-500">Fehler beim Laden der Räume.</p>' }
+    }
+
+    function renderRoomsList() {
+      const el = document.getElementById('roomsContainer')
+      if (!el) return
+      let html = `
+        <div class="max-w-2xl space-y-6">
+          <div class="bg-white rounded-xl border border-brand-200 p-6">
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="font-semibold text-gray-900">Räume verwalten</h3>
+              <button onclick="showAddRoom()" class="bg-brand-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-brand-600">+ Raum hinzufügen</button>
+            </div>
+            <p class="text-sm text-gray-500 mb-4">Lege Räume an und weise sie Kursen zu. Das System prüft automatisch auf Zeitkonflikte.</p>
+      `
+      if (_rooms.length === 0) {
+        html += '<div class="text-center py-8 text-gray-400"><div class="text-4xl mb-2">🏠</div><p>Noch keine Räume angelegt.</p></div>'
+      } else {
+        html += '<div class="space-y-3">'
+        for (const room of _rooms) {
+          const activeLabel = room.isActive ? '' : '<span class="text-xs bg-gray-200 text-gray-500 px-2 py-0.5 rounded-full ml-2">Inaktiv</span>'
+          html += `
+            <div class="flex items-center justify-between p-4 border border-gray-200 rounded-xl hover:border-brand-300 transition-colors">
+              <div class="flex items-center gap-3">
+                <div class="w-4 h-4 rounded-full" style="background:${escapeHtml(room.color)}"></div>
+                <div>
+                  <div class="font-medium text-gray-900">${escapeHtml(room.name)}${activeLabel}</div>
+                  <div class="text-xs text-gray-500">${room.capacity ? room.capacity + ' Plätze' : 'Keine Kapazitätsgrenze'}${room.description ? ' · ' + escapeHtml(room.description) : ''}</div>
+                </div>
+              </div>
+              <div class="flex gap-2">
+                <button onclick="editRoom('${room.id}')" class="text-xs text-brand-600 hover:text-brand-800 px-2 py-1">Bearbeiten</button>
+                <button onclick="deleteRoom('${room.id}', '${escapeHtml(room.name)}')" class="text-xs text-red-500 hover:text-red-700 px-2 py-1">Löschen</button>
+              </div>
+            </div>
+          `
+        }
+        html += '</div>'
+      }
+      html += '</div></div>'
+
+      // Add room form (hidden)
+      html += `
+        <div id="roomForm" class="hidden bg-white rounded-xl border border-brand-200 p-6">
+          <h3 class="font-semibold text-gray-900 mb-4" id="roomFormTitle">Raum hinzufügen</h3>
+          <input type="hidden" id="roomEditId" value="">
+          <div class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+              <input id="roomName" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="z.B. Tanzraum 1, Studio A">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Beschreibung</label>
+              <input id="roomDesc" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="z.B. Erdgeschoss, mit Spiegel">
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Kapazität (optional)</label>
+                <input id="roomCapacity" type="number" min="1" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="z.B. 15">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Farbe</label>
+                <input id="roomColor" type="color" value="#D4956A" class="w-full h-10 border border-gray-200 rounded-lg cursor-pointer">
+              </div>
+            </div>
+          </div>
+          <div class="flex gap-3 mt-4">
+            <button onclick="saveRoom()" class="bg-brand-500 text-white px-6 py-2 rounded-lg text-sm font-semibold hover:bg-brand-600">Speichern</button>
+            <button onclick="document.getElementById('roomForm').classList.add('hidden')" class="text-gray-500 px-4 py-2 text-sm">Abbrechen</button>
+          </div>
+        </div>
+      `
+      html += '</div>'
+      el.innerHTML = html
+    }
+
+    function showAddRoom() {
+      document.getElementById('roomForm').classList.remove('hidden')
+      document.getElementById('roomFormTitle').textContent = 'Raum hinzufügen'
+      document.getElementById('roomEditId').value = ''
+      document.getElementById('roomName').value = ''
+      document.getElementById('roomDesc').value = ''
+      document.getElementById('roomCapacity').value = ''
+      document.getElementById('roomColor').value = '#D4956A'
+    }
+
+    function editRoom(id) {
+      const room = _rooms.find(r => r.id === id)
+      if (!room) return
+      document.getElementById('roomForm').classList.remove('hidden')
+      document.getElementById('roomFormTitle').textContent = 'Raum bearbeiten'
+      document.getElementById('roomEditId').value = id
+      document.getElementById('roomName').value = room.name
+      document.getElementById('roomDesc').value = room.description || ''
+      document.getElementById('roomCapacity').value = room.capacity || ''
+      document.getElementById('roomColor').value = room.color || '#D4956A'
+    }
+
+    async function saveRoom() {
+      const id = document.getElementById('roomEditId').value
+      const data = {
+        name: document.getElementById('roomName').value.trim(),
+        description: document.getElementById('roomDesc').value.trim(),
+        capacity: parseInt(document.getElementById('roomCapacity').value) || null,
+        color: document.getElementById('roomColor').value,
+      }
+      if (!data.name) { alert('Bitte einen Namen eingeben.'); return }
+      try {
+        if (id) {
+          await api('/rooms/' + id, 'PUT', data)
+        } else {
+          await api('/rooms', 'POST', data)
+        }
+        document.getElementById('roomForm').classList.add('hidden')
+        loadRooms()
+      } catch(e) { alert('Fehler: ' + (e.message || 'Speichern fehlgeschlagen')) }
+    }
+
+    async function deleteRoom(id, name) {
+      if (!confirm('Raum "' + name + '" wirklich löschen? Kurse werden dem Raum nicht mehr zugewiesen.')) return
+      try {
+        await api('/rooms/' + id, 'DELETE')
+        loadRooms()
+      } catch(e) { alert('Fehler beim Löschen.') }
     }
 
     function renderCheckinTab() {

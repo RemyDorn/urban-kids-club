@@ -85,6 +85,7 @@ export const NotificationService = USE_SUPABASE ? SupabaseNotificationService : 
 import { AttendanceService as MemAttendanceService } from './attendance.service'
 import { SupabaseAttendanceService } from './supabase/attendance.service'
 export const AttendanceService = USE_SUPABASE ? SupabaseAttendanceService : MemAttendanceService as any
+export { SupabaseRoomService as RoomService } from './supabase/room.service'
 export { TeamService } from './team.service'
 export { ReviewService } from './review.service'
 export { MessageService } from './message.service'
