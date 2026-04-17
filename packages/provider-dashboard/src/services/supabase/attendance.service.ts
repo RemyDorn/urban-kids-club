@@ -150,9 +150,10 @@ export const SupabaseAttendanceService = {
     error?: string
   }> {
     const sb = getServiceClient()
-    const now = new Date()
-    const today = now.toISOString().slice(0, 10) // YYYY-MM-DD
-    const nowMinutes = now.getHours() * 60 + now.getMinutes()
+    // Use German timezone — server runs UTC, but schedule times are local DE time
+    const nowDE = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Berlin' }))
+    const today = nowDE.getFullYear() + '-' + String(nowDE.getMonth() + 1).padStart(2, '0') + '-' + String(nowDE.getDate()).padStart(2, '0')
+    const nowMinutes = nowDE.getHours() * 60 + nowDE.getMinutes()
 
     // 0. Get provider's check-in window setting (before/after in minutes)
     const { data: providerRow } = await sb.from('providers')
@@ -190,7 +191,7 @@ export const SupabaseAttendanceService = {
     const activityMap = new Map((activities ?? []).map((a: any) => [a.id, a]))
 
     // 4. Filter bookings that are relevant for today
-    const todayDow = now.getDay() // 0=Sun, 1=Mon, ...
+    const todayDow = nowDE.getDay() // 0=Sun, 1=Mon, ...
     const dowMap: Record<number, string> = { 0: 'SU', 1: 'MO', 2: 'TU', 3: 'WE', 4: 'TH', 5: 'FR', 6: 'SA' }
     const todayCode = dowMap[todayDow]
 
