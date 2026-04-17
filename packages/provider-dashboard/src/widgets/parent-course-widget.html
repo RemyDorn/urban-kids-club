@@ -669,14 +669,18 @@ async function loadBranding() {
       const b = Math.max(0, parseInt(hex.substr(4,2), 16) - 20)
       root.style.setProperty('--primary-hover', '#' + r.toString(16).padStart(2,'0') + g.toString(16).padStart(2,'0') + b.toString(16).padStart(2,'0'))
     }
-    // Show provider logo
-    if (branding.showLogo && branding.logo) {
+    // Show provider logo (safe DOM API, no innerHTML)
+    if (branding.showLogo && branding.logo && /^https?:\/\//.test(branding.logo)) {
       const header = document.querySelector('.widget-container')
       if (header) {
-        const logoEl = document.createElement('div')
-        logoEl.style.cssText = 'text-align:center;margin-bottom:12px;'
-        logoEl.innerHTML = '<img src="' + branding.logo + '" alt="' + (branding.name || '') + '" style="max-height:48px;max-width:200px;object-fit:contain">'
-        header.insertBefore(logoEl, header.firstChild)
+        const logoWrap = document.createElement('div')
+        logoWrap.style.cssText = 'text-align:center;margin-bottom:12px;'
+        const img = document.createElement('img')
+        img.src = branding.logo
+        img.alt = branding.name || ''
+        img.style.cssText = 'max-height:48px;max-width:200px;object-fit:contain'
+        logoWrap.appendChild(img)
+        header.insertBefore(logoWrap, header.firstChild)
       }
     }
   } catch(e) { /* silent – use defaults */ }

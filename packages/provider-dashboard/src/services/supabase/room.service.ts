@@ -100,7 +100,7 @@ export const SupabaseRoomService = {
       .select('id, title, schedule')
       .eq('provider_id', providerId)
       .eq('room_id', roomId)
-      .eq('status', 'published')
+      .in('status', ['published', 'draft'])
     if (excludeActivityId) query = query.neq('id', excludeActivityId)
     const { data: activities } = await query
 

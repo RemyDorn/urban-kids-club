@@ -1746,8 +1746,8 @@ export function registerRoutes(router: Router) {
   // Auth: internal calls from server.ts use localhost — validate via shared secret or admin auth
   router.post('/api/admin/jobs/expire-waitlist', async (req, res) => {
     // Allow internal calls (from server setInterval) or admin auth
-    const host = req.raw?.headers?.host || ''
-    const isInternal = host.startsWith('localhost') || host.startsWith('127.0.0.1')
+    const srcIp = req.raw?.socket?.remoteAddress || ''
+    const isInternal = srcIp === '127.0.0.1' || srcIp === '::1' || srcIp === '::ffff:127.0.0.1'
     if (!isInternal) { const admin = await authenticateAdmin(req); if (!admin) return res.error(401, 'Nicht autorisiert') }
     const db = getServiceClient()
     const now = new Date().toISOString()
@@ -1811,8 +1811,8 @@ export function registerRoutes(router: Router) {
 
   // Send course reminders for tomorrow's sessions
   router.post('/api/admin/jobs/send-reminders', async (req, res) => {
-    const host = req.raw?.headers?.host || ''
-    const isInternal = host.startsWith('localhost') || host.startsWith('127.0.0.1')
+    const srcIp = req.raw?.socket?.remoteAddress || ''
+    const isInternal = srcIp === '127.0.0.1' || srcIp === '::1' || srcIp === '::ffff:127.0.0.1'
     if (!isInternal) { const admin = await authenticateAdmin(req); if (!admin) return res.error(401, 'Nicht autorisiert') }
     const db = getServiceClient()
     const nowDE = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Berlin' }))
@@ -3108,7 +3108,9 @@ export function registerRoutes(router: Router) {
     if (!auth) return
     const { name, description, capacity, color } = req.body as any
     if (!name) return res.error(400, 'Name ist erforderlich')
-    const room = await RoomService.create({ providerId: auth.providerId, name, description, capacity, color })
+    if (capacity !== undefined && capacity !== null && (capacity < 1 || capacity > 10000)) return res.error(400, 'Kapazität muss zwischen 1 und 10000 liegen')
+    const safeColor = color && /^#[0-9a-fA-F]{6}$/.test(color) ? color : '#6B7280'
+    const room = await RoomService.create({ providerId: auth.providerId, name, description, capacity, color: safeColor })
     res.status(201).json({ data: room })
   })
 
