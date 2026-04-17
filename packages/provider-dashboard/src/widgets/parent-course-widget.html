@@ -649,6 +649,43 @@ async function api(path, opts = {}) {
 }
 
 // ============================================================
+// Load provider branding and apply CSS variables
+// ============================================================
+async function loadBranding() {
+  if (!PROVIDER_SLUG) return
+  try {
+    const branding = await api(`/providers/by-slug/${PROVIDER_SLUG}/branding`)
+    if (!branding) return
+    const root = document.documentElement
+    if (branding.primaryColor) root.style.setProperty('--primary', branding.primaryColor)
+    if (branding.accentColor) root.style.setProperty('--text', branding.accentColor)
+    if (branding.borderRadius) root.style.setProperty('--radius', branding.borderRadius + 'px')
+    if (branding.font) root.style.setProperty('--font', "'" + branding.font + "', system-ui, sans-serif")
+    // Compute hover color (slightly darker)
+    if (branding.primaryColor) {
+      const hex = branding.primaryColor.replace('#', '')
+      const r = Math.max(0, parseInt(hex.substr(0,2), 16) - 20)
+      const g = Math.max(0, parseInt(hex.substr(2,2), 16) - 20)
+      const b = Math.max(0, parseInt(hex.substr(4,2), 16) - 20)
+      root.style.setProperty('--primary-hover', '#' + r.toString(16).padStart(2,'0') + g.toString(16).padStart(2,'0') + b.toString(16).padStart(2,'0'))
+    }
+    // Show provider logo
+    if (branding.showLogo && branding.logo) {
+      const header = document.querySelector('.widget-container')
+      if (header) {
+        const logoEl = document.createElement('div')
+        logoEl.style.cssText = 'text-align:center;margin-bottom:12px;'
+        logoEl.innerHTML = '<img src="' + branding.logo + '" alt="' + (branding.name || '') + '" style="max-height:48px;max-width:200px;object-fit:contain">'
+        header.insertBefore(logoEl, header.firstChild)
+      }
+    }
+  } catch(e) { /* silent – use defaults */ }
+}
+
+// Init branding on load
+loadBranding()
+
+// ============================================================
 // TAB 1: Kursblock-Übersicht
 // ============================================================
 async function loadCourseBlocks() {

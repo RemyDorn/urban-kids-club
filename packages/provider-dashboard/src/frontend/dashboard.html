@@ -4643,7 +4643,56 @@
 
       document.getElementById('content').innerHTML = `
         <div class="mb-6">
-          <p class="text-sm text-gray-500">Binde Buchungs-Widgets auf deiner eigenen Website ein. Einfach Code kopieren und in dein HTML einfügen.</p>
+          <p class="text-sm text-gray-500">Binde Buchungs-Widgets auf deiner eigenen Website ein. Passe Farben und Logo an dein Branding an.</p>
+        </div>
+
+        <!-- Widget Branding -->
+        <div class="bg-white rounded-xl border border-brand-200 p-6 mb-6">
+          <h3 class="font-semibold text-gray-900 mb-3">Widget-Design anpassen</h3>
+          <p class="text-sm text-gray-500 mb-4">Diese Einstellungen gelten für alle eingebetteten Widgets und die Buchungsseite.</p>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+            <div>
+              <label class="block text-xs font-medium text-gray-700 mb-1">Hauptfarbe</label>
+              <input type="color" id="wBrandColor" value="${currentProvider.widget_primary_color || '#D4956A'}" class="w-full h-10 border border-gray-200 rounded-lg cursor-pointer">
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-700 mb-1">Textfarbe</label>
+              <input type="color" id="wAccentColor" value="${currentProvider.widget_accent_color || '#3C2225'}" class="w-full h-10 border border-gray-200 rounded-lg cursor-pointer">
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-700 mb-1">Schriftart</label>
+              <select id="wFont" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                <option ${(currentProvider.widget_font || 'Inter') === 'Inter' ? 'selected' : ''}>Inter</option>
+                <option ${currentProvider.widget_font === 'Poppins' ? 'selected' : ''}>Poppins</option>
+                <option ${currentProvider.widget_font === 'Nunito' ? 'selected' : ''}>Nunito</option>
+                <option ${currentProvider.widget_font === 'Roboto' ? 'selected' : ''}>Roboto</option>
+                <option ${currentProvider.widget_font === 'Open Sans' ? 'selected' : ''}>Open Sans</option>
+                <option ${currentProvider.widget_font === 'Lato' ? 'selected' : ''}>Lato</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-700 mb-1">Ecken-Radius</label>
+              <select id="wRadius" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                <option value="4" ${currentProvider.widget_border_radius === '4' ? 'selected' : ''}>Eckig (4px)</option>
+                <option value="8" ${currentProvider.widget_border_radius === '8' ? 'selected' : ''}>Leicht (8px)</option>
+                <option value="12" ${currentProvider.widget_border_radius === '12' ? 'selected' : ''}>Mittel (12px)</option>
+                <option value="16" ${(currentProvider.widget_border_radius || '16') === '16' ? 'selected' : ''}>Rund (16px)</option>
+                <option value="24" ${currentProvider.widget_border_radius === '24' ? 'selected' : ''}>Sehr rund (24px)</option>
+              </select>
+            </div>
+          </div>
+          <div class="flex items-center gap-4 mb-4">
+            <label class="flex items-center gap-2 text-sm">
+              <input type="checkbox" id="wShowLogo" ${currentProvider.widget_show_logo !== false ? 'checked' : ''} class="rounded border-gray-300">
+              Logo im Widget anzeigen
+            </label>
+          </div>
+          <div class="flex items-center gap-3">
+            <button onclick="saveWidgetBranding()" class="bg-brand-500 text-white px-5 py-2 rounded-lg text-sm font-semibold hover:bg-brand-600">Design speichern</button>
+            <div id="brandPreview" class="flex-1 h-10 rounded-lg border border-gray-200 flex items-center justify-center text-sm font-medium" style="background:${currentProvider.widget_primary_color || '#D4956A'};color:white;border-radius:${currentProvider.widget_border_radius || 16}px;font-family:${currentProvider.widget_font || 'Inter'},sans-serif">
+              Vorschau-Button
+            </div>
+          </div>
         </div>
         <div class="space-y-4">
           ${widgets.map((w, idx) => {
@@ -4699,6 +4748,35 @@
         alert('Export konnte nicht erstellt werden.')
       }
     }
+
+    async function saveWidgetBranding() {
+      try {
+        await api(`/providers/${currentProvider.id}`, 'PUT', {
+          widget_primary_color: document.getElementById('wBrandColor').value,
+          widget_accent_color: document.getElementById('wAccentColor').value,
+          widget_font: document.getElementById('wFont').value,
+          widget_border_radius: document.getElementById('wRadius').value,
+          widget_show_logo: document.getElementById('wShowLogo').checked,
+        })
+        currentProvider.widget_primary_color = document.getElementById('wBrandColor').value
+        currentProvider.widget_accent_color = document.getElementById('wAccentColor').value
+        currentProvider.widget_font = document.getElementById('wFont').value
+        currentProvider.widget_border_radius = document.getElementById('wRadius').value
+        currentProvider.widget_show_logo = document.getElementById('wShowLogo').checked
+        alert('Widget-Design gespeichert!')
+      } catch(e) { alert('Fehler beim Speichern.') }
+    }
+
+    // Live preview for branding
+    document.addEventListener('input', function(e) {
+      if (['wBrandColor','wAccentColor','wFont','wRadius'].includes(e.target?.id)) {
+        const preview = document.getElementById('brandPreview')
+        if (!preview) return
+        preview.style.background = document.getElementById('wBrandColor')?.value || '#D4956A'
+        preview.style.borderRadius = (document.getElementById('wRadius')?.value || '16') + 'px'
+        preview.style.fontFamily = (document.getElementById('wFont')?.value || 'Inter') + ',sans-serif'
+      }
+    })
 
     function copyToClipboard(btn, text) {
       const decoded = text.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"')

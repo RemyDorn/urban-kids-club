@@ -2350,6 +2350,25 @@ export function registerRoutes(router: Router) {
   // ============================================================
 
   // Public: Activities by provider slug (for embed calendar/course list)
+  // Public: Widget branding for a provider
+  router.get('/api/providers/by-slug/:slug/branding', async (req, res) => {
+    const provider = await ProviderService.getBySlug(req.params.slug)
+    if (!provider) return res.error(404, 'Provider nicht gefunden')
+    const sb = getServiceClient()
+    const { data } = await sb.from('providers')
+      .select('company_name, logo_url, widget_primary_color, widget_accent_color, widget_font, widget_border_radius, widget_show_logo')
+      .eq('id', provider.id).maybeSingle()
+    res.json({ data: {
+      name: data?.company_name || provider.name,
+      logo: data?.logo_url || null,
+      primaryColor: data?.widget_primary_color || '#D4956A',
+      accentColor: data?.widget_accent_color || '#3C2225',
+      font: data?.widget_font || 'Inter',
+      borderRadius: data?.widget_border_radius || '16',
+      showLogo: data?.widget_show_logo !== false,
+    }})
+  })
+
   router.get('/api/providers/by-slug/:slug/activities', async (req, res) => {
     const provider = await ProviderService.getBySlug(req.params.slug)
     if (!provider) return res.error(404, 'Provider nicht gefunden')
