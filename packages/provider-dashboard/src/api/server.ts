@@ -753,5 +753,25 @@ server.listen(PORT, '0.0.0.0', () => {
       } catch (e) { /* silent */ }
     }, 15 * 60 * 1000) // every 15 minutes
     console.log('  [AutoOffer] Waitlist auto-expire job running every 15 minutes')
+
+    // Send course reminders daily at ~17:00 DE time (check every 30 min)
+    let lastReminderDate = ''
+    setInterval(async () => {
+      try {
+        const nowDE = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Berlin' }))
+        const hour = nowDE.getHours()
+        const todayStr = nowDE.toISOString().slice(0, 10)
+        // Send between 17:00-17:29 DE time, once per day
+        if (hour === 17 && lastReminderDate !== todayStr) {
+          lastReminderDate = todayStr
+          const resp = await fetch(`http://localhost:${PORT}/api/admin/jobs/send-reminders`, { method: 'POST' })
+          const data = await resp.json() as any
+          if (data.data?.sent > 0) {
+            console.log(`[Reminder] Sent ${data.data.sent} reminders for ${data.data.date}`)
+          }
+        }
+      } catch (e) { /* silent */ }
+    }, 30 * 60 * 1000) // check every 30 minutes
+    console.log('  [Reminder] Course reminder job active (daily at 17:00 DE)')
   }
 })

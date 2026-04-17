@@ -1803,6 +1803,110 @@ export function registerRoutes(router: Router) {
     res.json({ data: { expired: expiredCount, offered: offeredCount } })
   })
 
+  // Send course reminders for tomorrow's sessions
+  router.post('/api/admin/jobs/send-reminders', async (req, res) => {
+    const db = getServiceClient()
+    const nowDE = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Berlin' }))
+    const tomorrow = new Date(nowDE)
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    const tomorrowStr = tomorrow.getFullYear() + '-' + String(tomorrow.getMonth() + 1).padStart(2, '0') + '-' + String(tomorrow.getDate()).padStart(2, '0')
+    const tomorrowDow = tomorrow.getDay()
+    const dowMap: Record<number, string> = { 0: 'SU', 1: 'MO', 2: 'TU', 3: 'WE', 4: 'TH', 5: 'FR', 6: 'SA' }
+    const tomorrowCode = dowMap[tomorrowDow]
+
+    let sent = 0
+
+    // 1. Find all published activities that run tomorrow
+    const { data: activities } = await db.from('activities')
+      .select('id, title, provider_id, schedule')
+      .eq('status', 'published')
+
+    const tomorrowActivities: Array<{ id: string; title: string; providerId: string; time: string }> = []
+    for (const a of activities ?? []) {
+      const sched = a.schedule as any
+      const slots = Array.isArray(sched) ? sched : (sched?.slots ?? [])
+      const matchSlot = slots.find((s: any) => s.day?.toUpperCase() === tomorrowCode)
+      if (matchSlot) {
+        // Check date range
+        if (sched?.startDate && tomorrowStr < sched.startDate) continue
+        if (sched?.endDate && tomorrowStr > sched.endDate) continue
+        tomorrowActivities.push({ id: a.id, title: a.title, providerId: a.provider_id, time: matchSlot.startTime || '' })
+      }
+    }
+
+    if (tomorrowActivities.length === 0) {
+      return res.json({ data: { sent: 0, message: 'Keine Kurse morgen' } })
+    }
+
+    // 2. For each activity, find enrolled children (via block_enrollments or bookings)
+    const { EmailService } = await import('../lib/email')
+    const tomorrowFormatted = tomorrow.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })
+
+    for (const act of tomorrowActivities) {
+      // Get provider info
+      const { data: provider } = await db.from('providers').select('company_name, address_street, address_city').eq('id', act.providerId).maybeSingle()
+      const location = provider?.address_street ? `${provider.address_street}, ${provider.address_city}` : undefined
+
+      // Find block enrollments for this activity
+      const { data: blocks } = await db.from('course_blocks').select('id')
+        .eq('activity_id', act.id).in('status', ['active', 'upcoming'])
+        .lte('start_date', tomorrowStr).gte('end_date', tomorrowStr)
+      const blockIds = (blocks ?? []).map((b: any) => b.id)
+
+      const parentEmails = new Set<string>()
+
+      if (blockIds.length > 0) {
+        const { data: enrollments } = await db.from('block_enrollments')
+          .select('parent_id, child_name').in('block_id', blockIds).eq('status', 'active')
+        for (const e of enrollments ?? []) {
+          const { data: parent } = await db.from('parents').select('name, email').eq('id', e.parent_id).maybeSingle()
+          if (parent?.email && !parentEmails.has(parent.email)) {
+            parentEmails.add(parent.email)
+            try {
+              await EmailService.sendCourseReminder(parent.email, {
+                parentName: parent.name,
+                childName: e.child_name || 'Ihr Kind',
+                courseName: act.title,
+                providerName: provider?.company_name || '',
+                courseDate: tomorrowFormatted,
+                courseTime: act.time,
+                location,
+              })
+              sent++
+            } catch (e) { console.error('[Reminder] Email failed:', e) }
+          }
+        }
+      }
+
+      // Also check direct bookings (no block)
+      const { data: bookings } = await db.from('provider_bookings')
+        .select('parent_id, child_info')
+        .eq('activity_id', act.id).in('status', ['confirmed', 'pending'])
+      for (const b of bookings ?? []) {
+        const { data: parent } = await db.from('parents').select('name, email').eq('id', b.parent_id).maybeSingle()
+        if (parent?.email && !parentEmails.has(parent.email)) {
+          parentEmails.add(parent.email)
+          const ci = b.child_info as any
+          try {
+            await EmailService.sendCourseReminder(parent.email, {
+              parentName: parent.name,
+              childName: ci?.firstName ? `${ci.firstName} ${ci.lastName || ''}`.trim() : 'Ihr Kind',
+              courseName: act.title,
+              providerName: provider?.company_name || '',
+              courseDate: tomorrowFormatted,
+              courseTime: act.time,
+              location,
+            })
+            sent++
+          } catch (e) { console.error('[Reminder] Email failed:', e) }
+        }
+      }
+    }
+
+    console.log(`[Reminder] Sent ${sent} course reminders for ${tomorrowStr}`)
+    res.json({ data: { sent, date: tomorrowStr, activities: tomorrowActivities.length } })
+  })
+
   // ============================================================
   // AUTH
   // ============================================================

@@ -432,6 +432,49 @@ export const EmailService = {
     })
   },
 
+  // --- Kurs-Erinnerung 24h vorher ---
+
+  async sendCourseReminder(to: string, data: {
+    parentName: string
+    childName: string
+    courseName: string
+    providerName: string
+    courseDate: string
+    courseTime: string
+    location?: string
+  }): Promise<EmailResult> {
+    const locationBlock = data.location ? `<div><span style="font-size:12px;color:#8B7355;">Ort</span><div style="font-weight:600;color:#3C2225;">${data.location}</div></div>` : ''
+    return this.send({
+      to,
+      subject: `Erinnerung: ${data.courseName} morgen um ${data.courseTime} Uhr`,
+      html: `
+        <div style="font-family: 'Inter', 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; color: #3C2225;">
+          <div style="background: linear-gradient(135deg, #D4956A, #c4854a); padding: 32px; border-radius: 16px 16px 0 0; text-align: center;">
+            <div style="font-size: 48px; margin-bottom: 8px;">🔔</div>
+            <h1 style="color: white; margin: 0; font-size: 24px; font-weight: 700;">Morgen geht's los!</h1>
+          </div>
+          <div style="padding: 32px; background: #FFF9F5; border-radius: 0 0 16px 16px;">
+            <p style="font-size: 16px;">Hey ${data.parentName},</p>
+            <p>kurze Erinnerung: <strong>${data.childName}</strong> hat morgen Kurs!</p>
+            <div style="background: #f8f5f2; padding: 20px; border-radius: 12px; margin: 20px 0;">
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div><span style="font-size:12px;color:#8B7355;">Kurs</span><div style="font-weight:600;color:#3C2225;">${data.courseName}</div></div>
+                <div><span style="font-size:12px;color:#8B7355;">Anbieter</span><div style="font-weight:600;color:#3C2225;">${data.providerName}</div></div>
+                <div><span style="font-size:12px;color:#8B7355;">Datum</span><div style="font-weight:600;color:#3C2225;">${data.courseDate}</div></div>
+                <div><span style="font-size:12px;color:#8B7355;">Uhrzeit</span><div style="font-weight:600;color:#3C2225;">${data.courseTime} Uhr</div></div>
+                ${locationBlock}
+              </div>
+            </div>
+            <p style="color: #8B7355; font-size: 14px;">Wir freuen uns auf euch! 🎉</p>
+            <hr style="border: none; border-top: 1px solid #F2E6E2; margin: 24px 0;">
+            <p style="color: #94a3b8; font-size: 12px; text-align: center;">Powered by Urban Kids Club – Kinderkurse entdecken & buchen</p>
+          </div>
+        </div>
+      `,
+      text: `Hey ${data.parentName}, Erinnerung: ${data.childName} hat morgen um ${data.courseTime} Uhr "${data.courseName}" bei ${data.providerName}. Wir freuen uns!`,
+    })
+  },
+
   async sendCancellation(to: string, data: {
     parentName: string
     childName: string
