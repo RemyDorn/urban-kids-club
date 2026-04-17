@@ -540,12 +540,10 @@ document.getElementById('checkinForm').addEventListener('submit',async function(
   const btn=document.getElementById('submitBtn');
   const btnText=document.getElementById('btnText');
   const spinner=document.getElementById('spinner');
-  const resultDiv=document.getElementById('result');
 
   btn.disabled=true;
   btnText.style.display='none';
   spinner.style.display='block';
-  resultDiv.innerHTML='';
 
   try{
     const r=await fetch(API+'/api/public/checkin',{
@@ -557,29 +555,49 @@ document.getElementById('checkinForm').addEventListener('submit',async function(
     const data=json.data;
 
     if(!data.success){
-      resultDiv.innerHTML='<div class="error-msg">'+esc(data.error||'Fehler beim Check-in')+'</div>';
+      // Error: show message but keep form
+      document.getElementById('result').innerHTML='<div class="error-msg">'+esc(data.error||'Fehler beim Check-in')+'</div>';
+      btn.disabled=false;
+      btnText.style.display='';
+      spinner.style.display='none';
       return;
     }
 
-    let html='';
+    // Success: replace entire card content with confirmation
+    const card=document.querySelector('.card');
+    let items='';
+    let hasUnpaid=false;
     for(const item of data.checkedIn){
       const isPaid=item.paymentStatus==='paid';
-      html+='<div class="result-item '+(isPaid?'result-ok':'result-pay')+'">';
-      html+='<div class="result-icon">'+(isPaid?'✓':'💳')+'</div>';
-      html+='<div class="result-text">';
-      html+='<div class="title">'+esc(item.activityTitle)+'</div>';
-      html+='<div class="detail">'+esc(item.childName)+' — ';
+      if(!isPaid)hasUnpaid=true;
+      items+='<div class="result-item '+(isPaid?'result-ok':'result-pay')+'">';
+      items+='<div class="result-icon">'+(isPaid?'✓':'💳')+'</div>';
+      items+='<div class="result-text">';
+      items+='<div class="title">'+esc(item.activityTitle)+'</div>';
+      items+='<div class="detail">'+esc(item.childName)+' — ';
       if(isPaid){
-        html+='Bezahlt. Viel Spaß!';
+        items+='Bezahlt. Viel Spaß!';
       }else{
-        html+='Bitte zahle noch '+item.amountDue.toFixed(2).replace('.',',')+' € vor Ort.';
+        items+='Bitte zahle noch '+item.amountDue.toFixed(2).replace('.',',')+' € vor Ort.';
       }
-      html+='</div></div></div>';
+      items+='</div></div></div>';
     }
-    resultDiv.innerHTML='<div class="result">'+html+'</div>';
+
+    card.innerHTML=
+      '<div class="logo" style="background:'+(hasUnpaid?'#d97706':'#059669')+'">'+
+      (hasUnpaid?'💳':'✓')+'</div>'+
+      '<h1>Eingecheckt!</h1>'+
+      '<p class="subtitle">Du bist für heute angemeldet</p>'+
+      '<div class="result" style="margin-top:20px">'+items+'</div>'+
+      (data.redirectUrl?'<p style="color:#94a3b8;font-size:12px;margin-top:16px">Du wirst in 5 Sekunden weitergeleitet...</p>':'')+
+      '<div class="footer">Powered by Urban Kids Club</div>';
+
+    // Redirect after 5 seconds if configured
+    if(data.redirectUrl){
+      setTimeout(function(){window.location.href=data.redirectUrl},5000);
+    }
   }catch(err){
-    resultDiv.innerHTML='<div class="error-msg">Verbindungsfehler. Bitte versuche es erneut.</div>';
-  }finally{
+    document.getElementById('result').innerHTML='<div class="error-msg">Verbindungsfehler. Bitte versuche es erneut.</div>';
     btn.disabled=false;
     btnText.style.display='';
     spinner.style.display='none';

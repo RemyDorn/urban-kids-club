@@ -2951,7 +2951,14 @@ export function registerRoutes(router: Router) {
     if (!provider) return res.error(404, 'Anbieter nicht gefunden')
 
     const result = await AttendanceService.qrCheckIn(providerId, email)
-    res.json({ data: result })
+
+    // Add redirect URL from provider (if configured)
+    const sb = getServiceClient()
+    const { data: provData } = await sb.from('providers')
+      .select('checkin_redirect_url').eq('id', providerId).maybeSingle()
+    const redirectUrl = provData?.checkin_redirect_url || null
+
+    res.json({ data: { ...result, redirectUrl } })
   })
 
   // Today's check-in overview for dashboard

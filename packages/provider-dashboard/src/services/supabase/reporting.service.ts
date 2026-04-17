@@ -99,12 +99,60 @@ export const SupabaseReportingService = {
     const bookingsByDate = new Map<string, number>()
 
     // Count individual bookings
+    // Track bookings without booked_date that also have no block enrollment
+    const bookingsWithoutDate: Array<{ activity_id: string }> = []
     for (const b of bookings ?? []) {
       if (b.status === 'confirmed' || b.status === 'pending') {
         bookingCounts.set(b.activity_id, (bookingCounts.get(b.activity_id) ?? 0) + 1)
         if (b.booked_date) {
           const key = `${b.activity_id}:${b.booked_date}`
           bookingsByDate.set(key, (bookingsByDate.get(key) ?? 0) + 1)
+        } else {
+          // No specific date — need to spread across schedule dates
+          bookingsWithoutDate.push({ activity_id: b.activity_id })
+        }
+      }
+    }
+
+    // For bookings without booked_date and no block: spread across schedule dates
+    // First, build a map of activity schedules
+    const activityScheduleMap = new Map<string, any>()
+    for (const a of activities ?? []) {
+      activityScheduleMap.set((a as any).id, a)
+    }
+    // Fetch full activity data for schedule info
+    if (bookingsWithoutDate.length > 0) {
+      const needScheduleIds = [...new Set(bookingsWithoutDate.map(b => b.activity_id))]
+      const { data: fullActs } = await sb.from('activities').select('id, schedule').in('id', needScheduleIds)
+      for (const fa of fullActs ?? []) activityScheduleMap.set(fa.id, fa)
+    }
+
+    // Group bookings-without-date by activity
+    const noDateByActivity = new Map<string, number>()
+    for (const b of bookingsWithoutDate) {
+      // Only count if this activity has NO blocks (otherwise block enrollments handle it)
+      const hasBlocks = [...blockActivityMap.values()].includes(b.activity_id)
+      if (!hasBlocks) {
+        noDateByActivity.set(b.activity_id, (noDateByActivity.get(b.activity_id) ?? 0) + 1)
+      }
+    }
+
+    // Spread no-date bookings across schedule dates for their activity
+    const dowMap: Record<string, number> = { SU: 0, MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6 }
+    for (const [actId, count] of noDateByActivity.entries()) {
+      const act = activityScheduleMap.get(actId)
+      const sched = act?.schedule
+      const slots = Array.isArray(sched) ? sched : (sched?.slots ?? [])
+      const startDate = sched?.startDate ? new Date(sched.startDate) : new Date()
+      const endDate = sched?.endDate ? new Date(sched.endDate) : new Date(Date.now() + 90 * 86400000)
+      // Generate all matching dates
+      for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+        const dayNum = d.getDay()
+        const matches = slots.some((s: any) => dowMap[s.day?.toUpperCase()] === dayNum)
+        if (matches) {
+          const dateStr = d.toISOString().slice(0, 10)
+          const key = `${actId}:${dateStr}`
+          bookingsByDate.set(key, Math.max(bookingsByDate.get(key) ?? 0, count))
         }
       }
     }
