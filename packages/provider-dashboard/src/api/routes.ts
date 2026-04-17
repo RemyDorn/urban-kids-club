@@ -1675,16 +1675,72 @@ export function registerRoutes(router: Router) {
   router.post('/api/providers/:providerId/export', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const parsed = validate(CreateExportSchema, req.body)
-    if ('error' in parsed) return res.error(400, parsed.error)
-    const { type, format, dateRange } = parsed.data as any
-    const request = await ExportService.createExport({
-      providerId: auth.providerId,
-      type,
-      format,
-      dateRange,
-    })
-    res.json({ data: request })
+    const { type, format } = req.body as { type: string; format: string }
+    if (!type || !format) return res.error(400, 'type und format sind erforderlich')
+
+    const sb = getServiceClient()
+
+    if (type === 'bookings') {
+      const { data: bookings } = await sb.from('provider_bookings')
+        .select('id, activity_id, parent_id, child_info, status, payment_status, payment_method, amount_paid, currency, created_at')
+        .eq('provider_id', auth.providerId).order('created_at', { ascending: false })
+      const { data: activities } = await sb.from('activities').select('id, title').eq('provider_id', auth.providerId)
+      const { data: parents } = await sb.from('parents').select('id, name, email')
+      const actMap = new Map((activities ?? []).map((a: any) => [a.id, a.title]))
+      const parMap = new Map((parents ?? []).map((p: any) => [p.id, { name: p.name, email: p.email }]))
+
+      if (format === 'datev') {
+        // DATEV Buchungsstapel
+        let csv = '"Umsatz";"Soll/Haben";"Konto";"Gegenkonto";"Buchungstext";"Belegdatum"\r\n'
+        for (const b of bookings ?? []) {
+          if (b.payment_status !== 'paid') continue
+          const date = new Date(b.created_at)
+          const dateStr = String(date.getDate()).padStart(2,'0') + String(date.getMonth()+1).padStart(2,'0')
+          const ci = b.child_info as any
+          const courseName = actMap.get(b.activity_id) || 'Kurs'
+          csv += `"${(b.amount_paid || 0).toFixed(2).replace('.',',')}";"S";"1200";"8400";"${courseName} - ${ci?.firstName || ''} ${ci?.lastName || ''}";"${dateStr}"\r\n`
+        }
+        return res.json({ data: { content: csv, filename: 'buchungen_datev_' + new Date().toISOString().slice(0,10) + '.csv' } })
+      }
+
+      // CSV
+      let csv = 'Datum;Kurs;Kind;Elternteil;E-Mail;Status;Zahlung;Betrag;Währung\r\n'
+      for (const b of bookings ?? []) {
+        const ci = b.child_info as any
+        const par = parMap.get(b.parent_id)
+        const date = new Date(b.created_at).toLocaleDateString('de-DE')
+        csv += `"${date}";"${actMap.get(b.activity_id) || ''}";"${ci?.firstName || ''} ${ci?.lastName || ''}";"${par?.name || ''}";"${par?.email || ''}";"${b.status}";"${b.payment_status}";"${(b.amount_paid || 0).toFixed(2).replace('.',',')}";"${b.currency}"\r\n`
+      }
+      return res.json({ data: { content: csv, filename: 'buchungen_' + new Date().toISOString().slice(0,10) + '.csv' } })
+    }
+
+    if (type === 'invoices') {
+      const { data: invoices } = await sb.from('invoices')
+        .select('id, number, status, subtotal, tax, total, currency, issued_at, due_date, paid_at, line_items')
+        .eq('provider_id', auth.providerId).order('issued_at', { ascending: false })
+
+      if (format === 'datev') {
+        let csv = '"Umsatz";"Soll/Haben";"Konto";"Gegenkonto";"Buchungstext";"Belegdatum";"Belegnummer"\r\n'
+        for (const inv of invoices ?? []) {
+          if (inv.status === 'cancelled') continue
+          const date = new Date(inv.issued_at)
+          const dateStr = String(date.getDate()).padStart(2,'0') + String(date.getMonth()+1).padStart(2,'0')
+          csv += `"${(inv.total || 0).toFixed(2).replace('.',',')}";"S";"1200";"8400";"Rechnung ${inv.number}";"${dateStr}";"${inv.number}"\r\n`
+        }
+        return res.json({ data: { content: csv, filename: 'rechnungen_datev_' + new Date().toISOString().slice(0,10) + '.csv' } })
+      }
+
+      let csv = 'Rechnungsnr;Status;Netto;MwSt;Brutto;Währung;Erstellt;Fällig;Bezahlt\r\n'
+      for (const inv of invoices ?? []) {
+        const issued = inv.issued_at ? new Date(inv.issued_at).toLocaleDateString('de-DE') : ''
+        const due = inv.due_date ? new Date(inv.due_date).toLocaleDateString('de-DE') : ''
+        const paid = inv.paid_at ? new Date(inv.paid_at).toLocaleDateString('de-DE') : ''
+        csv += `"${inv.number}";"${inv.status}";"${(inv.subtotal || 0).toFixed(2).replace('.',',')}";"${(inv.tax || 0).toFixed(2).replace('.',',')}";"${(inv.total || 0).toFixed(2).replace('.',',')}";"${inv.currency}";"${issued}";"${due}";"${paid}"\r\n`
+      }
+      return res.json({ data: { content: csv, filename: 'rechnungen_' + new Date().toISOString().slice(0,10) + '.csv' } })
+    }
+
+    res.error(400, 'Unbekannter Export-Typ: ' + type)
   })
 
   // ============================================================

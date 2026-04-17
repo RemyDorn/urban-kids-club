@@ -4836,15 +4836,26 @@
     }
 
     async function exportData(type, format) {
-      const result = await api(`/providers/${currentProvider.id}/export`, 'POST', { type, format })
-      if (result.data?.fileUrl) {
-        const a = document.createElement('a')
-        a.href = result.data.fileUrl
-        a.download = `${type}_${fmtDate(new Date())}.${format === 'datev' ? 'csv' : format}`
-        a.click()
-      } else {
-        alert('Export konnte nicht erstellt werden.')
-      }
+      try {
+        const result = await api(`/providers/${currentProvider.id}/export`, 'POST', { type, format })
+        if (result.data?.content) {
+          // Download CSV content as file
+          const blob = new Blob(['\uFEFF' + result.data.content], { type: 'text/csv;charset=utf-8;' })
+          const url = URL.createObjectURL(blob)
+          const a = document.createElement('a')
+          a.href = url
+          a.download = result.data.filename || `${type}_${fmtDate(new Date())}.csv`
+          a.click()
+          URL.revokeObjectURL(url)
+        } else if (result.data?.fileUrl) {
+          const a = document.createElement('a')
+          a.href = result.data.fileUrl
+          a.download = `${type}_${fmtDate(new Date())}.csv`
+          a.click()
+        } else {
+          alert('Export konnte nicht erstellt werden.')
+        }
+      } catch(e) { alert('Export fehlgeschlagen: ' + (e.message || '')) }
     }
 
     async function saveWidgetBranding() {
