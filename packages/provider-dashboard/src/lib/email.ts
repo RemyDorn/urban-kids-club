@@ -475,6 +475,54 @@ export const EmailService = {
     })
   },
 
+  // --- Kurs-Einladung ---
+
+  async sendCourseInvitation(to: string, data: {
+    parentName: string
+    childName: string
+    courseName: string
+    providerName: string
+    courseDetails: string
+    bookingUrl: string
+    couponCode?: string
+  }): Promise<EmailResult> {
+    const couponBlock = data.couponCode ? `
+      <div style="background:#fdf4ed;padding:16px;border-radius:12px;border:2px dashed #D4956A;margin:20px 0;text-align:center;">
+        <div style="font-size:12px;color:#8B7355;">Dein Rabatt-Code:</div>
+        <div style="font-size:24px;font-weight:700;color:#D4956A;letter-spacing:2px;margin:8px 0;">${data.couponCode}</div>
+        <div style="font-size:12px;color:#8B7355;">Bei der Buchung eingeben und sparen!</div>
+      </div>
+    ` : ''
+    return this.send({
+      to,
+      subject: `Neuer Kurs: ${data.courseName} — Platz für ${data.childName}? 🎉`,
+      html: `
+        <div style="font-family:'Inter','Segoe UI',sans-serif;max-width:600px;margin:0 auto;color:#3C2225;">
+          <div style="background:linear-gradient(135deg,#D4956A,#c4854a);padding:32px;border-radius:16px 16px 0 0;text-align:center;">
+            <div style="font-size:48px;margin-bottom:8px;">🌟</div>
+            <h1 style="color:white;margin:0;font-size:24px;font-weight:700;">Neuer Kurs verfügbar!</h1>
+          </div>
+          <div style="padding:32px;background:#FFF9F5;border-radius:0 0 16px 16px;">
+            <p style="font-size:16px;">Hey ${data.parentName},</p>
+            <p>wir haben einen neuen Kurs, der perfekt zu <strong>${data.childName}</strong> passen könnte:</p>
+            <div style="background:#f8f5f2;padding:20px;border-radius:12px;margin:20px 0;">
+              <div style="font-size:18px;font-weight:700;color:#3C2225;margin-bottom:8px;">${data.courseName}</div>
+              <div style="font-size:14px;color:#8B7355;line-height:1.6;">${data.courseDetails}</div>
+            </div>
+            ${couponBlock}
+            <div style="text-align:center;margin:24px 0;">
+              <a href="${data.bookingUrl}" style="display:inline-block;background:#D4956A;color:white;padding:14px 32px;border-radius:12px;text-decoration:none;font-weight:600;font-size:16px;">Jetzt Platz sichern</a>
+            </div>
+            <p style="color:#8B7355;font-size:13px;">Die Plätze sind begrenzt — sichere dir früh einen Platz!</p>
+            <hr style="border:none;border-top:1px solid #F2E6E2;margin:24px 0;">
+            <p style="color:#94a3b8;font-size:12px;text-align:center;">Powered by Urban Kids Club — ${data.providerName}</p>
+          </div>
+        </div>
+      `,
+      text: `Hey ${data.parentName}, neuer Kurs "${data.courseName}" bei ${data.providerName} — perfekt für ${data.childName}! ${data.courseDetails} Jetzt buchen: ${data.bookingUrl}${data.couponCode ? ' Rabatt-Code: ' + data.couponCode : ''}`,
+    })
+  },
+
   async sendCancellation(to: string, data: {
     parentName: string
     childName: string

@@ -1933,6 +1933,7 @@
             <div class="flex items-center gap-2 ml-4">
               ${a.status === 'draft' ? `<button onclick="publishActivity('${a.id}')" class="px-3 py-1.5 text-xs font-medium bg-green-500 text-white rounded-lg hover:bg-green-600">Veröffentlichen</button>` : ''}
               <button onclick="showActivityForm('${a.id}')" class="px-3 py-1.5 text-xs font-medium bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">Bearbeiten</button>
+              ${a.status === 'published' ? `<button onclick="showInviteModal('${a.id}', '${escapeHtml(a.title)}')" class="px-3 py-1.5 text-xs font-medium bg-brand-50 text-brand-700 rounded-lg hover:bg-brand-100" title="Passende Eltern einladen">📧 Einladen</button>` : ''}
               <button onclick="duplicateActivity('${a.id}')" class="px-3 py-1.5 text-xs font-medium bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200" title="Duplizieren">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
               </button>
@@ -1946,6 +1947,54 @@
     }
 
     // Activity CRUD actions
+    async function showInviteModal(activityId, title) {
+      const modal = document.getElementById('activityModal')
+      modal.className = 'cal-modal-backdrop'
+      modal.onclick = (e) => { if (e.target === modal) modal.className = 'hidden' }
+      modal.innerHTML = '<div class="cal-modal fade-in" style="width:550px"><div class="text-center py-8"><div class="text-2xl mb-2">⏳</div><p class="text-gray-500">Suche passende Eltern...</p></div></div>'
+
+      try {
+        const r = await api('/activities/' + activityId + '/matching-parents')
+        const matches = r.data || []
+
+        if (matches.length === 0) {
+          modal.innerHTML = '<div class="cal-modal fade-in" style="width:550px"><h3 class="text-lg font-bold mb-4">Eltern einladen — ' + escapeHtml(title) + '</h3><div class="text-center py-8"><div class="text-4xl mb-2">🤷</div><p class="text-gray-500">Keine passenden Eltern gefunden.<br>Alter und Kategorie stimmen mit keinem Bestandskunden überein.</p></div><button onclick="document.getElementById(\'activityModal\').className=\'hidden\'" class="mt-4 w-full bg-gray-100 text-gray-700 py-2 rounded-lg">Schließen</button></div>'
+          return
+        }
+
+        let html = '<div class="cal-modal fade-in" style="width:550px;max-height:80vh;overflow-y:auto">'
+        html += '<div class="flex items-center justify-between mb-4"><h3 class="text-lg font-bold text-gray-900">Eltern einladen — ' + escapeHtml(title) + '</h3><button onclick="document.getElementById(\'activityModal\').className=\'hidden\'" class="text-gray-400 hover:text-gray-600"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button></div>'
+        html += '<p class="text-sm text-gray-500 mb-3">' + matches.length + ' Eltern mit passenden Kindern (Alter + Kategorie) gefunden.</p>'
+        html += '<div class="flex items-center gap-2 mb-3"><label class="flex items-center gap-2 text-sm"><input type="checkbox" id="inviteSelectAll" onchange="document.querySelectorAll(\'.invite-cb\').forEach(c=>c.checked=this.checked)" checked class="rounded border-gray-300"> Alle auswählen</label></div>'
+        html += '<div class="space-y-2 mb-4">'
+        for (const m of matches) {
+          html += '<label class="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:border-brand-300 cursor-pointer">'
+          html += '<input type="checkbox" class="invite-cb rounded border-gray-300" value="' + m.parentId + '" checked>'
+          html += '<div class="flex-1"><div class="text-sm font-medium text-gray-900">' + escapeHtml(m.name) + '</div>'
+          html += '<div class="text-xs text-gray-500">' + escapeHtml(m.childName) + ' (' + m.childAge + ' J.)' + (m.categoryMatch ? ' · <span class="text-green-600">Kategorie passt</span>' : '') + ' · ' + m.previousBookings + ' Buchungen</div></div></label>'
+        }
+        html += '</div>'
+        html += '<div class="border-t border-gray-200 pt-3"><label class="block text-sm font-medium text-gray-700 mb-1">Rabatt-Code (optional)</label><input id="inviteCoupon" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="z.B. FRUEHBUCHER10"></div>'
+        html += '<button onclick="sendInvitations(\'' + activityId + '\')" class="mt-4 w-full bg-brand-500 text-white py-2.5 rounded-lg font-medium hover:bg-brand-600">Einladungen senden</button>'
+        html += '</div>'
+        modal.innerHTML = html
+      } catch(e) {
+        modal.innerHTML = '<div class="cal-modal fade-in"><p class="text-red-500">Fehler beim Laden der Eltern.</p></div>'
+      }
+    }
+
+    async function sendInvitations(activityId) {
+      const checked = document.querySelectorAll('.invite-cb:checked')
+      const parentIds = Array.from(checked).map(c => c.value)
+      if (!parentIds.length) { alert('Bitte mindestens einen Elternteil auswählen.'); return }
+      const couponCode = document.getElementById('inviteCoupon')?.value?.trim() || undefined
+      try {
+        const r = await api('/activities/' + activityId + '/invite', 'POST', { parentIds, couponCode })
+        alert(r.data.sent + ' Einladungen gesendet!')
+        document.getElementById('activityModal').className = 'hidden'
+      } catch(e) { alert('Fehler beim Senden.') }
+    }
+
     async function publishActivity(id) {
       await api(`/activities/${id}/publish`, 'POST')
       navigate('activities')

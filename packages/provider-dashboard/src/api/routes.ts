@@ -3188,6 +3188,127 @@ export function registerRoutes(router: Router) {
   })
 
   // ============================================================
+  // COURSE INVITATIONS (Kurs-Einladungen)
+  // ============================================================
+
+  // Find parents with children matching an activity's age range + category
+  router.get('/api/activities/:activityId/matching-parents', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    const sb = getServiceClient()
+    const { data: activity } = await sb.from('activities')
+      .select('id, title, category, age_group_min, age_group_max')
+      .eq('id', req.params.activityId).eq('provider_id', auth.providerId).maybeSingle()
+    if (!activity) return res.error(404, 'Aktivität nicht gefunden')
+
+    // Get all parents who have booked with this provider
+    const { data: bookings } = await sb.from('provider_bookings')
+      .select('parent_id, child_info, activity_id').eq('provider_id', auth.providerId)
+      .in('status', ['confirmed', 'completed'])
+    const { data: parents } = await sb.from('parents').select('id, name, email, children')
+
+    const parentMap = new Map((parents ?? []).map((p: any) => [p.id, p]))
+    const currentYear = new Date().getFullYear()
+
+    // Score parents: age match + category match
+    const matches: Array<{ parentId: string; name: string; email: string; childName: string; childAge: number; score: number; previousBookings: number; categoryMatch: boolean }> = []
+    const seen = new Set<string>()
+
+    for (const b of bookings ?? []) {
+      const parent = parentMap.get(b.parent_id)
+      if (!parent || seen.has(parent.id)) continue
+
+      const ci = b.child_info as any
+      const birthYear = ci?.birthYear
+      if (!birthYear) continue
+      const age = currentYear - birthYear
+
+      // Check age range
+      if (age >= (activity.age_group_min || 0) && age <= (activity.age_group_max || 99)) {
+        seen.add(parent.id)
+
+        // Count previous bookings + check category match
+        const parentBookings = (bookings ?? []).filter((pb: any) => pb.parent_id === parent.id)
+        const { data: prevActivities } = await sb.from('activities').select('category').in('id', parentBookings.map((pb: any) => pb.activity_id))
+        const categoryMatch = (prevActivities ?? []).some((a: any) => a.category === activity.category)
+
+        matches.push({
+          parentId: parent.id,
+          name: parent.name,
+          email: parent.email,
+          childName: ci.firstName ? `${ci.firstName} ${ci.lastName || ''}`.trim() : 'Kind',
+          childAge: age,
+          score: (categoryMatch ? 10 : 0) + Math.min(parentBookings.length, 5),
+          previousBookings: parentBookings.length,
+          categoryMatch,
+        })
+      }
+    }
+
+    // Sort by score (best matches first)
+    matches.sort((a, b) => b.score - a.score)
+    res.json({ data: matches })
+  })
+
+  // Send course invitations to selected parents
+  router.post('/api/activities/:activityId/invite', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    const { parentIds, couponCode } = req.body as { parentIds: string[]; couponCode?: string }
+    if (!parentIds?.length) return res.error(400, 'Keine Eltern ausgewählt')
+
+    const sb = getServiceClient()
+    const { data: activity } = await sb.from('activities')
+      .select('id, title, category, age_group_min, age_group_max, schedule, pricing')
+      .eq('id', req.params.activityId).eq('provider_id', auth.providerId).maybeSingle()
+    if (!activity) return res.error(404, 'Aktivität nicht gefunden')
+
+    const { data: provider } = await sb.from('providers').select('company_name, slug').eq('id', auth.providerId).maybeSingle()
+    const { data: parents } = await sb.from('parents').select('id, name, email, children').in('id', parentIds)
+
+    const { EmailService } = await import('../lib/email')
+    const origin = process.env.APP_PUBLIC_URL || 'https://dev.urbankids.club'
+    const bookingUrl = `${origin}/widget/${provider?.slug || ''}`
+    const currentYear = new Date().getFullYear()
+
+    // Build course details string
+    const sched = activity.schedule as any
+    const slots = sched?.slots || []
+    const dayLabels: Record<string, string> = { MO: 'Mo', TU: 'Di', WE: 'Mi', TH: 'Do', FR: 'Fr', SA: 'Sa', SU: 'So' }
+    const scheduleStr = slots.map((s: any) => `${dayLabels[s.day] || s.day} ${s.startTime}–${s.endTime}`).join(', ')
+    const pricing = (activity.pricing as any[])?.[0]
+    const priceStr = pricing ? `${pricing.amount}€ (${pricing.label})` : ''
+    const courseDetails = `${activity.age_group_min}–${activity.age_group_max} Jahre · ${scheduleStr}${priceStr ? ' · ' + priceStr : ''}`
+
+    let sent = 0
+    for (const parent of parents ?? []) {
+      // Find matching child name
+      const children = parent.children as any[] || []
+      const matchChild = children.find((c: any) => {
+        const age = currentYear - (c.birthYear || 0)
+        return age >= (activity.age_group_min || 0) && age <= (activity.age_group_max || 99)
+      })
+      const childName = matchChild ? `${matchChild.firstName} ${matchChild.lastName || ''}`.trim() : 'Ihr Kind'
+
+      try {
+        await EmailService.sendCourseInvitation(parent.email, {
+          parentName: parent.name,
+          childName,
+          courseName: activity.title,
+          providerName: provider?.company_name || '',
+          courseDetails,
+          bookingUrl,
+          couponCode,
+        })
+        sent++
+      } catch (e) { console.error('[Invite] Email failed:', e) }
+    }
+
+    console.log(`[Invite] Sent ${sent} invitations for "${activity.title}"`)
+    res.json({ data: { sent, total: parentIds.length } })
+  })
+
+  // ============================================================
   // OPENING HOURS (Öffnungszeiten)
   // ============================================================
 
