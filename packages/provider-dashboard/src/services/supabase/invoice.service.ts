@@ -46,21 +46,14 @@ export const SupabaseInvoiceService = {
     const amount = option?.amount ?? booking.amount_paid ?? 0
     const label = option?.label ?? 'Kurs'
 
-    // Generate invoice number
-    const { data: existing } = await sb.from(TABLE)
-      .select('number').eq('provider_id', providerId).order('created_at', { ascending: false }).limit(1)
-    let nextNum = 1
-    if (existing?.length) {
-      const match = existing[0].number?.match(/INV-\d{4}-(\d+)/)
-      if (match) nextNum = parseInt(match[1]) + 1
-    }
-    const year = new Date().getFullYear()
-    const invoiceNumber = `INV-${year}-${nextNum.toString().padStart(4, '0')}`
+    // Draft gets temporary number — real number assigned on send
+    const invoiceNumber = `ENTWURF-${Date.now()}`
 
+    // Preise sind IMMER Brutto (inkl. MwSt) — MwSt rausrechnen, nicht draufschlagen
     const vatRate = customVatRate !== undefined ? customVatRate : 0.19
-    const subtotal = Math.round(amount * 100) / 100
-    const tax = Math.round(subtotal * vatRate * 100) / 100
-    const total = Math.round((subtotal + tax) * 100) / 100
+    const total = Math.round(amount * 100) / 100  // Brutto = was der Kunde zahlt
+    const subtotal = vatRate > 0 ? Math.round((total / (1 + vatRate)) * 100) / 100 : total  // Netto
+    const tax = Math.round((total - subtotal) * 100) / 100  // MwSt-Betrag
 
     const now = new Date()
     const dueDate = new Date(now)
@@ -74,9 +67,9 @@ export const SupabaseInvoiceService = {
       lineItems: [{
         description: `${activity.title} – ${label}`,
         quantity: 1,
-        unitPrice: amount,
+        unitPrice: subtotal,  // Netto-Einzelpreis
         vatRate,
-        total: subtotal,
+        total: subtotal,  // Netto-Gesamtpreis
       }],
       subtotal,
       tax,
@@ -102,13 +95,25 @@ export const SupabaseInvoiceService = {
     if (fetchErr) throw fetchErr
     if (!invoiceRow) return undefined
 
-    // Send email BEFORE updating status
+    // Generate final invoice number (only on send, not on draft creation)
+    const { data: existingInvoices } = await sb.from(TABLE)
+      .select('number').eq('provider_id', invoiceRow.provider_id)
+      .not('number', 'like', 'ENTWURF%')
+      .order('created_at', { ascending: false }).limit(1)
+    let nextNum = 1
+    if (existingInvoices?.length) {
+      const match = existingInvoices[0].number?.match(/INV-\d{4}-(\d+)/)
+      if (match) nextNum = parseInt(match[1]) + 1
+    }
+    const year = new Date().getFullYear()
+    const finalNumber = `INV-${year}-${nextNum.toString().padStart(4, '0')}`
+
+    // Send email with final number
     try {
       const { data: parent } = await sb.from('parents').select('name, email').eq('id', invoiceRow.parent_id).single()
       const { data: provider } = await sb.from('providers').select('company_name').eq('id', invoiceRow.provider_id).single()
       if (parent?.email) {
         const { EmailService } = await import('../../lib/email')
-        // Fetch booking info for course name + child name
         let courseName = ''
         let childName = ''
         if (invoiceRow.booking_id) {
@@ -124,7 +129,7 @@ export const SupabaseInvoiceService = {
         const origin = process.env.APP_PUBLIC_URL || 'https://dev.urbankids.club'
         await EmailService.sendInvoice(parent.email, {
           parentName: parent.name,
-          invoiceNumber: invoiceRow.number,
+          invoiceNumber: finalNumber,
           amount: Number(invoiceRow.total).toFixed(2).replace('.', ',') + ' €',
           dueDate: new Date(invoiceRow.due_date).toLocaleDateString('de-DE'),
           providerName: provider?.company_name || '',
@@ -132,16 +137,16 @@ export const SupabaseInvoiceService = {
           childName,
           invoiceLink: origin + '/api/invoices/' + id + '/view',
         })
-        console.log(`[Invoice] Email sent to ${parent.email} for invoice ${invoiceRow.number}`)
+        console.log(`[Invoice] Email sent to ${parent.email} for invoice ${finalNumber}`)
       }
     } catch (emailErr) {
       console.error('[Invoice] Email send failed:', emailErr)
       throw new Error('E-Mail konnte nicht gesendet werden. Rechnung bleibt als Entwurf.')
     }
 
-    // Email sent successfully — now update status
+    // Email sent → assign number + update status
     const { data, error } = await sb.from(TABLE)
-      .update({ status: 'sent' })
+      .update({ status: 'sent', number: finalNumber })
       .eq('id', id)
       .select().maybeSingle()
     if (error) throw error

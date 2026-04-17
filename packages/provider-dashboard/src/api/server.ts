@@ -330,6 +330,7 @@ window._bookCourse=async function(title,date,time){
     }
 
     if(step===2&&hasOnline&&hasOnsite){
+      html+='<button id="btnBack2" style="margin-bottom:12px;padding:6px 12px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;color:#64748b;font-size:12px;cursor:pointer">← Zurück</button>'
       html+='<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:12px">Zahlungsart wählen</div>'
       if(hasOnline){
         html+='<button class="pay-opt" data-method="online" style="width:100%;padding:14px 16px;border:2px solid #e2e8f0;border-radius:12px;background:#fff;cursor:pointer;display:flex;align-items:center;gap:12px;margin-bottom:8px;transition:all 0.2s"><span style="font-size:24px">💳</span><div style="text-align:left"><div style="font-weight:600;font-size:14px;color:#1f2937">Jetzt online bezahlen</div><div style="font-size:12px;color:#64748b">'+(prov.stripeConnected?'Kreditkarte, Apple Pay':'')+(prov.stripeConnected&&prov.paypalConnected?' oder ':'')+(prov.paypalConnected?'PayPal':'')+'</div></div></button>'
@@ -343,6 +344,7 @@ window._bookCourse=async function(title,date,time){
     const agbStep=hasOnline&&hasOnsite?3:2
     if(step===agbStep){
       const payLabel=window._checkoutPayMethod==='onsite'?'Vor Ort bezahlen':'Online bezahlen ('+priceStr+')'
+      html+='<button id="btnBackAgb" style="margin-bottom:12px;padding:6px 12px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;color:#64748b;font-size:12px;cursor:pointer">← Zurück</button>'
       html+='<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:12px">Bestätigung</div>'
       const pkg=act.pricing?.[0]
       const pkgSize=pkg?.packageSize||0
@@ -391,6 +393,8 @@ window._bookCourse=async function(title,date,time){
       }
     }
     if(step===2&&hasOnline&&hasOnsite){
+      var backBtn2=m.querySelector('#btnBack2')
+      if(backBtn2) backBtn2.onclick=function(){step=1;renderStep()}
       m.querySelectorAll('.pay-opt').forEach(btn=>{
         btn.onmouseover=function(){this.style.borderColor='${brandColor}'}
         btn.onmouseout=function(){this.style.borderColor='#e2e8f0'}
@@ -400,6 +404,8 @@ window._bookCourse=async function(title,date,time){
         }
       })
     }
+    var backBtnAgb=m.querySelector('#btnBackAgb')
+    if(backBtnAgb) backBtnAgb.onclick=function(){step=step-1;renderStep()}
     if(step===agbStep){
       m.querySelector('#btnSubmit').onclick=async function(){
         if(!m.querySelector('#agbCheck').checked){alert('Bitte AGB akzeptieren.');return}

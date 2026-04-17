@@ -2263,9 +2263,15 @@ export function registerRoutes(router: Router) {
       .select('*', { count: 'exact', head: true })
       .eq('activity_id', activityId).in('status', ['waiting', 'offered'])
 
-    // Add to waitlist
+    // Find active block for block-scoped waitlist
+    const { data: wlBlock } = await db.from('course_blocks')
+      .select('id').eq('activity_id', activityId).in('status', ['active', 'upcoming'])
+      .order('start_date', { ascending: true }).limit(1).maybeSingle()
+
+    // Add to waitlist (scoped to block if available)
     await db.from('waitlist_entries').insert({
       activity_id: activityId,
+      block_id: wlBlock?.id || null,
       parent_id: existingParent.id,
       child_info: { firstName: child.firstName, lastName: child.lastName, birthYear: child.birthYear },
       position: (count ?? 0) + 1,
@@ -2357,15 +2363,29 @@ export function registerRoutes(router: Router) {
       return res.error(400, 'Online-Zahlung ist für diesen Kurs nicht aktiviert')
     }
 
-    // Soft pre-check capacity BEFORE creating Stripe session (avoids paying for a full course)
+    // Find active block for this activity (for block-scoped capacity + waitlist)
+    const { data: activeBlock } = await db.from('course_blocks')
+      .select('id, capacity, makeup_capacity')
+      .eq('activity_id', activityId).in('status', ['active', 'upcoming'])
+      .order('start_date', { ascending: true }).limit(1).maybeSingle()
+
+    // Soft pre-check: count enrollments in active block (not total bookings)
     // This is NOT the authoritative gate — create_booking_atomic RPC does the real atomic check
-    // Only check base capacity (NOT makeup) — makeup slots are provider-assigned only
-    const { count: currentBookings } = await db.from('provider_bookings')
-      .select('*', { count: 'exact', head: true })
-      .eq('activity_id', activityId)
-      .in('status', ['confirmed', 'pending'])
-    if ((currentBookings ?? 0) >= (activity.capacity || 0)) {
-      // Course full → auto-add to waitlist
+    let currentCount = 0
+    if (activeBlock) {
+      const { count: enrollCount } = await db.from('block_enrollments')
+        .select('*', { count: 'exact', head: true })
+        .eq('block_id', activeBlock.id).eq('status', 'active')
+      currentCount = enrollCount ?? 0
+    } else {
+      const { count: bookingCount } = await db.from('provider_bookings')
+        .select('*', { count: 'exact', head: true })
+        .eq('activity_id', activityId).in('status', ['confirmed', 'pending'])
+      currentCount = bookingCount ?? 0
+    }
+
+    if (currentCount >= (activity.capacity || 0)) {
+      // Course full → auto-add to waitlist (scoped to block if available)
       let parentId = ''
       const { data: existingParent } = await db.from('parents').select('id').eq('email', parent.email).maybeSingle()
       if (existingParent) {
@@ -2392,6 +2412,7 @@ export function registerRoutes(router: Router) {
             .eq('activity_id', activityId).in('status', ['waiting', 'offered'])
           await db.from('waitlist_entries').insert({
             activity_id: activityId, parent_id: parentId,
+            block_id: activeBlock?.id || null,
             child_info: { firstName: child.firstName, lastName: child.lastName, birthYear: child.birthYear },
             position: (wlCount ?? 0) + 1, priority: 'normal', status: 'waiting',
           })
@@ -2436,9 +2457,27 @@ export function registerRoutes(router: Router) {
       }
     }
 
-    // Price is stored in euros (e.g. 140), Stripe expects cents (14000)
-    const priceEur = activity.pricing?.[0]?.amount || 0
-    const price = Math.round(priceEur * 100)
+    // Price + sibling discount
+    let priceEur = activity.pricing?.[0]?.amount || 0
+    const siblingDiscount = activity.pricing?.[0]?.siblingDiscount || 0
+    let appliedDiscount = 0
+
+    // Check if parent already has another child in this course → sibling discount
+    if (siblingDiscount > 0 && parent.email) {
+      const { data: siblingParent } = await db.from('parents').select('id').eq('email', parent.email).maybeSingle()
+      if (siblingParent) {
+        const { count: siblingBookings } = await db.from('provider_bookings')
+          .select('*', { count: 'exact', head: true })
+          .eq('activity_id', activityId).eq('parent_id', siblingParent.id)
+          .in('status', ['confirmed', 'pending'])
+        if ((siblingBookings ?? 0) > 0) {
+          appliedDiscount = siblingDiscount
+          priceEur = Math.round(priceEur * (1 - siblingDiscount / 100) * 100) / 100
+          console.log(`[Checkout] Sibling discount ${siblingDiscount}% applied: ${activity.pricing?.[0]?.amount}€ → ${priceEur}€`)
+        }
+      }
+    }
+    const price = Math.round(priceEur * 100) // Stripe expects cents
 
     if (paymentMethod === 'onsite') {
       try {
