@@ -136,66 +136,36 @@ export const SupabaseAttendanceService = {
   },
 
   // ============================================================
-  // QR Check-in: Parent scans QR, enters email → check-in all today's bookings
+  // QR Check-in: Two-step flow
+  // Step 1: qrLookup — email → list of children/courses for today
+  // Step 2: qrCheckIn — selected bookingIds → check them in
   // ============================================================
 
-  async qrCheckIn(providerId: ID, email: string): Promise<{
-    success: boolean
-    checkedIn: Array<{
-      activityTitle: string
-      childName: string
-      paymentStatus: string
-      amountDue: number
-    }>
-    error?: string
-  }> {
-    const sb = getServiceClient()
-    // Use German timezone — server runs UTC, but schedule times are local DE time
+  // Shared helper: get today's bookings for a parent at a provider
+  async _getTodayBookings(sb: any, providerId: ID, parentId: ID) {
     const nowDE = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Berlin' }))
     const today = nowDE.getFullYear() + '-' + String(nowDE.getMonth() + 1).padStart(2, '0') + '-' + String(nowDE.getDate()).padStart(2, '0')
     const nowMinutes = nowDE.getHours() * 60 + nowDE.getMinutes()
+    const todayDow = nowDE.getDay()
+    const dowMap: Record<number, string> = { 0: 'SU', 1: 'MO', 2: 'TU', 3: 'WE', 4: 'TH', 5: 'FR', 6: 'SA' }
+    const todayCode = dowMap[todayDow]
 
-    // 0. Get provider's check-in window setting (before/after in minutes)
     const { data: providerRow } = await sb.from('providers')
       .select('checkin_before_minutes, checkin_after_minutes').eq('id', providerId).maybeSingle()
     const beforeMinutes = providerRow?.checkin_before_minutes ?? 20
     const afterMinutes = providerRow?.checkin_after_minutes ?? 10
 
-    // 1. Find parent by email (case-insensitive)
-    const { data: parent } = await sb.from('parents')
-      .select('id, name, email')
-      .ilike('email', email.trim())
-      .maybeSingle()
-
-    if (!parent) {
-      return { success: false, checkedIn: [], error: 'Keine Buchung mit dieser E-Mail-Adresse gefunden.' }
-    }
-
-    // 2. Find today's active bookings for this parent at this provider
     const { data: bookings } = await sb.from('provider_bookings')
       .select('id, activity_id, child_info, payment_status, amount_paid, status, payment_method, booked_date')
-      .eq('provider_id', providerId)
-      .eq('parent_id', parent.id)
+      .eq('provider_id', providerId).eq('parent_id', parentId)
       .in('status', ['confirmed', 'pending'])
+    if (!bookings || bookings.length === 0) return { bookings: [], error: 'Keine aktiven Buchungen für heute gefunden.' }
 
-    if (!bookings || bookings.length === 0) {
-      return { success: false, checkedIn: [], error: 'Keine aktiven Buchungen für heute gefunden.' }
-    }
-
-    // 3. Get activity details for all booked activities
     const activityIds = [...new Set(bookings.map((b: any) => b.activity_id))]
     const { data: activities } = await sb.from('activities')
-      .select('id, title, schedule, pricing')
-      .in('id', activityIds)
-
+      .select('id, title, schedule, pricing').in('id', activityIds)
     const activityMap = new Map((activities ?? []).map((a: any) => [a.id, a]))
 
-    // 4. Filter bookings that are relevant for today
-    const todayDow = nowDE.getDay() // 0=Sun, 1=Mon, ...
-    const dowMap: Record<number, string> = { 0: 'SU', 1: 'MO', 2: 'TU', 3: 'WE', 4: 'TH', 5: 'FR', 6: 'SA' }
-    const todayCode = dowMap[todayDow]
-
-    // Helper: get today's slot start time for an activity (in minutes since midnight)
     function getSlotStartMinutes(activity: any): number | null {
       if (!activity?.schedule) return null
       const sched = activity.schedule as any
@@ -214,18 +184,15 @@ export const SupabaseAttendanceService = {
       const slots = Array.isArray(sched) ? sched : (sched?.slots ?? [])
       return slots.some((s: any) => s.day?.toUpperCase() === todayCode)
     })
+    if (todayBookings.length === 0) return { bookings: [], error: 'Heute findet kein Kurs statt, für den du angemeldet bist.' }
 
-    if (todayBookings.length === 0) {
-      return { success: false, checkedIn: [], error: 'Heute findet kein Kurs statt, für den du angemeldet bist.' }
-    }
-
-    // 5. Check time window — at least one course must be within the check-in window
+    // Check time window
     let earliestOpen: number | null = null
     let allOutsideWindow = true
     for (const b of todayBookings) {
       const activity = activityMap.get(b.activity_id)
       const startMin = getSlotStartMinutes(activity)
-      if (startMin === null) { allOutsideWindow = false; continue } // no time = always allow
+      if (startMin === null) { allOutsideWindow = false; continue }
       const windowOpen = startMin - beforeMinutes
       const windowClose = startMin + afterMinutes
       if (nowMinutes >= windowOpen && nowMinutes <= windowClose) {
@@ -234,17 +201,94 @@ export const SupabaseAttendanceService = {
         if (earliestOpen === null || windowOpen < earliestOpen) earliestOpen = windowOpen
       }
     }
-
     if (allOutsideWindow) {
       if (earliestOpen !== null) {
         const h = Math.floor(earliestOpen / 60).toString().padStart(2, '0')
         const m = (earliestOpen % 60).toString().padStart(2, '0')
-        return { success: false, checkedIn: [], error: `Check-in ist erst ab ${h}:${m} Uhr möglich.` }
+        return { bookings: [], error: `Check-in ist erst ab ${h}:${m} Uhr möglich.` }
       }
-      return { success: false, checkedIn: [], error: 'Das Check-in-Fenster für heute ist geschlossen.' }
+      return { bookings: [], error: 'Das Check-in-Fenster für heute ist geschlossen.' }
     }
 
-    // 6. Check in each booking (only those within time window)
+    // Check which bookings are already checked in
+    const bookingIds = todayBookings.map((b: any) => b.id)
+    const { data: existingCheckins } = await sb.from(TABLE)
+      .select('booking_id').in('booking_id', bookingIds).eq('date', today).eq('checked_in', true)
+    const alreadyCheckedIn = new Set((existingCheckins ?? []).map((r: any) => r.booking_id))
+
+    return {
+      bookings: todayBookings.map((b: any) => {
+        const activity = activityMap.get(b.activity_id)
+        const ci = b.child_info as any
+        const pricing = (activity?.pricing as Array<{ amount: number }>) ?? []
+        const amount = pricing[0]?.amount ?? b.amount_paid ?? 0
+        const isPaid = b.payment_status === 'paid'
+        return {
+          bookingId: b.id,
+          activityTitle: activity?.title ?? 'Kurs',
+          childName: ci?.firstName ? `${ci.firstName} ${ci.lastName || ''}`.trim() : 'Kind',
+          paymentStatus: isPaid ? 'paid' as const : 'unpaid' as const,
+          amountDue: isPaid ? 0 : amount,
+          alreadyCheckedIn: alreadyCheckedIn.has(b.id),
+        }
+      }),
+      today,
+      parentId,
+      activityMap,
+    }
+  },
+
+  // Step 1: Lookup — returns children/courses for today (no check-in yet)
+  async qrLookup(providerId: ID, email: string): Promise<{
+    success: boolean
+    bookings: Array<{
+      bookingId: string
+      activityTitle: string
+      childName: string
+      paymentStatus: 'paid' | 'unpaid'
+      amountDue: number
+      alreadyCheckedIn: boolean
+    }>
+    error?: string
+  }> {
+    const sb = getServiceClient()
+    const { data: parent } = await sb.from('parents')
+      .select('id, name, email').ilike('email', email.trim()).maybeSingle()
+    if (!parent) return { success: false, bookings: [], error: 'Keine Buchung mit dieser E-Mail-Adresse gefunden.' }
+
+    const result = await this._getTodayBookings(sb, providerId, parent.id)
+    if (result.error) return { success: false, bookings: [], error: result.error }
+    return { success: true, bookings: result.bookings }
+  },
+
+  // Step 2: Check in selected bookings
+  async qrCheckIn(providerId: ID, email: string, bookingIds?: string[]): Promise<{
+    success: boolean
+    checkedIn: Array<{
+      activityTitle: string
+      childName: string
+      paymentStatus: string
+      amountDue: number
+    }>
+    error?: string
+  }> {
+    const sb = getServiceClient()
+    const { data: parent } = await sb.from('parents')
+      .select('id, name, email').ilike('email', email.trim()).maybeSingle()
+    if (!parent) return { success: false, checkedIn: [], error: 'Keine Buchung mit dieser E-Mail-Adresse gefunden.' }
+
+    const result = await this._getTodayBookings(sb, providerId, parent.id)
+    if (result.error) return { success: false, checkedIn: [], error: result.error }
+
+    // Filter to only selected bookings (if bookingIds provided)
+    const toCheckIn = bookingIds
+      ? result.bookings.filter((b: any) => bookingIds.includes(b.bookingId))
+      : result.bookings
+
+    if (toCheckIn.length === 0) return { success: false, checkedIn: [], error: 'Keine Buchungen zum Einchecken ausgewählt.' }
+
+    // 6. Check in selected bookings
+    const today = result.today
     const checkedIn: Array<{
       activityTitle: string
       childName: string
@@ -252,18 +296,20 @@ export const SupabaseAttendanceService = {
       amountDue: number
     }> = []
 
-    for (const booking of todayBookings) {
-      const activity = activityMap.get(booking.activity_id)
-      const ci = booking.child_info as any
+    for (const item of toCheckIn) {
+      if (item.alreadyCheckedIn) {
+        checkedIn.push({ activityTitle: item.activityTitle, childName: item.childName, paymentStatus: item.paymentStatus, amountDue: item.amountDue })
+        continue
+      }
 
       // Upsert attendance record
       const { data: existing } = await sb.from(TABLE)
-        .select('id').eq('booking_id', booking.id).eq('date', today).maybeSingle()
+        .select('id').eq('booking_id', item.bookingId).eq('date', today).maybeSingle()
 
       if (!existing) {
         await sb.from(TABLE).insert({
-          booking_id: booking.id,
-          activity_id: booking.activity_id,
+          booking_id: item.bookingId,
+          activity_id: null, // not needed for QR check-in
           provider_id: providerId,
           parent_id: parent.id,
           date: today,
@@ -279,17 +325,7 @@ export const SupabaseAttendanceService = {
         }).eq('id', existing.id)
       }
 
-      // Determine payment info
-      const pricing = (activity?.pricing as Array<{ amount: number }>) ?? []
-      const amount = pricing[0]?.amount ?? booking.amount_paid ?? 0
-      const isPaid = booking.payment_status === 'paid'
-
-      checkedIn.push({
-        activityTitle: activity?.title ?? 'Kurs',
-        childName: ci?.firstName ? `${ci.firstName} ${ci.lastName || ''}`.trim() : 'Kind',
-        paymentStatus: isPaid ? 'paid' : 'unpaid',
-        amountDue: isPaid ? 0 : amount,
-      })
+      checkedIn.push({ activityTitle: item.activityTitle, childName: item.childName, paymentStatus: item.paymentStatus, amountDue: item.amountDue })
     }
 
     return { success: true, checkedIn }

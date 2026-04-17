@@ -2942,17 +2942,25 @@ export function registerRoutes(router: Router) {
   // QR CHECK-IN (public – no auth)
   // ============================================================
 
-  router.post('/api/public/checkin', async (req, res) => {
+  // Step 1: Lookup — email → list of children/courses for today
+  router.post('/api/public/checkin/lookup', async (req, res) => {
     const { providerId, email } = req.body as { providerId?: string; email?: string }
     if (!providerId || !email) return res.error(400, 'providerId und email sind erforderlich')
+    const provider = await ProviderService.getById(providerId)
+    if (!provider) return res.error(404, 'Anbieter nicht gefunden')
+    const result = await AttendanceService.qrLookup(providerId, email)
+    res.json({ data: result })
+  })
 
-    // Verify provider exists
+  // Step 2: Check in selected bookings
+  router.post('/api/public/checkin', async (req, res) => {
+    const { providerId, email, bookingIds } = req.body as { providerId?: string; email?: string; bookingIds?: string[] }
+    if (!providerId || !email) return res.error(400, 'providerId und email sind erforderlich')
     const provider = await ProviderService.getById(providerId)
     if (!provider) return res.error(404, 'Anbieter nicht gefunden')
 
-    const result = await AttendanceService.qrCheckIn(providerId, email)
+    const result = await AttendanceService.qrCheckIn(providerId, email, bookingIds)
 
-    // Add redirect URL from provider (if configured)
     const sb = getServiceClient()
     const { data: provData } = await sb.from('providers')
       .select('checkin_redirect_url').eq('id', providerId).maybeSingle()

@@ -471,7 +471,7 @@ if(params.get('font')){document.body.style.fontFamily=params.get('font')+',syste
   return `<!DOCTYPE html><html><body><p>Widget-Typ "${type}" nicht gefunden. Verfügbar: calendar, courses</p></body></html>`
 }
 
-// QR Check-in Page – mobile-optimized form for parents
+// QR Check-in Page – mobile-optimized two-step flow
 function generateCheckinHtml(providerId: string): string {
   const safeId = providerId.replace(/[^a-zA-Z0-9-]/g, '')
   const apiBase = `${process.env.APP_PUBLIC_URL || ''}`
@@ -487,12 +487,24 @@ h1{font-size:22px;color:#3C2225;margin-bottom:8px;font-weight:700}
 .subtitle{color:#8B7355;font-size:14px;margin-bottom:28px}
 .input-group{text-align:left;margin-bottom:16px}
 .input-group label{display:block;font-size:13px;font-weight:500;color:#3C2225;margin-bottom:6px}
-.input-group input{width:100%;padding:14px 16px;border:2px solid #e8e0d8;border-radius:12px;font-size:16px;font-family:inherit;outline:none;transition:border-color .2s}
-.input-group input:focus{border-color:#D4956A}
+.input-group input[type=email]{width:100%;padding:14px 16px;border:2px solid #e8e0d8;border-radius:12px;font-size:16px;font-family:inherit;outline:none;transition:border-color .2s}
+.input-group input[type=email]:focus{border-color:#D4956A}
 .btn{width:100%;padding:16px;background:#D4956A;color:#fff;border:none;border-radius:14px;font-size:16px;font-weight:600;cursor:pointer;transition:background .2s;margin-top:8px;font-family:inherit}
 .btn:hover{background:#c4854a}
 .btn:disabled{background:#ccc;cursor:not-allowed}
-.result{margin-top:24px;text-align:left}
+.child-list{text-align:left;margin:20px 0}
+.child-item{display:flex;align-items:center;gap:12px;padding:14px 16px;border:2px solid #e8e0d8;border-radius:14px;margin-bottom:10px;cursor:pointer;transition:all .2s}
+.child-item:hover{border-color:#D4956A;background:#faf5f0}
+.child-item.selected{border-color:#D4956A;background:#fdf4ed}
+.child-item.already{border-color:#a7f3d0;background:#ecfdf5;cursor:default;opacity:.7}
+.child-cb{width:22px;height:22px;border-radius:6px;border:2px solid #ccc;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:14px;transition:all .2s}
+.child-item.selected .child-cb{background:#D4956A;border-color:#D4956A;color:#fff}
+.child-item.already .child-cb{background:#059669;border-color:#059669;color:#fff}
+.child-info{flex:1}
+.child-name{font-weight:600;font-size:15px;color:#3C2225}
+.child-course{font-size:13px;color:#8B7355;margin-top:2px}
+.child-payment{font-size:12px;margin-top:4px}
+.paid{color:#059669}.unpaid{color:#d97706}
 .result-item{padding:16px;border-radius:14px;margin-bottom:10px;display:flex;align-items:center;gap:12px}
 .result-ok{background:#ecfdf5;border:1px solid #a7f3d0}
 .result-pay{background:#fffbeb;border:1px solid #fde68a}
@@ -507,67 +519,117 @@ h1{font-size:22px;color:#3C2225;margin-bottom:8px;font-weight:700}
 @keyframes spin{to{transform:rotate(360deg)}}
 .footer{font-size:11px;color:#94a3b8;margin-top:24px}
 </style></head><body>
-<div class="card">
-  <div class="logo">📋</div>
-  <h1>Check-in</h1>
-  <p class="subtitle">Scanne den QR-Code und melde dich an</p>
+<div class="card" id="card">
 
-  <form id="checkinForm">
-    <div class="input-group">
-      <label for="email">E-Mail-Adresse</label>
-      <input type="email" id="email" placeholder="deine@email.de" required autocomplete="email" inputmode="email">
-    </div>
-    <button type="submit" class="btn" id="submitBtn">
-      <span id="btnText">Einchecken</span>
-      <div class="spinner" id="spinner"></div>
+  <!-- Step 1: Email -->
+  <div id="step1">
+    <div class="logo">📋</div>
+    <h1>Check-in</h1>
+    <p class="subtitle">Gib deine E-Mail-Adresse ein</p>
+    <form id="emailForm">
+      <div class="input-group">
+        <label for="email">E-Mail-Adresse</label>
+        <input type="email" id="email" placeholder="deine@email.de" required autocomplete="email" inputmode="email">
+      </div>
+      <button type="submit" class="btn" id="lookupBtn">
+        <span id="lookupText">Weiter</span>
+        <div class="spinner" id="lookupSpinner"></div>
+      </button>
+    </form>
+    <div id="lookupError"></div>
+  </div>
+
+  <!-- Step 2: Select children (hidden initially) -->
+  <div id="step2" style="display:none">
+    <div class="logo">👋</div>
+    <h1>Willkommen!</h1>
+    <p class="subtitle">Wähle aus, wen du einchecken möchtest</p>
+    <div id="childList" class="child-list"></div>
+    <button onclick="doCheckin()" class="btn" id="checkinBtn">
+      <span id="checkinText">Einchecken</span>
+      <div class="spinner" id="checkinSpinner"></div>
     </button>
-  </form>
-
-  <div id="result"></div>
+  </div>
 
   <div class="footer">Powered by Urban Kids Club</div>
 </div>
 
 <script>
-const PROVIDER_ID='${safeId}';
-const API='${apiBase}';
+const PID='${safeId}',API='${apiBase}';
+let _email='',_bookings=[];
 
-document.getElementById('checkinForm').addEventListener('submit',async function(e){
+document.getElementById('emailForm').addEventListener('submit',async function(e){
   e.preventDefault();
-  const email=document.getElementById('email').value.trim();
-  if(!email)return;
-
-  const btn=document.getElementById('submitBtn');
-  const btnText=document.getElementById('btnText');
-  const spinner=document.getElementById('spinner');
-
-  btn.disabled=true;
-  btnText.style.display='none';
-  spinner.style.display='block';
-
+  _email=document.getElementById('email').value.trim();
+  if(!_email)return;
+  const btn=document.getElementById('lookupBtn'),txt=document.getElementById('lookupText'),sp=document.getElementById('lookupSpinner');
+  btn.disabled=true;txt.style.display='none';sp.style.display='block';
+  document.getElementById('lookupError').innerHTML='';
   try{
-    const r=await fetch(API+'/api/public/checkin',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({providerId:PROVIDER_ID,email:email})
-    });
-    const json=await r.json();
-    const data=json.data;
-
-    if(!data.success){
-      // Error: show message but keep form
-      document.getElementById('result').innerHTML='<div class="error-msg">'+esc(data.error||'Fehler beim Check-in')+'</div>';
-      btn.disabled=false;
-      btnText.style.display='';
-      spinner.style.display='none';
-      return;
+    const r=await fetch(API+'/api/public/checkin/lookup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({providerId:PID,email:_email})});
+    const d=(await r.json()).data;
+    if(!d.success){
+      document.getElementById('lookupError').innerHTML='<div class="error-msg">'+esc(d.error)+'</div>';
+      btn.disabled=false;txt.style.display='';sp.style.display='none';return;
     }
+    _bookings=d.bookings;
+    renderChildren();
+    document.getElementById('step1').style.display='none';
+    document.getElementById('step2').style.display='';
+  }catch(err){
+    document.getElementById('lookupError').innerHTML='<div class="error-msg">Verbindungsfehler. Bitte versuche es erneut.</div>';
+    btn.disabled=false;txt.style.display='';sp.style.display='none';
+  }
+});
 
-    // Success: replace entire card content with confirmation
-    const card=document.querySelector('.card');
-    let items='';
-    let hasUnpaid=false;
-    for(const item of data.checkedIn){
+function renderChildren(){
+  const el=document.getElementById('childList');
+  let html='';
+  for(let i=0;i<_bookings.length;i++){
+    const b=_bookings[i];
+    const done=b.alreadyCheckedIn;
+    const cls=done?'child-item already':'child-item'+(b._selected?' selected':'');
+    html+='<div class="'+cls+'" '+(done?'':'onclick="toggleChild('+i+')"')+'>';
+    html+='<div class="child-cb">'+(done?'✓':(b._selected?'✓':''))+'</div>';
+    html+='<div class="child-info">';
+    html+='<div class="child-name">'+esc(b.childName)+'</div>';
+    html+='<div class="child-course">'+esc(b.activityTitle)+'</div>';
+    if(done){
+      html+='<div class="child-payment paid">Bereits eingecheckt ✓</div>';
+    }else if(b.paymentStatus==='paid'){
+      html+='<div class="child-payment paid">Bezahlt ✓</div>';
+    }else{
+      html+='<div class="child-payment unpaid">'+b.amountDue.toFixed(2).replace('.',',')+' € offen</div>';
+    }
+    html+='</div></div>';
+  }
+  el.innerHTML=html;
+  // Update button state
+  const anySelected=_bookings.some(function(b){return b._selected&&!b.alreadyCheckedIn});
+  document.getElementById('checkinBtn').disabled=!anySelected;
+}
+
+function toggleChild(i){
+  if(_bookings[i].alreadyCheckedIn)return;
+  _bookings[i]._selected=!_bookings[i]._selected;
+  renderChildren();
+}
+
+async function doCheckin(){
+  const ids=_bookings.filter(function(b){return b._selected&&!b.alreadyCheckedIn}).map(function(b){return b.bookingId});
+  if(!ids.length)return;
+  const btn=document.getElementById('checkinBtn'),txt=document.getElementById('checkinText'),sp=document.getElementById('checkinSpinner');
+  btn.disabled=true;txt.style.display='none';sp.style.display='block';
+  try{
+    const r=await fetch(API+'/api/public/checkin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({providerId:PID,email:_email,bookingIds:ids})});
+    const d=(await r.json()).data;
+    if(!d.success){
+      alert(d.error||'Fehler');btn.disabled=false;txt.style.display='';sp.style.display='none';return;
+    }
+    // Show confirmation
+    const card=document.getElementById('card');
+    let items='',hasUnpaid=false;
+    for(const item of d.checkedIn){
       const isPaid=item.paymentStatus==='paid';
       if(!isPaid)hasUnpaid=true;
       items+='<div class="result-item '+(isPaid?'result-ok':'result-pay')+'">';
@@ -575,34 +637,20 @@ document.getElementById('checkinForm').addEventListener('submit',async function(
       items+='<div class="result-text">';
       items+='<div class="title">'+esc(item.activityTitle)+'</div>';
       items+='<div class="detail">'+esc(item.childName)+' — ';
-      if(isPaid){
-        items+='Alles erledigt — viel Spaß! 🎉';
-      }else{
-        items+='Noch '+item.amountDue.toFixed(2).replace('.',',')+' € offen. Kurz vor Ort begleichen — dann kann\\'s losgehen! 💪';
-      }
+      items+=isPaid?'Alles erledigt — viel Spaß! 🎉':'Noch '+item.amountDue.toFixed(2).replace('.',',')+' € offen. Kurz vor Ort begleichen — dann kann\\'s losgehen! 💪';
       items+='</div></div></div>';
     }
-
-    card.innerHTML=
-      '<div class="logo" style="background:'+(hasUnpaid?'#d97706':'#059669')+'">'+
-      (hasUnpaid?'💳':'✓')+'</div>'+
+    card.innerHTML='<div class="logo" style="background:'+(hasUnpaid?'#d97706':'#059669')+'">'+(hasUnpaid?'💳':'✓')+'</div>'+
       '<h1>'+(hasUnpaid?'Fast geschafft!':'Du bist drin!')+'</h1>'+
       '<p class="subtitle">'+(hasUnpaid?'Nur noch eine Kleinigkeit…':'Check-in erfolgreich — hab eine tolle Zeit!')+'</p>'+
-      '<div class="result" style="margin-top:20px">'+items+'</div>'+
-      (data.redirectUrl?'<p style="color:#94a3b8;font-size:12px;margin-top:16px">Du wirst in 5 Sekunden weitergeleitet...</p>':'')+
+      '<div style="text-align:left;margin-top:20px">'+items+'</div>'+
+      (d.redirectUrl?'<p style="color:#94a3b8;font-size:12px;margin-top:16px">Du wirst in 5 Sekunden weitergeleitet...</p>':'')+
       '<div class="footer">Powered by Urban Kids Club</div>';
-
-    // Redirect after 5 seconds if configured
-    if(data.redirectUrl){
-      setTimeout(function(){window.location.href=data.redirectUrl},5000);
-    }
+    if(d.redirectUrl)setTimeout(function(){window.location.href=d.redirectUrl},5000);
   }catch(err){
-    document.getElementById('result').innerHTML='<div class="error-msg">Verbindungsfehler. Bitte versuche es erneut.</div>';
-    btn.disabled=false;
-    btnText.style.display='';
-    spinner.style.display='none';
+    alert('Verbindungsfehler');btn.disabled=false;txt.style.display='';sp.style.display='none';
   }
-});
+}
 
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
 </script>
