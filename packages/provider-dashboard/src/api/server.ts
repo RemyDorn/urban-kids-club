@@ -3,7 +3,7 @@
 // ============================================================
 
 import { createServer } from 'node:http'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Router } from './router'
@@ -80,7 +80,6 @@ try {
   swJs = readFileSync(resolve(__dirname, '../frontend/sw.js'), 'utf-8')
   // Load all icon files
   const iconsDir = resolve(__dirname, '../frontend/icons')
-  const { readdirSync } = require('node:fs')
   for (const file of readdirSync(iconsDir)) {
     pwaIcons.set(file, readFileSync(resolve(iconsDir, file)))
   }
