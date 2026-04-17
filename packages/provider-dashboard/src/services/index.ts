@@ -82,7 +82,9 @@ export const NotificationService = USE_SUPABASE ? SupabaseNotificationService : 
 // Services WITHOUT Supabase implementations (deferred) – always in-memory
 // ============================================================
 
-export { AttendanceService } from './attendance.service'
+import { AttendanceService as MemAttendanceService } from './attendance.service'
+import { SupabaseAttendanceService } from './supabase/attendance.service'
+export const AttendanceService = USE_SUPABASE ? SupabaseAttendanceService : MemAttendanceService as any
 export { TeamService } from './team.service'
 export { ReviewService } from './review.service'
 export { MessageService } from './message.service'

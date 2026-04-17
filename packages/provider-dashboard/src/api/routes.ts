@@ -2939,6 +2939,30 @@ export function registerRoutes(router: Router) {
   })
 
   // ============================================================
+  // QR CHECK-IN (public – no auth)
+  // ============================================================
+
+  router.post('/api/public/checkin', async (req, res) => {
+    const { providerId, email } = req.body as { providerId?: string; email?: string }
+    if (!providerId || !email) return res.error(400, 'providerId und email sind erforderlich')
+
+    // Verify provider exists
+    const provider = await ProviderService.getById(providerId)
+    if (!provider) return res.error(404, 'Anbieter nicht gefunden')
+
+    const result = await AttendanceService.qrCheckIn(providerId, email)
+    res.json({ data: result })
+  })
+
+  // Today's check-in overview for dashboard
+  router.get('/api/attendance/today', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    const overview = await AttendanceService.getTodayOverview(auth.providerId)
+    res.json({ data: overview })
+  })
+
+  // ============================================================
   // OPENAPI SPEC
   // ============================================================
 

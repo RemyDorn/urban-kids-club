@@ -5000,6 +5000,7 @@
           <button onclick="settingsTab='loyalty'; renderSettings()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${settingsTab === 'loyalty' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}">Treueprogramm</button>
           <button onclick="settingsTab='courses'; renderSettings()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${settingsTab === 'courses' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}">Kurse & Blöcke</button>
           <button onclick="settingsTab='legal'; renderSettings()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${settingsTab === 'legal' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}">Rechtliches</button>
+          <button onclick="settingsTab='checkin'; renderSettings()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${settingsTab === 'checkin' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}">QR Check-in</button>
         </div>
         <div id="settingsContent"></div>
       `
@@ -5010,6 +5011,127 @@
       else if (settingsTab === 'loyalty') sc.innerHTML = renderLoyaltyTab()
       else if (settingsTab === 'courses') sc.innerHTML = renderCoursesSettingsTab(p)
       else if (settingsTab === 'legal') sc.innerHTML = renderLegalTab(s)
+      else if (settingsTab === 'checkin') { sc.innerHTML = renderCheckinTab(); setTimeout(renderQRCode, 50) }
+    }
+
+    function renderCheckinTab() {
+      const origin = window.location.origin
+      const checkinUrl = origin + '/checkin/' + currentProvider.id
+      return `
+        <div class="max-w-2xl space-y-6">
+          <div class="bg-white rounded-xl border border-brand-200 p-6">
+            <h3 class="font-semibold text-gray-900 mb-4">📋 QR-Code Check-in</h3>
+            <p class="text-sm text-gray-600 mb-4">
+              Drucke diesen QR-Code aus und stelle ihn in deinen Räumlichkeiten auf. Eltern scannen den Code bei Ankunft,
+              geben ihre E-Mail-Adresse ein und werden automatisch eingecheckt.
+            </p>
+
+            <div class="bg-gray-50 rounded-xl p-6 text-center mb-4">
+              <div id="qrCodeContainer" class="inline-block bg-white p-4 rounded-xl shadow-sm mb-3">
+                <canvas id="qrCanvas" width="200" height="200"></canvas>
+              </div>
+              <p class="text-xs text-gray-500 mt-2 break-all">${checkinUrl}</p>
+            </div>
+
+            <div class="flex gap-3">
+              <button onclick="downloadQR()" class="flex-1 bg-brand-500 text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-brand-600 transition-colors">
+                ⬇ QR-Code herunterladen
+              </button>
+              <button onclick="printQR()" class="flex-1 bg-white border border-brand-300 text-brand-700 px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-brand-50 transition-colors">
+                🖨 Drucken
+              </button>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-xl border border-brand-200 p-6">
+            <h3 class="font-semibold text-gray-900 mb-3">So funktioniert's</h3>
+            <div class="space-y-3">
+              <div class="flex gap-3 items-start">
+                <span class="w-7 h-7 bg-brand-100 text-brand-700 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0">1</span>
+                <p class="text-sm text-gray-600">Eltern scannen den QR-Code mit ihrem Smartphone</p>
+              </div>
+              <div class="flex gap-3 items-start">
+                <span class="w-7 h-7 bg-brand-100 text-brand-700 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0">2</span>
+                <p class="text-sm text-gray-600">Sie geben ihre E-Mail-Adresse ein (die gleiche wie bei der Buchung)</p>
+              </div>
+              <div class="flex gap-3 items-start">
+                <span class="w-7 h-7 bg-brand-100 text-brand-700 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0">3</span>
+                <p class="text-sm text-gray-600">Automatischer Abgleich mit heutigen Kursen — Check-in erledigt!</p>
+              </div>
+              <div class="flex gap-3 items-start">
+                <span class="w-7 h-7 bg-amber-100 text-amber-700 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0">💳</span>
+                <p class="text-sm text-gray-600">Bei offener Zahlung wird der Elternteil freundlich an die Bezahlung erinnert</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-xl border border-brand-200 p-6">
+            <h3 class="font-semibold text-gray-900 mb-3">Heutige Check-ins</h3>
+            <div id="todayCheckins" class="text-sm text-gray-500">Wird geladen...</div>
+          </div>
+        </div>
+      `
+    }
+
+    // Generate QR code on canvas (simple QR via external API rendered as image)
+    async function renderQRCode() {
+      const canvas = document.getElementById('qrCanvas')
+      if (!canvas) return
+      const checkinUrl = window.location.origin + '/checkin/' + currentProvider.id
+      const img = new Image()
+      img.crossOrigin = 'anonymous'
+      img.onload = function() {
+        const ctx = canvas.getContext('2d')
+        ctx.fillStyle = '#fff'
+        ctx.fillRect(0, 0, 200, 200)
+        ctx.drawImage(img, 0, 0, 200, 200)
+      }
+      img.src = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(checkinUrl)
+
+      // Load today's check-ins
+      try {
+        const r = await apiFetch('/api/attendance/today')
+        const data = r.data || {}
+        const el = document.getElementById('todayCheckins')
+        if (!el) return
+        if (!data.records || data.records.length === 0) {
+          el.innerHTML = '<p class="text-gray-400">Noch keine Check-ins heute.</p>'
+        } else {
+          el.innerHTML = '<p class="font-medium text-gray-700 mb-2">' + data.checkedIn + ' von ' + data.total + ' eingecheckt</p>' +
+            '<div class="space-y-2">' + data.records.map(function(r) {
+              return '<div class="flex items-center gap-2 py-1.5 px-3 rounded-lg ' + (r.checkedIn ? 'bg-green-50' : 'bg-gray-50') + '">' +
+                '<span class="text-sm">' + (r.checkedIn ? '✓' : '—') + '</span>' +
+                '<span class="text-sm text-gray-700">' + (r.checkinMethod === 'qr' ? '📱 QR' : '✋ Manuell') + '</span>' +
+                '<span class="text-xs text-gray-400">' + (r.checkedInAt ? new Date(r.checkedInAt).toLocaleTimeString('de-DE', {hour:'2-digit',minute:'2-digit'}) : '') + '</span>' +
+                '</div>'
+            }).join('') + '</div>'
+        }
+      } catch(e) { /* ignore */ }
+    }
+
+    function downloadQR() {
+      const canvas = document.getElementById('qrCanvas')
+      if (!canvas) return
+      const link = document.createElement('a')
+      link.download = 'checkin-qr-code.png'
+      link.href = canvas.toDataURL('image/png')
+      link.click()
+    }
+
+    function printQR() {
+      const canvas = document.getElementById('qrCanvas')
+      if (!canvas) return
+      const checkinUrl = window.location.origin + '/checkin/' + currentProvider.id
+      const w = window.open('', '_blank')
+      w.document.write('<html><head><title>QR Check-in</title><style>body{font-family:Inter,sans-serif;text-align:center;padding:60px}h1{font-size:28px;margin-bottom:8px}p{color:#666;font-size:14px;margin-bottom:32px}.qr{display:inline-block;padding:16px;border:3px solid #000;border-radius:16px}img{width:280px;height:280px}.url{font-size:10px;color:#999;margin-top:16px;word-break:break-all}.footer{margin-top:40px;font-size:12px;color:#aaa}</style></head><body>')
+      w.document.write('<h1>' + esc(currentProvider.name || 'Check-in') + '</h1>')
+      w.document.write('<p>Scanne den QR-Code um dich einzuchecken</p>')
+      w.document.write('<div class="qr"><img src="' + canvas.toDataURL('image/png') + '"></div>')
+      w.document.write('<p class="url">' + esc(checkinUrl) + '</p>')
+      w.document.write('<div class="footer">Powered by Urban Kids Club</div>')
+      w.document.write('</body></html>')
+      w.document.close()
+      w.print()
     }
 
     function renderCoursesSettingsTab(p) {

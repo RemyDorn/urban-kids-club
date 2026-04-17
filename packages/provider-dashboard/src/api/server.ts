@@ -471,6 +471,126 @@ if(params.get('font')){document.body.style.fontFamily=params.get('font')+',syste
   return `<!DOCTYPE html><html><body><p>Widget-Typ "${type}" nicht gefunden. Verfügbar: calendar, courses</p></body></html>`
 }
 
+// QR Check-in Page – mobile-optimized form for parents
+function generateCheckinHtml(providerId: string): string {
+  const safeId = providerId.replace(/[^a-zA-Z0-9-]/g, '')
+  const apiBase = `${process.env.APP_PUBLIC_URL || ''}`
+  return `<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Check-in</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter',sans-serif;min-height:100vh;background:linear-gradient(135deg,#faf9f8 0%,#f0ebe6 100%);display:flex;align-items:center;justify-content:center;padding:20px}
+.card{background:#fff;border-radius:24px;box-shadow:0 8px 32px rgba(0,0,0,0.08);max-width:420px;width:100%;padding:40px 32px;text-align:center}
+.logo{width:56px;height:56px;background:#D4956A;border-radius:16px;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:28px;color:#fff}
+h1{font-size:22px;color:#3C2225;margin-bottom:8px;font-weight:700}
+.subtitle{color:#8B7355;font-size:14px;margin-bottom:28px}
+.input-group{text-align:left;margin-bottom:16px}
+.input-group label{display:block;font-size:13px;font-weight:500;color:#3C2225;margin-bottom:6px}
+.input-group input{width:100%;padding:14px 16px;border:2px solid #e8e0d8;border-radius:12px;font-size:16px;font-family:inherit;outline:none;transition:border-color .2s}
+.input-group input:focus{border-color:#D4956A}
+.btn{width:100%;padding:16px;background:#D4956A;color:#fff;border:none;border-radius:14px;font-size:16px;font-weight:600;cursor:pointer;transition:background .2s;margin-top:8px;font-family:inherit}
+.btn:hover{background:#c4854a}
+.btn:disabled{background:#ccc;cursor:not-allowed}
+.result{margin-top:24px;text-align:left}
+.result-item{padding:16px;border-radius:14px;margin-bottom:10px;display:flex;align-items:center;gap:12px}
+.result-ok{background:#ecfdf5;border:1px solid #a7f3d0}
+.result-pay{background:#fffbeb;border:1px solid #fde68a}
+.result-icon{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
+.result-ok .result-icon{background:#d1fae5;color:#059669}
+.result-pay .result-icon{background:#fef3c7;color:#d97706}
+.result-text{flex:1}
+.result-text .title{font-weight:600;font-size:14px;color:#1f2937}
+.result-text .detail{font-size:13px;color:#6b7280;margin-top:2px}
+.error-msg{color:#ef4444;font-size:14px;margin-top:16px;padding:12px;background:#fef2f2;border-radius:10px}
+.spinner{display:none;width:24px;height:24px;border:3px solid #fff;border-top-color:transparent;border-radius:50%;animation:spin .6s linear infinite;margin:0 auto}
+@keyframes spin{to{transform:rotate(360deg)}}
+.footer{font-size:11px;color:#94a3b8;margin-top:24px}
+</style></head><body>
+<div class="card">
+  <div class="logo">📋</div>
+  <h1>Check-in</h1>
+  <p class="subtitle">Scanne den QR-Code und melde dich an</p>
+
+  <form id="checkinForm">
+    <div class="input-group">
+      <label for="email">E-Mail-Adresse</label>
+      <input type="email" id="email" placeholder="deine@email.de" required autocomplete="email" inputmode="email">
+    </div>
+    <button type="submit" class="btn" id="submitBtn">
+      <span id="btnText">Einchecken</span>
+      <div class="spinner" id="spinner"></div>
+    </button>
+  </form>
+
+  <div id="result"></div>
+
+  <div class="footer">Powered by Urban Kids Club</div>
+</div>
+
+<script>
+const PROVIDER_ID='${safeId}';
+const API='${apiBase}';
+
+document.getElementById('checkinForm').addEventListener('submit',async function(e){
+  e.preventDefault();
+  const email=document.getElementById('email').value.trim();
+  if(!email)return;
+
+  const btn=document.getElementById('submitBtn');
+  const btnText=document.getElementById('btnText');
+  const spinner=document.getElementById('spinner');
+  const resultDiv=document.getElementById('result');
+
+  btn.disabled=true;
+  btnText.style.display='none';
+  spinner.style.display='block';
+  resultDiv.innerHTML='';
+
+  try{
+    const r=await fetch(API+'/api/public/checkin',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({providerId:PROVIDER_ID,email:email})
+    });
+    const json=await r.json();
+    const data=json.data;
+
+    if(!data.success){
+      resultDiv.innerHTML='<div class="error-msg">'+esc(data.error||'Fehler beim Check-in')+'</div>';
+      return;
+    }
+
+    let html='';
+    for(const item of data.checkedIn){
+      const isPaid=item.paymentStatus==='paid';
+      html+='<div class="result-item '+(isPaid?'result-ok':'result-pay')+'">';
+      html+='<div class="result-icon">'+(isPaid?'✓':'💳')+'</div>';
+      html+='<div class="result-text">';
+      html+='<div class="title">'+esc(item.activityTitle)+'</div>';
+      html+='<div class="detail">'+esc(item.childName)+' — ';
+      if(isPaid){
+        html+='Bezahlt. Viel Spaß!';
+      }else{
+        html+='Bitte zahle noch '+item.amountDue.toFixed(2).replace('.',',')+' € vor Ort.';
+      }
+      html+='</div></div></div>';
+    }
+    resultDiv.innerHTML='<div class="result">'+html+'</div>';
+  }catch(err){
+    resultDiv.innerHTML='<div class="error-msg">Verbindungsfehler. Bitte versuche es erneut.</div>';
+  }finally{
+    btn.disabled=false;
+    btnText.style.display='';
+    spinner.style.display='none';
+  }
+});
+
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+</script>
+</body></html>`
+}
+
 // Server starten
 const server = createServer((req, res) => {
   const url = req.url ?? '/'
@@ -498,6 +618,16 @@ const server = createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
     res.end(generateEmbedHtml(slug, embedType, url))
     return
+  }
+
+  // QR Check-in: Public page for parents to check in via QR code
+  if (path.startsWith('/checkin/')) {
+    const providerId = path.split('/')[2] || ''
+    if (providerId) {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+      res.end(generateCheckinHtml(providerId))
+      return
+    }
   }
 
   // Widget: Parent-Course-Widget ausliefern
