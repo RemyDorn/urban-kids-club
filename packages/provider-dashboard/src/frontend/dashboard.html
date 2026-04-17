@@ -71,11 +71,8 @@
       .main-content { margin-left: 0 !important; }
       .main-header { padding-left: 1rem !important; padding-right: 1rem !important; }
       .main-body { padding: 1rem !important; }
-      /* Modals */
-      .cal-modal { width: calc(100vw - 2rem) !important; max-width: 480px; }
-      [style*="width:480px"], [style*="width:540px"], [style*="width:600px"], [style*="width:700px"] {
-        width: calc(100vw - 2rem) !important; max-width: 100% !important;
-      }
+      /* Modals — single rule covers all inline widths */
+      .cal-modal, .cal-modal-backdrop > div { width: calc(100vw - 2rem) !important; max-width: 480px !important; }
       /* Kalender */
       .cal-grid { grid-template-columns: 40px repeat(7, 1fr); font-size: 11px; }
       .cal-event { font-size: 10px; padding: 2px 4px; }
@@ -89,8 +86,8 @@
       #content .grid.grid-cols-1.md\\:grid-cols-2 { grid-template-columns: repeat(1, 1fr) !important; }
       /* Form grids smaller */
       .slot-row { grid-template-columns: repeat(2, 1fr) !important; }
-      /* Buttons stack */
-      .flex.gap-3 > button, .flex.gap-2 > button { font-size: 0.75rem; padding: 0.5rem 0.75rem; }
+      /* Buttons smaller on mobile — scoped to content area */
+      #content .flex.gap-3 > button, #content .flex.gap-2 > button { font-size: 0.75rem; padding: 0.5rem 0.75rem; }
       /* Page title */
       #pageTitle { font-size: 1rem; }
     }
@@ -325,7 +322,7 @@
       <!-- Header -->
       <header class="main-header bg-white border-b border-brand-200 px-4 md:px-8 py-4 flex items-center justify-between sticky top-0 z-5">
         <div class="flex items-center gap-3">
-          <button onclick="toggleSidebar()" class="hamburger-btn w-10 h-10 flex items-center justify-center rounded-lg text-brand-700 hover:bg-brand-100 transition-colors">
+          <button onclick="toggleSidebar()" class="hamburger-btn w-10 h-10 flex items-center justify-center rounded-lg text-brand-700 hover:bg-brand-100 transition-colors" aria-label="Navigation umschalten" aria-expanded="false" aria-controls="sidebar">
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
           </button>
           <h1 id="pageTitle" class="text-xl font-bold text-brand-700 font-heading">Dashboard</h1>
@@ -699,6 +696,7 @@
 
     // Auto-wrap tables for mobile horizontal scroll
     const contentObserver = new MutationObserver(() => {
+      contentObserver.disconnect()
       document.querySelectorAll('#content table').forEach(table => {
         if (table.parentElement?.classList.contains('table-wrap')) return
         const wrapper = document.createElement('div')
@@ -706,6 +704,8 @@
         table.parentNode.insertBefore(wrapper, table)
         wrapper.appendChild(table)
       })
+      const el = document.getElementById('content')
+      if (el) contentObserver.observe(el, { childList: true, subtree: true })
     })
     setTimeout(() => {
       const contentEl = document.getElementById('content')
@@ -716,14 +716,25 @@
     function toggleSidebar() {
       const sidebar = document.getElementById('sidebar')
       const overlay = document.getElementById('sidebarOverlay')
+      const btn = document.querySelector('.hamburger-btn')
       sidebar.classList.toggle('open')
       overlay.classList.toggle('open')
+      const isOpen = sidebar.classList.contains('open')
+      if (btn) btn.setAttribute('aria-expanded', isOpen)
+      document.body.style.overflow = isOpen ? 'hidden' : ''
     }
     function closeSidebar() {
       const sidebar = document.getElementById('sidebar')
       const overlay = document.getElementById('sidebarOverlay')
+      const btn = document.querySelector('.hamburger-btn')
       if (sidebar) { sidebar.classList.remove('open'); overlay.classList.remove('open') }
+      if (btn) btn.setAttribute('aria-expanded', 'false')
+      document.body.style.overflow = ''
     }
+    // Close sidebar on Escape key
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSidebar() })
+    // Close sidebar on resize to desktop
+    window.addEventListener('resize', () => { if (window.innerWidth >= 768) closeSidebar() })
 
     function navigate(page) {
       currentPage = page
