@@ -912,7 +912,7 @@
               '<div class="cal-hour flex items-start justify-end pr-2 pt-1"><span class="text-xs text-gray-400">' + h + ':00</span></div>' +
               (calView === 'day' ? [calWeekStart] : days).map(d => {
                 const isToday = fmtDate(d) === today
-                return '<div class="cal-hour cal-day-col ' + (isToday ? 'cal-today' : '') + '" data-date="' + fmtDate(d) + '" data-hour="' + h + '" onclick="calSlotClick(\'' + fmtDate(d) + '\',' + h + ')" style="cursor:pointer"></div>'
+                return '<div class="cal-hour cal-day-col ' + (isToday ? 'cal-today' : '') + '" data-date="' + fmtDate(d) + '" data-hour="' + h + '" onclick="calSlotClick(\'' + fmtDate(d) + '\',' + h + ')" style="cursor:pointer" ondragover="event.preventDefault();this.style.background=\'#fdf4ed\'" ondragleave="this.style.background=\'\'" ondrop="calDropEvent(event,\'' + fmtDate(d) + '\',' + h + ');this.style.background=\'\'"></div>'
               }).join('')
             ).join('')}
           </div>
@@ -1020,15 +1020,28 @@
           if (firstCell) {
             const eventEl = document.createElement('div')
             eventEl.className = 'cal-event'
+            eventEl.draggable = true
+            eventEl.dataset.activityId = ev.activityId
+            eventEl.dataset.startTime = ev.startTime
+            eventEl.dataset.endTime = ev.endTime
+            eventEl.dataset.date = ev.date
             eventEl.style.cssText = `
               top:${topOffset}px; height:${height}px; z-index:5;
               left:${leftPct}%; width:${widthPct - 1}%;
-              border-color:${clr}; border-left-width:4px;
+              border-color:${clr}; border-left-width:4px; cursor:grab;
               background: linear-gradient(to top, ${hexToRgba(clr, 0.4)} ${occPct}%, ${hexToRgba(clr, 0.06)} ${occPct}%);
             `
-            eventEl.onclick = () => showEventDetail(ev, activity, occ)
-            // Hover tooltip
+            eventEl.onclick = (e) => { if (!eventEl._dragged) showEventDetail(ev, activity, occ) }
             eventEl.title = ev.title + ' (' + ev.startTime + '–' + ev.endTime + ')' + (roomName ? '\nRaum: ' + roomName : '') + '\n' + occText + ' Teilnehmer (' + occPct + '%)'
+
+            // Drag handlers
+            eventEl.addEventListener('dragstart', function(e) {
+              eventEl._dragged = false
+              e.dataTransfer.setData('text/plain', JSON.stringify({ activityId: ev.activityId, startTime: ev.startTime, endTime: ev.endTime, date: ev.date }))
+              eventEl.style.opacity = '0.5'
+              setTimeout(() => eventEl.style.cursor = 'grabbing', 0)
+            })
+            eventEl.addEventListener('dragend', function() { eventEl.style.opacity = '1'; eventEl.style.cursor = 'grab' })
 
             eventEl.innerHTML = `
               <div class="font-semibold truncate" style="font-size:11px;line-height:1.3;color:#1f2937;">${escapeHtml(ev.title)}</div>
@@ -1715,6 +1728,62 @@
       else if (calView === 'week') calWeekStart = getMonday(new Date())
       else calWeekStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
       renderCalendarInto(activeCalContainer); updateKPIsForView()
+    }
+
+    // Drag & Drop: move course to a different day/time
+    async function calDropEvent(e, targetDate, targetHour) {
+      e.preventDefault()
+      try {
+        const data = JSON.parse(e.dataTransfer.getData('text/plain'))
+        if (!data.activityId) return
+
+        // Calculate new times
+        const oldStart = data.startTime.split(':')
+        const oldEnd = data.endTime.split(':')
+        const durationMin = (parseInt(oldEnd[0]) * 60 + parseInt(oldEnd[1])) - (parseInt(oldStart[0]) * 60 + parseInt(oldStart[1]))
+        const newStartTime = String(targetHour).padStart(2, '0') + ':00'
+        const endHour = targetHour + Math.floor(durationMin / 60)
+        const endMin = durationMin % 60
+        const newEndTime = String(endHour).padStart(2, '0') + ':' + String(endMin).padStart(2, '0')
+
+        // Get the new day code
+        const targetD = new Date(targetDate)
+        const dowMap = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA']
+        const newDay = dowMap[targetD.getDay()]
+
+        // Confirm move
+        const dayLabels = { SU: 'Sonntag', MO: 'Montag', TU: 'Dienstag', WE: 'Mittwoch', TH: 'Donnerstag', FR: 'Freitag', SA: 'Samstag' }
+        if (!confirm('Kurs auf ' + dayLabels[newDay] + ' ' + newStartTime + '–' + newEndTime + ' verschieben?')) return
+
+        // Update the activity schedule
+        const actRes = await api('/providers/' + currentProvider.id + '/activities')
+        const act = actRes.data.find(a => a.id === data.activityId)
+        if (!act) return
+
+        // Update the slot that matches the old time
+        const slots = act.schedule?.slots || []
+        const oldDow = new Date(data.date)
+        const oldDay = dowMap[oldDow.getDay()]
+        let updated = false
+        for (const slot of slots) {
+          if (slot.day === oldDay && slot.startTime === data.startTime) {
+            slot.day = newDay
+            slot.startTime = newStartTime
+            slot.endTime = newEndTime
+            updated = true
+            break
+          }
+        }
+        if (!updated && slots.length === 1) {
+          slots[0].day = newDay
+          slots[0].startTime = newStartTime
+          slots[0].endTime = newEndTime
+        }
+
+        await api('/activities/' + data.activityId, 'PUT', { schedule: { ...act.schedule, slots } })
+        renderCalendarInto(activeCalContainer)
+        updateKPIsForView()
+      } catch(err) { console.error('Drop error:', err) }
     }
 
     // Click on empty calendar slot → create activity with pre-filled day/time
