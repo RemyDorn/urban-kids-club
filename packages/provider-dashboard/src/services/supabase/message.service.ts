@@ -84,10 +84,11 @@ export const SupabaseMessageService = {
     return (data ?? []).map(messageFromDb)
   },
 
-  async markAsRead(id: ID): Promise<Message | undefined> {
+  async markAsRead(id: ID, providerId?: ID): Promise<Message | undefined> {
     const sb = getServiceClient()
-    const { data, error } = await sb.from('messages').update({ read: true })
-      .eq('id', id).select().maybeSingle()
+    let q = sb.from('messages').update({ read: true }).eq('id', id)
+    if (providerId) q = q.eq('provider_id', providerId)
+    const { data, error } = await q.select().maybeSingle()
     if (error) throw error
     return data ? messageFromDb(data) : undefined
   },
@@ -108,9 +109,11 @@ export const SupabaseMessageService = {
     return count ?? 0
   },
 
-  async delete(id: ID): Promise<boolean> {
+  async delete(id: ID, providerId?: ID): Promise<boolean> {
     const sb = getServiceClient()
-    const { error } = await sb.from('messages').delete().eq('id', id)
+    let q = sb.from('messages').delete().eq('id', id)
+    if (providerId) q = q.eq('provider_id', providerId)
+    const { error } = await q
     if (error) throw error
     return true
   },

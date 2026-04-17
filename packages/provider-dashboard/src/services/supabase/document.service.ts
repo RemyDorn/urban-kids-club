@@ -73,11 +73,13 @@ export const SupabaseDocumentService = {
     return (data ?? []).map(documentFromDb)
   },
 
-  async verify(id: ID, verifiedBy: string): Promise<ProviderDocument | undefined> {
+  async verify(id: ID, verifiedBy: string, providerId?: ID): Promise<ProviderDocument | undefined> {
     const sb = getServiceClient()
-    const { data, error } = await sb.from('provider_documents')
+    let q = sb.from('provider_documents')
       .update({ verified_by: verifiedBy, verified_at: new Date().toISOString(), status: 'valid' })
-      .eq('id', id).select().maybeSingle()
+      .eq('id', id)
+    if (providerId) q = q.eq('provider_id', providerId)
+    const { data, error } = await q.select().maybeSingle()
     if (error) throw error
     return data ? documentFromDb(data) : undefined
   },
@@ -149,9 +151,11 @@ export const SupabaseDocumentService = {
     return { compliant: missing.length === 0, missing, documents: docs }
   },
 
-  async delete(id: ID): Promise<boolean> {
+  async delete(id: ID, providerId?: ID): Promise<boolean> {
     const sb = getServiceClient()
-    const { error } = await sb.from('provider_documents').delete().eq('id', id)
+    let q = sb.from('provider_documents').delete().eq('id', id)
+    if (providerId) q = q.eq('provider_id', providerId)
+    const { error } = await q
     if (error) throw error
     return true
   },

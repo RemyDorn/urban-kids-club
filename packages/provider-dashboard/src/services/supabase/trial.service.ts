@@ -145,8 +145,9 @@ export const SupabaseTrialService = {
   },
 
   async getUpcomingToday(providerId: ID): Promise<TrialLesson[]> {
-    const today = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Berlin' }))
-    const todayStr = today.toISOString().split('T')[0]
+    // Use Intl with sv-SE locale for stable YYYY-MM-DD format in Europe/Berlin
+    const now = new Date()
+    const todayStr = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Berlin' }).format(now)
     const sb = getServiceClient()
     const { data, error } = await sb.from('trial_lessons').select('*')
       .eq('provider_id', providerId).eq('status', 'scheduled').eq('scheduled_date', todayStr)
