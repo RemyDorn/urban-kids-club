@@ -71,32 +71,92 @@
     .table-wrap table { min-width: 640px; }
     /* Mobile Responsive */
     @media (max-width: 767px) {
+      /* GLOBAL: prevent horizontal scroll */
+      html, body { overflow-x: hidden !important; }
+      .main-content { overflow-x: hidden !important; }
+
       .sidebar { transform: translateX(-100%); transition: transform 0.3s ease; }
       .sidebar.open { transform: translateX(0); }
       .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 15; }
       .sidebar-overlay.open { display: block; }
       .main-content { margin-left: 0 !important; }
       .main-header { padding-left: 1rem !important; padding-right: 1rem !important; }
-      .main-body { padding: 1rem !important; }
-      /* Modals — single rule covers all inline widths */
-      .cal-modal, .cal-modal-backdrop > div { width: calc(100vw - 2rem) !important; max-width: 480px !important; }
+      .main-body { padding: 0.75rem !important; }
+
+      /* ALL modals: constrain to viewport */
+      .cal-modal, .cal-modal-backdrop > div,
+      [style*="width:"], [style*="width: "] {
+        width: calc(100vw - 1.5rem) !important;
+        max-width: calc(100vw - 1.5rem) !important;
+        box-sizing: border-box !important;
+      }
+      /* Tailwind max-w overrides */
+      .max-w-2xl, .max-w-xl, .max-w-lg, .max-w-md, .max-w-sm {
+        max-width: calc(100vw - 1.5rem) !important;
+      }
+
       /* Kalender */
       .cal-grid { grid-template-columns: 40px repeat(7, 1fr); font-size: 11px; }
       .cal-event { font-size: 10px; padding: 2px 4px; }
       .cal-hour { height: 40px; }
-      /* Grids: reduce columns on mobile */
-      #content .grid[class*="grid-cols-3"]:not([class*="md:"]):not([class*="slot-row"]) { grid-template-columns: repeat(1, 1fr) !important; }
-      #content .grid[class*="grid-cols-4"]:not([class*="md:"]) { grid-template-columns: repeat(2, 1fr) !important; }
-      #content .grid[class*="grid-cols-5"]:not([class*="md:"]) { grid-template-columns: repeat(2, 1fr) !important; }
-      #content .grid[class*="grid-cols-6"]:not([class*="md:"]) { grid-template-columns: repeat(2, 1fr) !important; }
-      /* KPI cards: 2 cols on mobile */
-      #content .grid.grid-cols-1.md\\:grid-cols-2 { grid-template-columns: repeat(1, 1fr) !important; }
+
+      /* ALL grids: reduce columns on mobile */
+      #content .grid[class*="grid-cols-3"]:not([class*="slot-row"]) { grid-template-columns: repeat(1, 1fr) !important; }
+      #content .grid[class*="grid-cols-4"] { grid-template-columns: repeat(2, 1fr) !important; }
+      #content .grid[class*="grid-cols-5"] { grid-template-columns: repeat(2, 1fr) !important; }
+      #content .grid[class*="grid-cols-6"] { grid-template-columns: repeat(2, 1fr) !important; }
+      #content .grid[class*="grid-cols-7"] { grid-template-columns: repeat(2, 1fr) !important; }
+      #content .grid[class*="grid-cols-8"] { grid-template-columns: repeat(2, 1fr) !important; }
+
       /* Form grids smaller */
       .slot-row { grid-template-columns: repeat(2, 1fr) !important; }
-      /* Buttons smaller on mobile — scoped to content area */
+
+      /* Tab bars: wrap instead of horizontal scroll */
+      #content .flex.border-b,
+      #content .flex.gap-1.border-b,
+      #content .flex.gap-1.mb-6,
+      #content .flex.gap-2.mb-6 {
+        flex-wrap: wrap !important;
+      }
+      #content .flex.border-b > button,
+      #content .flex.gap-1 > button {
+        font-size: 0.7rem !important;
+        padding: 0.4rem 0.6rem !important;
+        white-space: nowrap;
+      }
+
+      /* Buttons: wrap + smaller on mobile */
+      #content .flex.gap-3, #content .flex.gap-2 { flex-wrap: wrap !important; }
       #content .flex.gap-3 > button, #content .flex.gap-2 > button { font-size: 0.75rem; padding: 0.5rem 0.75rem; }
+      /* Action button groups in cards: wrap */
+      #content .flex.items-center.gap-2 { flex-wrap: wrap !important; }
+      #content .flex.items-center.gap-3 { flex-wrap: wrap !important; }
+
+      /* Progress bars: responsive widths */
+      .w-32 { width: 4rem !important; }
+      .w-48 { width: auto !important; max-width: 100% !important; }
+      #content .w-16 { width: 2.5rem !important; }
+      #content .w-20 { width: 3rem !important; }
+
       /* Page title */
       #pageTitle { font-size: 1rem; }
+
+      /* Team cards: stack layout */
+      #content .flex.items-center.justify-between {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 0.75rem !important;
+      }
+      /* But not header */
+      .main-header .flex.items-center.justify-between {
+        flex-direction: row !important;
+        align-items: center !important;
+      }
+      /* Team action buttons: full width row */
+      #content .flex.items-center.justify-between > .flex.items-center.gap-3 {
+        width: 100% !important;
+        justify-content: flex-start !important;
+      }
     }
     @media (min-width: 768px) {
       .hamburger-btn { display: none !important; }

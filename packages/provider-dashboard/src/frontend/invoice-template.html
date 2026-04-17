@@ -10,6 +10,21 @@
   body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; font-size: 10pt; color: #1a1a1a; line-height: 1.5; background: #fff; }
 
   .invoice { max-width: 210mm; margin: 0 auto; padding: 15mm; }
+  @media (max-width: 767px) {
+    .invoice { padding: 4mm; max-width: 100%; }
+    .header { flex-direction: column; gap: 3mm; }
+    .invoice-badge { text-align: left; }
+    .addresses { flex-direction: column; gap: 4mm; }
+    .address-block { width: 100%; }
+    .meta-row { flex-wrap: wrap; gap: 2mm; }
+    .meta-item { flex: 1 1 45%; }
+    body { font-size: 9pt; }
+    .company-name { font-size: 14pt; }
+    .invoice-badge .label { font-size: 16pt; }
+  }
+  @media print {
+    .invoice { padding: 0; max-width: 210mm; }
+  }
 
   /* Header */
   .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10mm; padding-bottom: 5mm; border-bottom: 2px solid #e5e5e5; }
