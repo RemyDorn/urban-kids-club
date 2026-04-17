@@ -102,8 +102,10 @@
       .cal-hour { height: 40px; }
 
       /* ALL grids: reduce columns on mobile */
-      #content .grid[class*="grid-cols-3"]:not([class*="slot-row"]) { grid-template-columns: repeat(1, 1fr) !important; }
-      #content .grid[class*="grid-cols-4"] { grid-template-columns: repeat(2, 1fr) !important; }
+      #content .grid[class*="grid-cols-3"]:not([class*="slot-row"]) { grid-template-columns: 1fr !important; }
+      #content .grid[class*="grid-cols-4"] { grid-template-columns: 1fr 1fr !important; }
+      /* Settings form grids: single column */
+      #content .grid[class*="grid-cols-2"]:not(.border-b) { grid-template-columns: 1fr !important; }
       #content .grid[class*="grid-cols-5"] { grid-template-columns: repeat(2, 1fr) !important; }
       #content .grid[class*="grid-cols-6"] { grid-template-columns: repeat(2, 1fr) !important; }
       #content .grid[class*="grid-cols-7"]:not(#monthGrid):not(.border-b) { grid-template-columns: repeat(2, 1fr) !important; }
@@ -151,6 +153,30 @@
       /* Login/Registration responsive */
       #loginScreen .grid[class*="grid-cols-3"] { grid-template-columns: 1fr !important; }
       #loginScreen .grid[class*="grid-cols-2"] { grid-template-columns: 1fr !important; }
+
+      /* ALL modals: grids inside modals go single/double column */
+      .cal-modal .grid[class*="grid-cols-3"],
+      .cal-modal .grid[class*="grid-cols-4"],
+      .fixed.inset-0 .grid[class*="grid-cols-3"],
+      .fixed.inset-0 .grid[class*="grid-cols-4"] {
+        grid-template-columns: 1fr !important;
+      }
+      .cal-modal .grid[class*="grid-cols-2"],
+      .fixed.inset-0 .grid[class*="grid-cols-2"] {
+        grid-template-columns: 1fr !important;
+      }
+      /* Modal inputs: full width */
+      .cal-modal input, .cal-modal select, .cal-modal textarea,
+      .fixed.inset-0 input, .fixed.inset-0 select, .fixed.inset-0 textarea {
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+      }
+      /* Modal fieldsets: less padding */
+      .cal-modal fieldset, .cal-modal .p-4 { padding: 0.5rem !important; }
+      /* Slot rows in modals: stack */
+      .cal-modal .slot-row { grid-template-columns: 1fr 1fr !important; }
+      /* Settings form grids inside modals */
+      .cal-modal .grid-cols-3 { grid-template-columns: 1fr !important; }
 
       /* Team cards: stack layout — only inside .p-5 card containers */
       #content .p-5 > .flex.items-center.justify-between {
@@ -1463,12 +1489,19 @@
     // Notification center
     async function loadNotificationBadge() {
       try {
-        const res = await api('/notifications/' + currentProvider.id + '?unread=true')
-        const notifs = res.data || res || []
+        // Use local cache if available (more accurate after toggles)
+        let unreadCount = 0
+        if (_notifCache) {
+          unreadCount = _notifCache.filter(n => !n.read).length
+        } else {
+          const res = await api('/notifications/' + currentProvider.id + '?unread=true')
+          const notifs = res.data || res || []
+          unreadCount = notifs.length
+        }
         const badge = document.getElementById('notifBadge')
         if (badge) {
-          if (notifs.length > 0) {
-            badge.textContent = notifs.length > 9 ? '9+' : String(notifs.length)
+          if (unreadCount > 0) {
+            badge.textContent = unreadCount > 9 ? '9+' : String(unreadCount)
             badge.classList.remove('hidden')
           } else {
             badge.classList.add('hidden')
