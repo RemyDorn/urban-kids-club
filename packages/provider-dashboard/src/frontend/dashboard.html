@@ -104,8 +104,10 @@
       /* ALL grids: reduce columns on mobile */
       #content .grid[class*="grid-cols-3"]:not([class*="slot-row"]) { grid-template-columns: 1fr !important; }
       #content .grid[class*="grid-cols-4"] { grid-template-columns: 1fr 1fr !important; }
-      /* Settings form grids: single column */
-      #content .grid[class*="grid-cols-2"]:not(.border-b) { grid-template-columns: 1fr !important; }
+      /* Settings form grids inside forms/fieldsets: single column */
+      #content fieldset .grid[class*="grid-cols-2"] { grid-template-columns: 1fr !important; }
+      #content form .grid[class*="grid-cols-2"] { grid-template-columns: 1fr !important; }
+      /* But KPI card grids stay 2 cols (they use md: prefix) */
       #content .grid[class*="grid-cols-5"] { grid-template-columns: repeat(2, 1fr) !important; }
       #content .grid[class*="grid-cols-6"] { grid-template-columns: repeat(2, 1fr) !important; }
       #content .grid[class*="grid-cols-7"]:not(#monthGrid):not(.border-b) { grid-template-columns: repeat(2, 1fr) !important; }
@@ -154,7 +156,7 @@
       #loginScreen .grid[class*="grid-cols-3"] { grid-template-columns: 1fr !important; }
       #loginScreen .grid[class*="grid-cols-2"] { grid-template-columns: 1fr !important; }
 
-      /* ALL modals: grids inside modals go single/double column */
+      /* Modals: grids go single column */
       .cal-modal .grid[class*="grid-cols-3"],
       .cal-modal .grid[class*="grid-cols-4"],
       .fixed.inset-0 .grid[class*="grid-cols-3"],
@@ -169,14 +171,25 @@
       .cal-modal input, .cal-modal select, .cal-modal textarea,
       .fixed.inset-0 input, .fixed.inset-0 select, .fixed.inset-0 textarea {
         max-width: 100% !important;
+        width: 100% !important;
         box-sizing: border-box !important;
       }
-      /* Modal fieldsets: less padding */
-      .cal-modal fieldset, .cal-modal .p-4 { padding: 0.5rem !important; }
-      /* Slot rows in modals: stack */
-      .cal-modal .slot-row { grid-template-columns: 1fr 1fr !important; }
-      /* Settings form grids inside modals */
-      .cal-modal .grid-cols-3 { grid-template-columns: 1fr !important; }
+      /* Exceptions: small inline inputs keep size */
+      .cal-modal input[type="color"] { width: 2.5rem !important; height: 2.5rem !important; }
+      .cal-modal input[type="checkbox"], .cal-modal input[type="radio"],
+      .fixed.inset-0 input[type="checkbox"], .fixed.inset-0 input[type="radio"] {
+        width: auto !important;
+      }
+      .cal-modal input[type="number"] { width: 100% !important; }
+      /* Modal fieldsets: reasonable padding */
+      .cal-modal fieldset { padding: 0.75rem !important; }
+      /* Slot rows: 2 columns for Tag+Zeit pairs */
+      .cal-modal .slot-row {
+        grid-template-columns: 1fr 1fr !important;
+        gap: 0.5rem !important;
+      }
+      /* w-20 inputs in modals: full width */
+      .cal-modal .w-20, .fixed.inset-0 .w-20 { width: 100% !important; }
 
       /* Team cards: stack layout — only inside .p-5 card containers */
       #content .p-5 > .flex.items-center.justify-between {
