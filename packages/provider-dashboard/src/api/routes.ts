@@ -1154,13 +1154,14 @@ export function registerRoutes(router: Router) {
       template = template.replaceAll(key, val)
     }
 
-    // Handle {{#if ...}} blocks
+    // Handle {{#if ...}} blocks (with optional {{else}})
     const ifBlock = (flag: boolean, name: string) => {
-      const re = new RegExp(`\\{\\{#if ${name}\\}\\}([\\s\\S]*?)\\{\\{/if\\}\\}`, 'g')
-      template = template.replace(re, flag ? '$1' : '')
-      // Also handle {{else}} within if blocks
+      // First: handle blocks WITH {{else}}
       const reElse = new RegExp(`\\{\\{#if ${name}\\}\\}([\\s\\S]*?)\\{\\{else\\}\\}([\\s\\S]*?)\\{\\{/if\\}\\}`, 'g')
       template = template.replace(reElse, flag ? '$1' : '$2')
+      // Then: handle blocks WITHOUT {{else}}
+      const re = new RegExp(`\\{\\{#if ${name}\\}\\}([\\s\\S]*?)\\{\\{/if\\}\\}`, 'g')
+      template = template.replace(re, flag ? '$1' : '')
     }
     ifBlock(!!provider?.logo_url, 'logoUrl')
     ifBlock(isKleinunternehmer, 'isKleinunternehmer')
