@@ -150,7 +150,15 @@ export const SupabaseAttendanceService = {
     error?: string
   }> {
     const sb = getServiceClient()
-    const today = new Date().toISOString().slice(0, 10) // YYYY-MM-DD
+    const now = new Date()
+    const today = now.toISOString().slice(0, 10) // YYYY-MM-DD
+    const nowMinutes = now.getHours() * 60 + now.getMinutes()
+
+    // 0. Get provider's check-in window setting (before/after in minutes)
+    const { data: providerRow } = await sb.from('providers')
+      .select('checkin_before_minutes, checkin_after_minutes').eq('id', providerId).maybeSingle()
+    const beforeMinutes = providerRow?.checkin_before_minutes ?? 20
+    const afterMinutes = providerRow?.checkin_after_minutes ?? 10
 
     // 1. Find parent by email (case-insensitive)
     const { data: parent } = await sb.from('parents')
@@ -163,9 +171,6 @@ export const SupabaseAttendanceService = {
     }
 
     // 2. Find today's active bookings for this parent at this provider
-    //    A booking is "for today" if:
-    //    - It has a booked_date matching today, OR
-    //    - The activity has a schedule that includes today's weekday
     const { data: bookings } = await sb.from('provider_bookings')
       .select('id, activity_id, child_info, payment_status, amount_paid, status, payment_method, booked_date')
       .eq('provider_id', providerId)
@@ -185,18 +190,25 @@ export const SupabaseAttendanceService = {
     const activityMap = new Map((activities ?? []).map((a: any) => [a.id, a]))
 
     // 4. Filter bookings that are relevant for today
-    const todayDow = new Date().getDay() // 0=Sun, 1=Mon, ...
+    const todayDow = now.getDay() // 0=Sun, 1=Mon, ...
     const dowMap: Record<number, string> = { 0: 'SU', 1: 'MO', 2: 'TU', 3: 'WE', 4: 'TH', 5: 'FR', 6: 'SA' }
     const todayCode = dowMap[todayDow]
 
+    // Helper: get today's slot start time for an activity (in minutes since midnight)
+    function getSlotStartMinutes(activity: any): number | null {
+      if (!activity?.schedule) return null
+      const sched = activity.schedule as any
+      const slots = Array.isArray(sched) ? sched : (sched?.slots ?? [])
+      const todaySlot = slots.find((s: any) => s.day?.toUpperCase() === todayCode)
+      if (!todaySlot?.startTime) return null
+      const [h, m] = todaySlot.startTime.split(':').map(Number)
+      return h * 60 + (m || 0)
+    }
+
     const todayBookings = bookings.filter((b: any) => {
-      // If booking has a specific booked_date, check it
-      if (b.booked_date) {
-        return b.booked_date === today
-      }
-      // Otherwise check if activity runs on today's weekday
+      if (b.booked_date) return b.booked_date === today
       const activity = activityMap.get(b.activity_id)
-      if (!activity?.schedule) return true // no schedule = assume today
+      if (!activity?.schedule) return true
       const sched = activity.schedule as any
       const slots = Array.isArray(sched) ? sched : (sched?.slots ?? [])
       return slots.some((s: any) => s.day?.toUpperCase() === todayCode)
@@ -206,7 +218,32 @@ export const SupabaseAttendanceService = {
       return { success: false, checkedIn: [], error: 'Heute findet kein Kurs statt, für den du angemeldet bist.' }
     }
 
-    // 5. Check in each booking
+    // 5. Check time window — at least one course must be within the check-in window
+    let earliestOpen: number | null = null
+    let allOutsideWindow = true
+    for (const b of todayBookings) {
+      const activity = activityMap.get(b.activity_id)
+      const startMin = getSlotStartMinutes(activity)
+      if (startMin === null) { allOutsideWindow = false; continue } // no time = always allow
+      const windowOpen = startMin - beforeMinutes
+      const windowClose = startMin + afterMinutes
+      if (nowMinutes >= windowOpen && nowMinutes <= windowClose) {
+        allOutsideWindow = false
+      } else if (nowMinutes < windowOpen) {
+        if (earliestOpen === null || windowOpen < earliestOpen) earliestOpen = windowOpen
+      }
+    }
+
+    if (allOutsideWindow) {
+      if (earliestOpen !== null) {
+        const h = Math.floor(earliestOpen / 60).toString().padStart(2, '0')
+        const m = (earliestOpen % 60).toString().padStart(2, '0')
+        return { success: false, checkedIn: [], error: `Check-in ist erst ab ${h}:${m} Uhr möglich.` }
+      }
+      return { success: false, checkedIn: [], error: 'Das Check-in-Fenster für heute ist geschlossen.' }
+    }
+
+    // 6. Check in each booking (only those within time window)
     const checkedIn: Array<{
       activityTitle: string
       childName: string

@@ -1122,13 +1122,14 @@
           var el = document.getElementById('calModalParticipants')
           if (!el) return
 
-          function renderParticipantRow(name, age, parentId, bookingId) {
+          function renderParticipantRow(name, age, parentId, bookingId, activityId) {
             var ageDisplay = age && age > 0 && age < 100 ? age + ' J.' : ''
             var checkedIn = checkedInBookings.has(bookingId)
             var statusIcon = isToday ? (checkedIn ? '<span class="text-green-500 mr-1" title="Eingecheckt">✓</span>' : '<span class="text-red-400 mr-1" title="Nicht eingecheckt">○</span>') : ''
             var bgClass = isToday ? (checkedIn ? 'bg-green-50' : 'bg-red-50') : 'bg-gray-50'
+            var manualBtn = (isToday && !checkedIn) ? ' <button onclick="event.stopPropagation(); manualCheckin(\'' + bookingId + '\', \'' + (activityId || '') + '\', this)" class="ml-1 text-xs bg-brand-500 text-white px-2 py-0.5 rounded hover:bg-brand-600" title="Manuell einchecken">Einchecken</button>' : ''
             return '<div class="flex justify-between items-center text-xs py-1.5 px-2 ' + bgClass + ' rounded cursor-pointer hover:bg-gray-100" onclick="showParentProfile(\'' + parentId + '\')">' +
-              '<span class="font-medium text-brand-700">' + statusIcon + escapeHtml(name || 'Unbekannt') + '</span>' +
+              '<span class="font-medium text-brand-700">' + statusIcon + escapeHtml(name || 'Unbekannt') + manualBtn + '</span>' +
               '<span class="text-gray-400">' + ageDisplay + '</span></div>'
           }
 
@@ -1140,7 +1141,7 @@
                 var checkedCount = isToday ? enrollments.filter(function(e) { return checkedInBookings.has(e.bookingId) }).length : 0
                 var headerExtra = isToday ? ' · <span class="text-green-600">' + checkedCount + ' eingecheckt</span>' : ''
                 html += '<div class="border border-gray-200 rounded-lg p-3 mb-2"><div class="text-xs font-semibold text-gray-700 mb-2">Teilnehmer (' + enrollments.length + ')' + headerExtra + '</div><div class="space-y-1">' +
-                  enrollments.map(function(e) { return renderParticipantRow(e.childName, e.childAge, e.parentId, e.bookingId) }).join('') + '</div></div>'
+                  enrollments.map(function(e) { return renderParticipantRow(e.childName, e.childAge, e.parentId, e.bookingId, activity.id) }).join('') + '</div></div>'
               }
               el.innerHTML = html
             }).catch(function() { el.innerHTML = '' })
@@ -1154,7 +1155,7 @@
                 var checkedCount = isToday ? bookings.filter(function(b) { return checkedInBookings.has(b.id) }).length : 0
                 var headerExtra = isToday ? ' · <span class="text-green-600">' + checkedCount + ' eingecheckt</span>' : ''
                 html += '<div class="border border-gray-200 rounded-lg p-3 mb-2"><div class="text-xs font-semibold text-gray-700 mb-2">Teilnehmer (' + bookings.length + ')' + headerExtra + '</div><div class="space-y-1">' +
-                  bookings.map(function(b) { return renderParticipantRow(b.child?.name, b.child?.age, b.parentId, b.id) }).join('') + '</div></div>'
+                  bookings.map(function(b) { return renderParticipantRow(b.child?.name, b.child?.age, b.parentId, b.id, b.activityId || activity.id) }).join('') + '</div></div>'
               }
               el.innerHTML = html
             }).catch(function() {})
@@ -5085,6 +5086,28 @@
           </div>
 
           <div class="bg-white rounded-xl border border-brand-200 p-6">
+            <h3 class="font-semibold text-gray-900 mb-3">Check-in Zeitfenster</h3>
+            <p class="text-sm text-gray-500 mb-4">Lege fest, wann Eltern per QR-Code einchecken können. Außerhalb des Fensters kannst du als Anbieter Teilnehmer manuell einchecken.</p>
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Vor Kursbeginn</label>
+                <div class="flex items-center gap-2">
+                  <input id="checkinBefore" type="number" min="5" max="120" value="${currentProvider.checkin_before_minutes || 20}" class="w-20 border border-gray-200 rounded-lg px-3 py-2 text-sm text-center">
+                  <span class="text-sm text-gray-500">Minuten</span>
+                </div>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Nach Kursbeginn</label>
+                <div class="flex items-center gap-2">
+                  <input id="checkinAfter" type="number" min="0" max="60" value="${currentProvider.checkin_after_minutes || 10}" class="w-20 border border-gray-200 rounded-lg px-3 py-2 text-sm text-center">
+                  <span class="text-sm text-gray-500">Minuten</span>
+                </div>
+              </div>
+            </div>
+            <button onclick="saveCheckinWindow()" class="mt-4 bg-brand-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-brand-600">Zeitfenster speichern</button>
+          </div>
+
+          <div class="bg-white rounded-xl border border-brand-200 p-6">
             <h3 class="font-semibold text-gray-900 mb-3">Heutige Check-ins</h3>
             <div id="todayCheckins" class="text-sm text-gray-500">Wird geladen...</div>
           </div>
@@ -5818,6 +5841,44 @@
         await api(`/providers/${currentProvider.id}`, 'PUT', { booking_redirect_url: url || null })
         currentProvider.booking_redirect_url = url || null
         alert('Weiterleitung gespeichert!')
+      } catch(e) { alert('Fehler: ' + (e.message || 'Speichern fehlgeschlagen')) }
+    }
+
+    async function manualCheckin(bookingId, activityId, btnEl) {
+      var today = new Date().toISOString().slice(0, 10)
+      try {
+        btnEl.disabled = true
+        btnEl.textContent = '...'
+        await api('/attendance/checkin', 'POST', { bookingId: bookingId, activityId: activityId, date: today })
+        // Replace button with green check
+        var row = btnEl.closest('div')
+        if (row) {
+          row.className = row.className.replace('bg-red-50', 'bg-green-50')
+          // Replace the red circle + button with green check
+          var nameSpan = row.querySelector('span.font-medium')
+          if (nameSpan) {
+            var name = nameSpan.textContent.replace('○ ', '').replace('...', '').trim()
+            nameSpan.innerHTML = '<span class="text-green-500 mr-1" title="Eingecheckt">✓</span>' + escapeHtml(name)
+          }
+        }
+      } catch(e) {
+        btnEl.disabled = false
+        btnEl.textContent = 'Einchecken'
+        alert('Fehler: ' + (e.message || 'Check-in fehlgeschlagen'))
+      }
+    }
+
+    async function saveCheckinWindow() {
+      const before = parseInt(document.getElementById('checkinBefore')?.value) || 20
+      const after = parseInt(document.getElementById('checkinAfter')?.value) || 10
+      try {
+        await api(`/providers/${currentProvider.id}`, 'PUT', {
+          checkin_before_minutes: Math.max(5, Math.min(120, before)),
+          checkin_after_minutes: Math.max(0, Math.min(60, after))
+        })
+        currentProvider.checkin_before_minutes = before
+        currentProvider.checkin_after_minutes = after
+        alert('Check-in Zeitfenster gespeichert!')
       } catch(e) { alert('Fehler: ' + (e.message || 'Speichern fehlgeschlagen')) }
     }
 
