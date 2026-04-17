@@ -474,7 +474,8 @@ if(params.get('font')){document.body.style.fontFamily=params.get('font')+',syste
 // QR Check-in Page – mobile-optimized two-step flow
 function generateCheckinHtml(providerId: string): string {
   const safeId = providerId.replace(/[^a-zA-Z0-9-]/g, '')
-  const apiBase = `${process.env.APP_PUBLIC_URL || ''}`
+  const rawUrl = process.env.APP_PUBLIC_URL || ''
+  const apiBase = rawUrl.replace(/[^a-zA-Z0-9:/.@_-]/g, '')
   return `<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>Check-in</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">

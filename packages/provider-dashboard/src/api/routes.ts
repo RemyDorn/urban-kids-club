@@ -1742,7 +1742,11 @@ export function registerRoutes(router: Router) {
   })
 
   // Auto-expire waitlist offers and offer to next person (call via cron/n8n every 15min)
+  // Auth: internal calls from server.ts use localhost — validate via shared secret or admin auth
   router.post('/api/admin/jobs/expire-waitlist', async (req, res) => {
+    // Allow internal calls (from server setInterval) or admin auth
+    const isInternal = req.headers.host?.startsWith('localhost') || req.headers.host?.startsWith('127.0.0.1')
+    if (!isInternal) { const admin = await authenticateAdmin(req); if (!admin) return res.error(401, 'Nicht autorisiert') }
     const db = getServiceClient()
     const now = new Date().toISOString()
 
@@ -1805,6 +1809,8 @@ export function registerRoutes(router: Router) {
 
   // Send course reminders for tomorrow's sessions
   router.post('/api/admin/jobs/send-reminders', async (req, res) => {
+    const isInternal = req.headers.host?.startsWith('localhost') || req.headers.host?.startsWith('127.0.0.1')
+    if (!isInternal) { const admin = await authenticateAdmin(req); if (!admin) return res.error(401, 'Nicht autorisiert') }
     const db = getServiceClient()
     const nowDE = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Berlin' }))
     const tomorrow = new Date(nowDE)
@@ -1842,10 +1848,17 @@ export function registerRoutes(router: Router) {
     const { EmailService } = await import('../lib/email')
     const tomorrowFormatted = tomorrow.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })
 
+    // Batch-fetch all provider info upfront
+    const providerIds = [...new Set(tomorrowActivities.map(a => a.providerId))]
+    const { data: providerRows } = await db.from('providers').select('id, company_name, address_street, address_city').in('id', providerIds)
+    const providerMap = new Map((providerRows ?? []).map((p: any) => [p.id, p]))
+
     for (const act of tomorrowActivities) {
-      // Get provider info
-      const { data: provider } = await db.from('providers').select('company_name, address_street, address_city').eq('id', act.providerId).maybeSingle()
+      const provider = providerMap.get(act.providerId) as any
       const location = provider?.address_street ? `${provider.address_street}, ${provider.address_city}` : undefined
+
+      // Collect all parent IDs for batch fetch
+      const parentChildMap = new Map<string, string>() // parentId → childName
 
       // Find block enrollments for this activity
       const { data: blocks } = await db.from('course_blocks').select('id')
@@ -1853,28 +1866,11 @@ export function registerRoutes(router: Router) {
         .lte('start_date', tomorrowStr).gte('end_date', tomorrowStr)
       const blockIds = (blocks ?? []).map((b: any) => b.id)
 
-      const parentEmails = new Set<string>()
-
       if (blockIds.length > 0) {
         const { data: enrollments } = await db.from('block_enrollments')
           .select('parent_id, child_name').in('block_id', blockIds).eq('status', 'active')
         for (const e of enrollments ?? []) {
-          const { data: parent } = await db.from('parents').select('name, email').eq('id', e.parent_id).maybeSingle()
-          if (parent?.email && !parentEmails.has(parent.email)) {
-            parentEmails.add(parent.email)
-            try {
-              await EmailService.sendCourseReminder(parent.email, {
-                parentName: parent.name,
-                childName: e.child_name || 'Ihr Kind',
-                courseName: act.title,
-                providerName: provider?.company_name || '',
-                courseDate: tomorrowFormatted,
-                courseTime: act.time,
-                location,
-              })
-              sent++
-            } catch (e) { console.error('[Reminder] Email failed:', e) }
-          }
+          if (!parentChildMap.has(e.parent_id)) parentChildMap.set(e.parent_id, e.child_name || 'Ihr Kind')
         }
       }
 
@@ -1883,23 +1879,33 @@ export function registerRoutes(router: Router) {
         .select('parent_id, child_info')
         .eq('activity_id', act.id).in('status', ['confirmed', 'pending'])
       for (const b of bookings ?? []) {
-        const { data: parent } = await db.from('parents').select('name, email').eq('id', b.parent_id).maybeSingle()
-        if (parent?.email && !parentEmails.has(parent.email)) {
-          parentEmails.add(parent.email)
+        if (!parentChildMap.has(b.parent_id)) {
           const ci = b.child_info as any
-          try {
-            await EmailService.sendCourseReminder(parent.email, {
-              parentName: parent.name,
-              childName: ci?.firstName ? `${ci.firstName} ${ci.lastName || ''}`.trim() : 'Ihr Kind',
-              courseName: act.title,
-              providerName: provider?.company_name || '',
-              courseDate: tomorrowFormatted,
-              courseTime: act.time,
-              location,
-            })
-            sent++
-          } catch (e) { console.error('[Reminder] Email failed:', e) }
+          parentChildMap.set(b.parent_id, ci?.firstName ? `${ci.firstName} ${ci.lastName || ''}`.trim() : 'Ihr Kind')
         }
+      }
+
+      // Batch-fetch all parents at once
+      const parentIds = [...parentChildMap.keys()]
+      if (parentIds.length === 0) continue
+      const { data: parents } = await db.from('parents').select('id, name, email').in('id', parentIds)
+      const sentEmails = new Set<string>()
+
+      for (const parent of parents ?? []) {
+        if (!parent.email || sentEmails.has(parent.email)) continue
+        sentEmails.add(parent.email)
+        try {
+          await EmailService.sendCourseReminder(parent.email, {
+            parentName: parent.name,
+            childName: parentChildMap.get(parent.id) || 'Ihr Kind',
+            courseName: act.title,
+            providerName: provider?.company_name || '',
+            courseDate: tomorrowFormatted,
+            courseTime: act.time,
+            location,
+          })
+          sent++
+        } catch (emailErr) { console.error('[Reminder] Email failed:', emailErr) }
       }
     }
 

@@ -255,7 +255,7 @@ export const SupabaseAttendanceService = {
     const sb = getServiceClient()
     const { data: parent } = await sb.from('parents')
       .select('id, name, email').ilike('email', email.trim()).maybeSingle()
-    if (!parent) return { success: false, bookings: [], error: 'Keine Buchung mit dieser E-Mail-Adresse gefunden.' }
+    if (!parent) return { success: false, bookings: [], error: 'Keine Kurse für heute gefunden. Bitte prüfe die E-Mail-Adresse.' }
 
     const result = await this._getTodayBookings(sb, providerId, parent.id)
     if (result.error) return { success: false, bookings: [], error: result.error }
@@ -340,7 +340,8 @@ export const SupabaseAttendanceService = {
     records: AttendanceRecord[]
   }> {
     const sb = getServiceClient()
-    const today = new Date().toISOString().slice(0, 10)
+    const nowDE = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Berlin' }))
+    const today = nowDE.getFullYear() + '-' + String(nowDE.getMonth() + 1).padStart(2, '0') + '-' + String(nowDE.getDate()).padStart(2, '0')
 
     const { data, error } = await sb.from(TABLE).select('*')
       .eq('provider_id', providerId).eq('date', today)
