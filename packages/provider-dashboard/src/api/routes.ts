@@ -1745,7 +1745,8 @@ export function registerRoutes(router: Router) {
   // Auth: internal calls from server.ts use localhost — validate via shared secret or admin auth
   router.post('/api/admin/jobs/expire-waitlist', async (req, res) => {
     // Allow internal calls (from server setInterval) or admin auth
-    const isInternal = req.headers.host?.startsWith('localhost') || req.headers.host?.startsWith('127.0.0.1')
+    const host = req.raw?.headers?.host || ''
+    const isInternal = host.startsWith('localhost') || host.startsWith('127.0.0.1')
     if (!isInternal) { const admin = await authenticateAdmin(req); if (!admin) return res.error(401, 'Nicht autorisiert') }
     const db = getServiceClient()
     const now = new Date().toISOString()
@@ -1809,7 +1810,8 @@ export function registerRoutes(router: Router) {
 
   // Send course reminders for tomorrow's sessions
   router.post('/api/admin/jobs/send-reminders', async (req, res) => {
-    const isInternal = req.headers.host?.startsWith('localhost') || req.headers.host?.startsWith('127.0.0.1')
+    const host = req.raw?.headers?.host || ''
+    const isInternal = host.startsWith('localhost') || host.startsWith('127.0.0.1')
     if (!isInternal) { const admin = await authenticateAdmin(req); if (!admin) return res.error(401, 'Nicht autorisiert') }
     const db = getServiceClient()
     const nowDE = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Berlin' }))
