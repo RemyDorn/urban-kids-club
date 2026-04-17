@@ -1,0 +1,14 @@
+{
+  "name": "Urban Kids Club – Dashboard",
+  "short_name": "UKC Dashboard",
+  "description": "Provider Dashboard für Kursanbieter",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#FFF9F5",
+  "theme_color": "#3C2124",
+  "icons": [
+    { "src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "/icons/icon-maskable.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}

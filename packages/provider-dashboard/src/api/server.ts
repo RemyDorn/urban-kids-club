@@ -71,6 +71,24 @@ try {
   parentWidgetHtml = '<html><body><h1>Widget not found</h1></body></html>'
 }
 
+// PWA Assets laden
+let manifestJson: string
+let swJs: string
+const pwaIcons = new Map<string, Buffer>()
+try {
+  manifestJson = readFileSync(resolve(__dirname, '../frontend/manifest.json'), 'utf-8')
+  swJs = readFileSync(resolve(__dirname, '../frontend/sw.js'), 'utf-8')
+  // Load all icon files
+  const iconsDir = resolve(__dirname, '../frontend/icons')
+  const { readdirSync } = require('node:fs')
+  for (const file of readdirSync(iconsDir)) {
+    pwaIcons.set(file, readFileSync(resolve(iconsDir, file)))
+  }
+} catch {
+  manifestJson = '{}'
+  swJs = ''
+}
+
 // Router erstellen und Routen registrieren
 const router = new Router()
 registerRoutes(router)
@@ -670,8 +688,30 @@ function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').repl
 const server = createServer((req, res) => {
   const url = req.url ?? '/'
 
-  // Frontend: Root-URL → Dashboard HTML ausliefern
+  // PWA Assets
   const path = url.split('?')[0]
+  if (path === '/manifest.json') {
+    res.writeHead(200, { 'Content-Type': 'application/manifest+json; charset=utf-8' })
+    res.end(manifestJson)
+    return
+  }
+  if (path === '/sw.js') {
+    res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Service-Worker-Allowed': '/' })
+    res.end(swJs)
+    return
+  }
+  if (path.startsWith('/icons/')) {
+    const fileName = path.split('/').pop() || ''
+    const iconData = pwaIcons.get(fileName)
+    if (iconData) {
+      const ct = fileName.endsWith('.svg') ? 'image/svg+xml' : 'image/png'
+      res.writeHead(200, { 'Content-Type': ct, 'Cache-Control': 'public, max-age=86400' })
+      res.end(iconData)
+      return
+    }
+  }
+
+  // Frontend: Root-URL → Dashboard HTML ausliefern
   if (path === '/' || path === '/index.html') {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
     res.end(dashboardHtml)
