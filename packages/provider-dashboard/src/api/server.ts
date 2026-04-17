@@ -576,9 +576,9 @@ document.getElementById('checkinForm').addEventListener('submit',async function(
       items+='<div class="title">'+esc(item.activityTitle)+'</div>';
       items+='<div class="detail">'+esc(item.childName)+' — ';
       if(isPaid){
-        items+='Bezahlt. Viel Spaß!';
+        items+='Alles erledigt — viel Spaß! 🎉';
       }else{
-        items+='Bitte zahle noch '+item.amountDue.toFixed(2).replace('.',',')+' € vor Ort.';
+        items+='Noch '+item.amountDue.toFixed(2).replace('.',',')+' € offen. Kurz vor Ort begleichen — dann kann\\'s losgehen! 💪';
       }
       items+='</div></div></div>';
     }
@@ -586,8 +586,8 @@ document.getElementById('checkinForm').addEventListener('submit',async function(
     card.innerHTML=
       '<div class="logo" style="background:'+(hasUnpaid?'#d97706':'#059669')+'">'+
       (hasUnpaid?'💳':'✓')+'</div>'+
-      '<h1>Eingecheckt!</h1>'+
-      '<p class="subtitle">Du bist für heute angemeldet</p>'+
+      '<h1>'+(hasUnpaid?'Fast geschafft!':'Du bist drin!')+'</h1>'+
+      '<p class="subtitle">'+(hasUnpaid?'Nur noch eine Kleinigkeit…':'Check-in erfolgreich — hab eine tolle Zeit!')+'</p>'+
       '<div class="result" style="margin-top:20px">'+items+'</div>'+
       (data.redirectUrl?'<p style="color:#94a3b8;font-size:12px;margin-top:16px">Du wirst in 5 Sekunden weitergeleitet...</p>':'')+
       '<div class="footer">Powered by Urban Kids Club</div>';
