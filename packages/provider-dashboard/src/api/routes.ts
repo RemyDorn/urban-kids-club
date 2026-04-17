@@ -1154,14 +1154,31 @@ export function registerRoutes(router: Router) {
       template = template.replaceAll(key, val)
     }
 
-    // Handle {{#if ...}} blocks (with optional {{else}})
+    // Handle {{#if ...}} blocks (with optional {{else}}) — non-greedy, one block at a time
     const ifBlock = (flag: boolean, name: string) => {
-      // First: handle blocks WITH {{else}}
-      const reElse = new RegExp(`\\{\\{#if ${name}\\}\\}([\\s\\S]*?)\\{\\{else\\}\\}([\\s\\S]*?)\\{\\{/if\\}\\}`, 'g')
-      template = template.replace(reElse, flag ? '$1' : '$2')
-      // Then: handle blocks WITHOUT {{else}}
-      const re = new RegExp(`\\{\\{#if ${name}\\}\\}([\\s\\S]*?)\\{\\{/if\\}\\}`, 'g')
-      template = template.replace(re, flag ? '$1' : '')
+      // Process each occurrence individually to avoid greedy cross-block matching
+      let result = template
+      const openTag = `{{#if ${name}}}`
+      const closeTag = `{{/if}}`
+      const elseTag = `{{else}}`
+      let idx = result.indexOf(openTag)
+      while (idx !== -1) {
+        const afterOpen = idx + openTag.length
+        // Find the NEXT {{/if}} (not a distant one)
+        const closeIdx = result.indexOf(closeTag, afterOpen)
+        if (closeIdx === -1) break
+        const inner = result.substring(afterOpen, closeIdx)
+        const elseIdx = inner.indexOf(elseTag)
+        let replacement = ''
+        if (elseIdx !== -1) {
+          replacement = flag ? inner.substring(0, elseIdx) : inner.substring(elseIdx + elseTag.length)
+        } else {
+          replacement = flag ? inner : ''
+        }
+        result = result.substring(0, idx) + replacement + result.substring(closeIdx + closeTag.length)
+        idx = result.indexOf(openTag)
+      }
+      template = result
     }
     ifBlock(!!provider?.logo_url, 'logoUrl')
     ifBlock(isKleinunternehmer, 'isKleinunternehmer')
