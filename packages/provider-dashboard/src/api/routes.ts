@@ -322,6 +322,66 @@ export function registerRoutes(router: Router) {
     if (ohError) return res.error(400, ohError)
 
     const activity = await ActivityService.create({ ...parsed.data as any, providerId: auth.providerId })
+
+    // Auto-create first course block if schedule has dates
+    try {
+      const sched = (parsed.data as any).schedule
+      if (sched?.startDate && sched?.slots?.length > 0) {
+        const sb = getServiceClient()
+        const slot = sched.slots[0]
+        const startDate = sched.startDate
+        const packageSize = (parsed.data as any).pricing?.[0]?.packageSize || 8
+        // Calculate end date based on package size (weekly sessions)
+        const endD = new Date(startDate)
+        endD.setDate(endD.getDate() + (packageSize - 1) * 7)
+        const endDate = endD.toISOString().slice(0, 10)
+        const duration = (parsed.data as any).duration || 60
+
+        const { data: block } = await sb.from('course_blocks').insert({
+          provider_id: auth.providerId,
+          activity_id: (activity as any).id,
+          activity_type: 'recurring',
+          season_label: 'Block 1',
+          total_sessions: packageSize,
+          start_date: startDate,
+          end_date: endDate,
+          recurring_day: slot.day,
+          recurring_time: slot.startTime,
+          duration_minutes: duration,
+          price_per_block: (parsed.data as any).pricing?.[0]?.amount || 0,
+          capacity: (parsed.data as any).capacity || 10,
+          status: 'active',
+        }).select().single()
+
+        // Auto-create sessions
+        if (block) {
+          const sessions = []
+          const dayToNum: Record<string, number> = { SU: 0, MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6 }
+          const targetDay = dayToNum[slot.day?.toUpperCase()] ?? 1
+          let d = new Date(startDate)
+          while (d.getDay() !== targetDay) d.setDate(d.getDate() + 1)
+          let num = 1
+          while (d <= endD && num <= packageSize) {
+            const [sh, sm] = slot.startTime.split(':').map(Number)
+            const endH = sh + Math.floor(duration / 60)
+            const endM = sm + (duration % 60)
+            sessions.push({
+              block_id: block.id,
+              session_number: num,
+              date: d.toISOString().slice(0, 10),
+              start_time: slot.startTime,
+              end_time: String(endH).padStart(2, '0') + ':' + String(endM).padStart(2, '0'),
+              status: 'scheduled',
+            })
+            num++
+            d.setDate(d.getDate() + 7)
+          }
+          if (sessions.length) await sb.from('block_sessions').insert(sessions)
+          console.log(`[AutoBlock] Created block with ${sessions.length} sessions for "${(activity as any).title}"`)
+        }
+      }
+    } catch (e) { console.error('[AutoBlock] Error:', e) }
+
     res.status(201).json({ data: activity })
   })
 
@@ -3185,6 +3245,73 @@ export function registerRoutes(router: Router) {
     }, { onConflict: 'provider_id' })
     if (error) return res.error(500, error.message)
     res.json({ success: true })
+  })
+
+  // ============================================================
+  // ICAL FEED (Public — for parents to subscribe)
+  // ============================================================
+
+  router.get('/api/public/calendar/:providerId.ics', async (req, res) => {
+    const sb = getServiceClient()
+    const { data: provider } = await sb.from('providers').select('company_name').eq('id', req.params.providerId).maybeSingle()
+    if (!provider) return res.error(404, 'Provider nicht gefunden')
+
+    const { data: activities } = await sb.from('activities')
+      .select('id, title, schedule, duration_minutes, category')
+      .eq('provider_id', req.params.providerId).eq('status', 'published')
+
+    const dayToNum: Record<string, number> = { SU: 0, MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6 }
+    const now = new Date()
+    const weeks = 12 // Generate events for next 12 weeks
+
+    let ical = 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Urban Kids Club//Dashboard//DE\r\nCALSCALE:GREGORIAN\r\nX-WR-CALNAME:' + (provider.company_name || 'Kurse') + '\r\nX-WR-TIMEZONE:Europe/Berlin\r\n'
+
+    for (const act of activities ?? []) {
+      const sched = act.schedule as any
+      const slots = Array.isArray(sched) ? sched : (sched?.slots ?? [])
+      const startDate = sched?.startDate ? new Date(sched.startDate) : now
+      const endDate = sched?.endDate ? new Date(sched.endDate) : new Date(now.getTime() + weeks * 7 * 86400000)
+
+      for (const slot of slots) {
+        const targetDay = dayToNum[slot.day?.toUpperCase()]
+        if (targetDay === undefined) continue
+
+        // Find first occurrence
+        let d = new Date(startDate)
+        while (d.getDay() !== targetDay && d <= endDate) d.setDate(d.getDate() + 1)
+
+        // Generate weekly events
+        while (d <= endDate) {
+          const [sh, sm] = (slot.startTime || '00:00').split(':').map(Number)
+          const [eh, em] = (slot.endTime || '01:00').split(':').map(Number)
+          const dtStart = new Date(d); dtStart.setHours(sh, sm, 0, 0)
+          const dtEnd = new Date(d); dtEnd.setHours(eh, em, 0, 0)
+
+          const fmtDt = (dt: Date) => dt.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
+
+          ical += 'BEGIN:VEVENT\r\n'
+          ical += 'UID:' + act.id + '-' + d.toISOString().slice(0,10) + '@urbankids.club\r\n'
+          ical += 'DTSTART;TZID=Europe/Berlin:' + fmtDt(dtStart).slice(0, -1) + '\r\n'
+          ical += 'DTEND;TZID=Europe/Berlin:' + fmtDt(dtEnd).slice(0, -1) + '\r\n'
+          ical += 'SUMMARY:' + act.title + '\r\n'
+          ical += 'DESCRIPTION:' + (act.category || '') + ' – ' + (provider.company_name || '') + '\r\n'
+          ical += 'END:VEVENT\r\n'
+
+          d.setDate(d.getDate() + 7)
+        }
+      }
+    }
+
+    ical += 'END:VCALENDAR\r\n'
+
+    // Use raw response for proper content-type
+    const raw = (req as any).raw
+    if (raw?.res) {
+      raw.res.writeHead(200, { 'Content-Type': 'text/calendar; charset=utf-8', 'Content-Disposition': 'attachment; filename="kurse.ics"' })
+      raw.res.end(ical)
+    } else {
+      res.json({ data: ical })
+    }
   })
 
   // ============================================================

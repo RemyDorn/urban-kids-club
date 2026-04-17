@@ -4874,11 +4874,21 @@
           }).join('')}
         </div>
 
+        <!-- iCal Abo -->
+        <div class="mt-8 bg-white rounded-xl border border-brand-200 p-6">
+          <h3 class="font-semibold text-gray-900 mb-3">Kalender-Abo (iCal)</h3>
+          <p class="text-sm text-gray-500 mb-3">Eltern können diesen Link in Apple Kalender, Google Kalender oder Outlook abonnieren, um alle Kurstermine automatisch zu sehen.</p>
+          <div class="flex items-center gap-3">
+            <input type="text" readonly value="${baseUrl}/api/public/calendar/${currentProvider.id}.ics" class="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-700" id="icalUrl">
+            <button onclick="copyToClipboard(this, document.getElementById('icalUrl').value)" class="px-4 py-2 bg-brand-500 text-white rounded-lg text-sm font-medium hover:bg-brand-600">Link kopieren</button>
+          </div>
+        </div>
+
         <!-- Vorschau -->
         <div class="mt-8 bg-white rounded-xl border border-brand-200 p-6">
           <h3 class="font-semibold text-gray-900 mb-4">Vorschau: Buchungsbutton</h3>
           <div class="bg-gray-50 rounded-lg p-8 flex items-center justify-center">
-            <a href="#" style="display:inline-block;padding:12px 24px;background:#B5533A;color:white;border-radius:8px;font-family:sans-serif;font-weight:600;text-decoration:none;">Jetzt Kurs buchen</a>
+            <a href="#" style="display:inline-block;padding:12px 24px;background:${currentProvider.widget_primary_color || '#B5533A'};color:white;border-radius:8px;font-family:sans-serif;font-weight:600;text-decoration:none;">Jetzt Kurs buchen</a>
           </div>
         </div>
       `
