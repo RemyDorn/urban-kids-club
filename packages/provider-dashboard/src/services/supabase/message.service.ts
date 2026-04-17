@@ -40,12 +40,14 @@ export const SupabaseMessageService = {
       .eq('activity_id', activityId).in('status', ['confirmed', 'pending'])
     const parentIds = [...new Set((bookings ?? []).map((b: any) => b.parent_id))]
 
-    const messages: Message[] = []
-    for (const parentId of parentIds) {
-      const msg = await this.send({ providerId, parentId, activityId, type: 'broadcast', subject, body })
-      messages.push(msg)
-    }
-    return messages
+    const results = await Promise.allSettled(
+      parentIds.map(parentId =>
+        this.send({ providerId, parentId, activityId, type: 'broadcast', subject, body })
+      )
+    )
+    return results
+      .filter((r): r is PromiseFulfilledResult<Message> => r.status === 'fulfilled')
+      .map(r => r.value)
   },
 
   async getById(id: ID): Promise<Message | undefined> {

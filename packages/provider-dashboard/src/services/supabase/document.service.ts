@@ -85,10 +85,14 @@ export const SupabaseDocumentService = {
   async refreshStatuses(): Promise<ProviderDocument[]> {
     const sb = getServiceClient()
     const now = new Date()
-    const updated: ProviderDocument[] = []
 
     // Get all documents with expiry dates
     const { data: docs } = await sb.from('provider_documents').select('*').not('expires_at', 'is', null)
+
+    // Batch by new status to avoid N+1
+    const toExpire: string[] = []
+    const toExpiringSoon: string[] = []
+    const toValid: string[] = []
 
     for (const doc of docs ?? []) {
       const expiresAt = new Date(doc.expires_at)
@@ -100,11 +104,25 @@ export const SupabaseDocumentService = {
       else if (doc.verified_at) newStatus = 'valid'
 
       if (newStatus !== doc.status) {
-        const { data: upd } = await sb.from('provider_documents')
-          .update({ status: newStatus }).eq('id', doc.id).select().maybeSingle()
-        if (upd) updated.push(documentFromDb(upd))
+        if (newStatus === 'expired') toExpire.push(doc.id)
+        else if (newStatus === 'expiring_soon') toExpiringSoon.push(doc.id)
+        else if (newStatus === 'valid') toValid.push(doc.id)
       }
     }
+
+    const updated: ProviderDocument[] = []
+    const batchUpdate = async (ids: string[], status: DocumentStatus) => {
+      if (ids.length === 0) return
+      const { data } = await sb.from('provider_documents')
+        .update({ status }).in('id', ids).select()
+      if (data) updated.push(...data.map(documentFromDb))
+    }
+
+    await Promise.all([
+      batchUpdate(toExpire, 'expired'),
+      batchUpdate(toExpiringSoon, 'expiring_soon'),
+      batchUpdate(toValid, 'valid'),
+    ])
 
     return updated
   },

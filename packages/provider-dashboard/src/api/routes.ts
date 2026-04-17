@@ -3786,6 +3786,9 @@ export function registerRoutes(router: Router) {
   router.put('/api/marketing/flows/:id', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
+    // Ownership check: only allow updating own flows
+    const existing = (await MarketingService.flows.list(auth.providerId)).find((f: any) => f.id === req.params.id)
+    if (!existing) return res.status(404).json({ error: 'Flow nicht gefunden' })
     const flow = await MarketingService.flows.update(req.params.id, req.body)
     if (!flow) return res.status(404).json({ error: 'Flow nicht gefunden' })
     res.json({ data: flow })
@@ -3798,6 +3801,9 @@ export function registerRoutes(router: Router) {
     if (!status || !['active', 'paused', 'draft'].includes(status)) {
       return res.status(400).json({ error: 'Ungültiger Status' })
     }
+    // Ownership check
+    const existing = (await MarketingService.flows.list(auth.providerId)).find((f: any) => f.id === req.params.id)
+    if (!existing) return res.status(404).json({ error: 'Flow nicht gefunden' })
     const flow = await MarketingService.flows.toggle(req.params.id, status)
     if (!flow) return res.status(404).json({ error: 'Flow nicht gefunden' })
     res.json({ data: flow })
@@ -3821,6 +3827,9 @@ export function registerRoutes(router: Router) {
   router.put('/api/marketing/templates/:id', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
+    // Ownership check
+    const existing = (await MarketingService.templates.list(auth.providerId)).find((t: any) => t.id === req.params.id)
+    if (!existing) return res.status(404).json({ error: 'Template nicht gefunden' })
     const template = await MarketingService.templates.update(req.params.id, req.body)
     if (!template) return res.status(404).json({ error: 'Template nicht gefunden' })
     res.json({ data: template })
@@ -3829,6 +3838,9 @@ export function registerRoutes(router: Router) {
   router.delete('/api/marketing/templates/:id', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
+    // Ownership check
+    const existing = (await MarketingService.templates.list(auth.providerId)).find((t: any) => t.id === req.params.id)
+    if (!existing) return res.status(404).json({ error: 'Template nicht gefunden' })
     await MarketingService.templates.delete(req.params.id)
     res.json({ success: true })
   })
@@ -3851,6 +3863,9 @@ export function registerRoutes(router: Router) {
   router.put('/api/marketing/campaigns/:id', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
+    // Ownership check
+    const existing = (await MarketingService.campaigns.list(auth.providerId)).find((c: any) => c.id === req.params.id)
+    if (!existing) return res.status(404).json({ error: 'Kampagne nicht gefunden' })
     const campaign = await MarketingService.campaigns.update(req.params.id, req.body)
     if (!campaign) return res.status(404).json({ error: 'Kampagne nicht gefunden' })
     res.json({ data: campaign })

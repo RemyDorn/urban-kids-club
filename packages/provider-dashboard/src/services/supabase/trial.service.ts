@@ -25,27 +25,17 @@ export const SupabaseTrialService = {
     if (!activity) return { error: 'Aktivität nicht gefunden' }
     if (activity.status !== 'published') return { error: 'Aktivität ist nicht aktiv' }
 
-    // Check for existing trial
-    const { data: existing } = await sb.from('trial_lessons').select('id')
+    // Check for existing trial (same child, same activity, not cancelled)
+    const { data: existing } = await sb.from('trial_lessons').select('child_info')
       .eq('activity_id', input.activityId)
       .eq('parent_id', input.parentId)
       .neq('status', 'cancelled')
-    if (existing && existing.some((t: any) => {
-      // Check child name match — child_info is stored as JSONB
-      return true // We'll check after fetching
-    })) {
-      // More precise check
-      const { data: trials } = await sb.from('trial_lessons').select('*')
-        .eq('activity_id', input.activityId)
-        .eq('parent_id', input.parentId)
-        .neq('status', 'cancelled')
-      const alreadyHas = (trials ?? []).some((t: any) => {
-        const childInfo = t.child_info ?? {}
-        return childInfo.name === input.child.name
-      })
-      if (alreadyHas) {
-        return { error: 'Es existiert bereits eine Probestunde für dieses Kind in diesem Kurs' }
-      }
+    const alreadyHas = (existing ?? []).some((t: any) => {
+      const childInfo = t.child_info ?? {}
+      return childInfo.name === input.child.name
+    })
+    if (alreadyHas) {
+      return { error: 'Es existiert bereits eine Probestunde für dieses Kind in diesem Kurs' }
     }
 
     const row = trialToDb({

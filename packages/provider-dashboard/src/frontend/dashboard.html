@@ -5399,11 +5399,9 @@
       const newStatus = active ? 'active' : 'paused'
       try {
         await apiFetch(`/api/marketing/flows/${flowId}/toggle`, { method: 'POST', body: JSON.stringify({ status: newStatus }) })
-        // Update local cache
-        if (_marketingFlows) {
-          const flow = _marketingFlows.find(f => f.id === flowId)
-          if (flow) flow.status = newStatus
-        }
+        // Invalidate cache and re-fetch
+        _marketingFlows = null
+        await loadMarketingFlows()
       } catch (e) {
         showToast('Fehler beim Aktualisieren', 'error')
       }

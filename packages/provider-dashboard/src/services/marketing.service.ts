@@ -111,68 +111,92 @@ export const TRIGGER_LABELS: Record<AutomationTrigger, { label: string; desc: st
   seasonal_reminder: { label: 'Neues Halbjahr', desc: 'Erinnerung bei Saisonstart', icon: '📅' },
 }
 
+// In-memory flow store
+const memFlows = new Map<string, AutomationFlow>()
+const memTemplates = new Map<string, MessageTemplate>()
+
+function getDefaultFlows(providerId: ID): AutomationFlow[] {
+  const templates = MarketingService.templates.list(providerId)
+  const findTmpl = (name: string) => templates.find(t => t.name === name)?.id || ''
+  return [
+    { id: 'flow_1', providerId, name: 'Willkommensnachricht', trigger: 'customer_signup', channel: 'whatsapp', delayMinutes: 0, templateId: findTmpl('Willkommen'), status: 'active', stats: { sent: 47, opened: 42, clicked: 0 }, createdAt: new Date(), updatedAt: new Date() },
+    { id: 'flow_2', providerId, name: 'Buchungsbestätigung', trigger: 'booking_confirmed', channel: 'whatsapp', delayMinutes: 0, templateId: findTmpl('Buchungsbestätigung'), status: 'active', stats: { sent: 156, opened: 148, clicked: 0 }, createdAt: new Date(), updatedAt: new Date() },
+    { id: 'flow_3', providerId, name: 'Kurs-Erinnerung (24h)', trigger: 'booking_reminder_24h', channel: 'whatsapp', delayMinutes: 0, templateId: findTmpl('Erinnerung (24h)'), status: 'active', stats: { sent: 312, opened: 290, clicked: 0 }, createdAt: new Date(), updatedAt: new Date() },
+    { id: 'flow_4', providerId, name: 'Nach Probestunde nachfassen', trigger: 'trial_completed', channel: 'whatsapp', delayMinutes: 60 * 24, templateId: findTmpl('Nach Probestunde'), status: 'active', stats: { sent: 23, opened: 19, clicked: 8 }, createdAt: new Date(), updatedAt: new Date() },
+    { id: 'flow_5', providerId, name: 'Bewertung anfragen', trigger: 'review_request', channel: 'whatsapp', delayMinutes: 60 * 2, templateId: findTmpl('Bewertung anfragen'), status: 'paused', stats: { sent: 0, opened: 0, clicked: 0 }, createdAt: new Date(), updatedAt: new Date() },
+    { id: 'flow_6', providerId, name: 'Wir vermissen euch', trigger: 'inactive_customer', channel: 'whatsapp', delayMinutes: 0, templateId: findTmpl('Wir vermissen euch'), status: 'active', stats: { sent: 12, opened: 9, clicked: 4 }, createdAt: new Date(), updatedAt: new Date() },
+    { id: 'flow_7', providerId, name: 'Kindergeburtstag', trigger: 'child_birthday', channel: 'whatsapp', delayMinutes: 0, templateId: findTmpl('Geburtstag'), status: 'draft', stats: { sent: 0, opened: 0, clicked: 0 }, createdAt: new Date(), updatedAt: new Date() },
+    { id: 'flow_8', providerId, name: 'Zahlungserinnerung', trigger: 'payment_overdue', channel: 'email', delayMinutes: 60 * 24 * 3, templateId: findTmpl('Zahlungserinnerung'), status: 'active', stats: { sent: 8, opened: 6, clicked: 0 }, createdAt: new Date(), updatedAt: new Date() },
+    { id: 'flow_9', providerId, name: 'Kurspaket endet bald', trigger: 'course_ending_soon', channel: 'whatsapp', delayMinutes: 0, templateId: findTmpl('Kurspaket endet bald'), status: 'active', stats: { sent: 34, opened: 30, clicked: 12 }, createdAt: new Date(), updatedAt: new Date() },
+    { id: 'flow_10', providerId, name: 'Treuestufe aufgestiegen', trigger: 'loyalty_tier_upgrade', channel: 'whatsapp', delayMinutes: 0, templateId: findTmpl('Treuestufe Aufstieg'), status: 'active', stats: { sent: 5, opened: 5, clicked: 3 }, createdAt: new Date(), updatedAt: new Date() },
+  ] as AutomationFlow[]
+}
+
 export const MarketingService = {
-
-  // Templates initialisieren und im Store persistieren
-  initDefaultTemplates(providerId: ID): MessageTemplate[] {
-    // Prüfe ob bereits eigene Templates existieren
-    const existingCustom = Array.from(store.state.messages.values()).length // Einfacher Check
-    if (existingCustom > 0) return this.listTemplates(providerId)
-
-    return DEFAULT_TEMPLATES.map(t => {
+  flows: {
+    list(providerId: ID): AutomationFlow[] {
+      const providerFlows = Array.from(memFlows.values()).filter(f => f.providerId === providerId)
+      return providerFlows.length > 0 ? providerFlows : getDefaultFlows(providerId)
+    },
+    create(input: any): AutomationFlow {
+      const id = generateId('flow')
+      const flow: AutomationFlow = {
+        id, ...input, delayMinutes: input.delayMinutes ?? 0,
+        status: input.status ?? 'draft', conditions: {},
+        stats: input.stats ?? { sent: 0, opened: 0, clicked: 0 },
+        createdAt: new Date(), updatedAt: new Date(),
+      }
+      memFlows.set(id, flow)
+      return flow
+    },
+    update(id: ID, input: any): AutomationFlow | undefined {
+      const flow = memFlows.get(id)
+      if (!flow) return undefined
+      Object.assign(flow, input, { updatedAt: new Date() })
+      return flow
+    },
+    toggle(id: ID, status: AutomationStatus): AutomationFlow | undefined {
+      const flow = memFlows.get(id)
+      if (!flow) return undefined
+      flow.status = status
+      flow.updatedAt = new Date()
+      return flow
+    },
+  },
+  templates: {
+    list(providerId: ID): MessageTemplate[] {
+      const providerTemplates = Array.from(memTemplates.values()).filter(t => t.providerId === providerId)
+      if (providerTemplates.length > 0) return providerTemplates
+      return DEFAULT_TEMPLATES.map((t, i) => ({
+        id: `tmpl_default_${i}`,
+        providerId,
+        ...t,
+        createdAt: new Date(),
+      }))
+    },
+    create(input: any): MessageTemplate {
+      const variables = (input.body?.match(/\{\{(\w+)\}\}/g) || []).map((v: string) => v.replace(/\{\{|\}\}/g, ''))
       const id = generateId('tmpl')
-      const template: MessageTemplate = { id, providerId, ...t, createdAt: new Date() }
+      const template: MessageTemplate = { id, ...input, variables, isDefault: false, createdAt: new Date() }
+      memTemplates.set(id, template)
       return template
-    })
+    },
+    update(id: ID, input: any): MessageTemplate | undefined {
+      const template = memTemplates.get(id)
+      if (!template) return undefined
+      Object.assign(template, input)
+      return template
+    },
+    delete(id: ID): boolean {
+      return memTemplates.delete(id)
+    },
   },
-
-  // --- Templates ---
-  createTemplate(input: { providerId: ID; name: string; channel: AutomationChannel; subject?: string; body: string }): MessageTemplate {
-    const variables = (input.body.match(/\{\{(\w+)\}\}/g) || []).map(v => v.replace(/\{\{|\}\}/g, ''))
-    const id = generateId('tmpl')
-    const template: MessageTemplate = { id, ...input, variables, isDefault: false, createdAt: new Date() }
-    return template
-  },
-
-  listTemplates(_providerId: ID): MessageTemplate[] {
-    return DEFAULT_TEMPLATES.map((t, i) => ({
-      id: `tmpl_default_${i}`,
-      providerId: _providerId,
-      ...t,
-      createdAt: new Date(),
-    }))
-  },
-
-  // --- Flows ---
-  createFlow(input: {
-    providerId: ID; name: string; trigger: AutomationTrigger;
-    channel: AutomationChannel; delayMinutes?: number; templateId: ID;
-  }): AutomationFlow {
-    const id = generateId('flow')
-    const flow: AutomationFlow = {
-      id, ...input, delayMinutes: input.delayMinutes ?? 0,
-      status: 'draft', conditions: {},
-      stats: { sent: 0, opened: 0, clicked: 0 },
-      createdAt: new Date(), updatedAt: new Date(),
-    }
-    return flow
-  },
-
-  getDefaultFlows(providerId: ID): AutomationFlow[] {
-    const templates = this.listTemplates(providerId)
-    const findTmpl = (name: string) => templates.find(t => t.name === name)?.id || ''
-
-    return [
-      { id: 'flow_1', providerId, name: 'Willkommensnachricht', trigger: 'customer_signup', channel: 'whatsapp', delayMinutes: 0, templateId: findTmpl('Willkommen'), status: 'active', stats: { sent: 47, opened: 42, clicked: 0 }, createdAt: new Date(), updatedAt: new Date() },
-      { id: 'flow_2', providerId, name: 'Buchungsbestätigung', trigger: 'booking_confirmed', channel: 'whatsapp', delayMinutes: 0, templateId: findTmpl('Buchungsbestätigung'), status: 'active', stats: { sent: 156, opened: 148, clicked: 0 }, createdAt: new Date(), updatedAt: new Date() },
-      { id: 'flow_3', providerId, name: 'Kurs-Erinnerung (24h)', trigger: 'booking_reminder_24h', channel: 'whatsapp', delayMinutes: 0, templateId: findTmpl('Erinnerung (24h)'), status: 'active', stats: { sent: 312, opened: 290, clicked: 0 }, createdAt: new Date(), updatedAt: new Date() },
-      { id: 'flow_4', providerId, name: 'Nach Probestunde nachfassen', trigger: 'trial_completed', channel: 'whatsapp', delayMinutes: 60 * 24, templateId: findTmpl('Nach Probestunde'), status: 'active', stats: { sent: 23, opened: 19, clicked: 8 }, createdAt: new Date(), updatedAt: new Date() },
-      { id: 'flow_5', providerId, name: 'Bewertung anfragen', trigger: 'review_request', channel: 'whatsapp', delayMinutes: 60 * 2, templateId: findTmpl('Bewertung anfragen'), status: 'paused', stats: { sent: 0, opened: 0, clicked: 0 }, createdAt: new Date(), updatedAt: new Date() },
-      { id: 'flow_6', providerId, name: 'Wir vermissen euch', trigger: 'inactive_customer', channel: 'whatsapp', delayMinutes: 0, templateId: findTmpl('Wir vermissen euch'), status: 'active', stats: { sent: 12, opened: 9, clicked: 4 }, createdAt: new Date(), updatedAt: new Date() },
-      { id: 'flow_7', providerId, name: 'Kindergeburtstag', trigger: 'child_birthday', channel: 'whatsapp', delayMinutes: 0, templateId: findTmpl('Geburtstag'), status: 'draft', stats: { sent: 0, opened: 0, clicked: 0 }, createdAt: new Date(), updatedAt: new Date() },
-      { id: 'flow_8', providerId, name: 'Zahlungserinnerung', trigger: 'payment_overdue', channel: 'email', delayMinutes: 60 * 24 * 3, templateId: findTmpl('Zahlungserinnerung'), status: 'active', stats: { sent: 8, opened: 6, clicked: 0 }, createdAt: new Date(), updatedAt: new Date() },
-      { id: 'flow_9', providerId, name: 'Kurspaket endet bald', trigger: 'course_ending_soon', channel: 'whatsapp', delayMinutes: 0, templateId: findTmpl('Kurspaket endet bald'), status: 'active', stats: { sent: 34, opened: 30, clicked: 12 }, createdAt: new Date(), updatedAt: new Date() },
-      { id: 'flow_10', providerId, name: 'Treuestufe aufgestiegen', trigger: 'loyalty_tier_upgrade', channel: 'whatsapp', delayMinutes: 0, templateId: findTmpl('Treuestufe Aufstieg'), status: 'active', stats: { sent: 5, opened: 5, clicked: 3 }, createdAt: new Date(), updatedAt: new Date() },
-    ] as AutomationFlow[]
+  campaigns: {
+    list(_providerId: ID): MarketingCampaign[] { return [] },
+    create(input: any): MarketingCampaign {
+      const id = generateId('camp')
+      return { id, ...input, stats: { recipients: 0, sent: 0, opened: 0, clicked: 0 }, createdAt: new Date() } as MarketingCampaign
+    },
+    update(_id: ID, _input: any): MarketingCampaign | undefined { return undefined },
   },
 }
