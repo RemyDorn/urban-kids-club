@@ -5022,48 +5022,38 @@
     }
 
     // Demo flows (in Produktion: aus API)
+    // Marketing data cache (loaded from API)
+    let _marketingFlows = null
+    let _marketingTemplates = null
+
+    async function loadMarketingFlows() {
+      if (_marketingFlows) return _marketingFlows
+      try {
+        const res = await apiFetch(`/api/providers/${currentProvider.id}/marketing/flows`)
+        _marketingFlows = res.data || []
+      } catch {
+        _marketingFlows = []
+      }
+      return _marketingFlows
+    }
+
+    async function loadMarketingTemplates() {
+      if (_marketingTemplates) return _marketingTemplates
+      try {
+        const res = await apiFetch(`/api/providers/${currentProvider.id}/marketing/templates`)
+        _marketingTemplates = res.data || []
+      } catch {
+        _marketingTemplates = []
+      }
+      return _marketingTemplates
+    }
+
     function getMarketingFlows() {
-      const templates = getDefaultTemplates()
-      const findTmpl = (name) => templates.find(t => t.name === name)
-      const statuses = getFlowStatuses()
-      return [
-        { id: 'flow_1', name: 'Willkommensnachricht', trigger: 'customer_signup', channel: 'whatsapp', delay: '0', template: findTmpl('Willkommen'), status: 'active', stats: { sent: 47, opened: 42, clicked: 0 } },
-        { id: 'flow_2', name: 'Buchungsbestätigung', trigger: 'booking_confirmed', channel: 'whatsapp', delay: '0', template: findTmpl('Buchungsbestätigung'), status: 'active', stats: { sent: 156, opened: 148, clicked: 0 } },
-        { id: 'flow_3', name: 'Kurs-Erinnerung', trigger: 'booking_reminder_24h', channel: 'whatsapp', delay: '0', template: findTmpl('Erinnerung (24h)'), status: 'active', stats: { sent: 312, opened: 290, clicked: 0 } },
-        { id: 'flow_4', name: 'Probe → Nachfassen', trigger: 'trial_completed', channel: 'whatsapp', delay: '24h', template: findTmpl('Nach Probestunde'), status: 'active', stats: { sent: 23, opened: 19, clicked: 8 } },
-        { id: 'flow_5', name: 'Bewertung anfragen', trigger: 'review_request', channel: 'whatsapp', delay: '2h', template: findTmpl('Bewertung anfragen'), status: 'paused', stats: { sent: 0, opened: 0, clicked: 0 } },
-        { id: 'flow_6', name: 'Wir vermissen euch', trigger: 'inactive_customer', channel: 'whatsapp', delay: '0', template: findTmpl('Wir vermissen euch'), status: 'active', stats: { sent: 12, opened: 9, clicked: 4 } },
-        { id: 'flow_7', name: 'Kindergeburtstag', trigger: 'child_birthday', channel: 'whatsapp', delay: '0', template: findTmpl('Geburtstag'), status: 'draft', stats: { sent: 0, opened: 0, clicked: 0 } },
-        { id: 'flow_8', name: 'Zahlungserinnerung', trigger: 'payment_overdue', channel: 'email', delay: '3 Tage', template: findTmpl('Zahlungserinnerung'), status: 'active', stats: { sent: 8, opened: 6, clicked: 0 } },
-        { id: 'flow_9', name: 'Kurspaket endet', trigger: 'course_ending_soon', channel: 'whatsapp', delay: '0', template: findTmpl('Kurspaket endet bald'), status: 'active', stats: { sent: 34, opened: 30, clicked: 12 } },
-        { id: 'flow_10', name: 'Treuestufe aufgestiegen', trigger: 'loyalty_tier_upgrade', channel: 'whatsapp', delay: '0', template: findTmpl('Treuestufe Aufstieg'), status: 'active', stats: { sent: 5, opened: 5, clicked: 3 } },
-      ].map(f => ({ ...f, status: statuses[f.id] ?? f.status }))
+      return _marketingFlows || []
     }
 
     function getDefaultTemplates() {
-      return [
-        { name: 'Willkommen', channel: 'whatsapp', body: 'Hallo {{parentName}}! 👋 Willkommen bei {{providerName}}.' },
-        { name: 'Buchungsbestätigung', channel: 'whatsapp', body: '✅ Buchung bestätigt! {{childName}} für "{{courseName}}".' },
-        { name: 'Erinnerung (24h)', channel: 'whatsapp', body: '⏰ Morgen um {{startTime}}: "{{courseName}}" – {{childName}}, wir sehen uns!' },
-        { name: 'Nach Probestunde', channel: 'whatsapp', body: 'Hat {{childName}} die Probestunde gefallen? 🤩 Sollen wir fest anmelden?' },
-        { name: 'Bewertung anfragen', channel: 'whatsapp', body: 'Wie fand {{childName}} "{{courseName}}"? ⭐ {{reviewLink}}' },
-        { name: 'Wir vermissen euch', channel: 'whatsapp', body: 'Wir haben {{childName}} vermisst 😢 Neue Kurse: {{courseListLink}}' },
-        { name: 'Geburtstag', channel: 'whatsapp', body: '🎂 Happy Birthday, {{childName}}! 🎉 {{discountPercent}}% Rabatt: {{couponCode}}' },
-        { name: 'Kurspaket endet bald', channel: 'whatsapp', body: 'Kurspaket von {{childName}} endet in {{daysLeft}} Tagen. Verlängern? 📩' },
-        { name: 'Treuestufe Aufstieg', channel: 'whatsapp', body: '🎊 Aufgestiegen: {{tierName}} {{tierIcon}}! {{discountPercent}}% Rabatt! ❤️' },
-        { name: 'Zahlungserinnerung', channel: 'email', body: 'Rechnung {{invoiceNumber}} über {{amount}}€ ist offen. Fällig: {{dueDate}}.' },
-        { name: 'Neues Halbjahr', channel: 'whatsapp', body: '📅 {{seasonName}} – Anmeldung offen! Platz sichern für {{childName}}!' },
-      ]
-    }
-
-    // Flow-Status persistieren
-    function getFlowStatuses() {
-      try { return JSON.parse(localStorage.getItem('flowStatus_' + currentProvider?.id) || '{}') } catch { return {} }
-    }
-    function setFlowStatus(flowId, status) {
-      const statuses = getFlowStatuses()
-      statuses[flowId] = status
-      localStorage.setItem('flowStatus_' + currentProvider?.id, JSON.stringify(statuses))
+      return _marketingTemplates || []
     }
 
     function getPixelSettings() {
@@ -5074,6 +5064,8 @@
     }
 
     async function renderMarketing() {
+      // Load from API (cached after first call)
+      await Promise.all([loadMarketingFlows(), loadMarketingTemplates()])
       const flows = getMarketingFlows()
       const templates = getDefaultTemplates()
       const pixels = getPixelSettings()
@@ -5110,7 +5102,7 @@
       `
     }
 
-    function showMarketingTab(tab) {
+    async function showMarketingTab(tab) {
       document.querySelectorAll('[id^="tab"]').forEach(el => {
         el.className = 'px-4 py-2.5 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700'
       })
@@ -5403,9 +5395,18 @@
       `
     }
 
-    function toggleFlow(flowId, active) {
-      setFlowStatus(flowId, active ? 'active' : 'paused')
-      // Re-render flows tab in place
+    async function toggleFlow(flowId, active) {
+      const newStatus = active ? 'active' : 'paused'
+      try {
+        await apiFetch(`/api/marketing/flows/${flowId}/toggle`, { method: 'POST', body: JSON.stringify({ status: newStatus }) })
+        // Update local cache
+        if (_marketingFlows) {
+          const flow = _marketingFlows.find(f => f.id === flowId)
+          if (flow) flow.status = newStatus
+        }
+      } catch (e) {
+        showToast('Fehler beim Aktualisieren', 'error')
+      }
       const content = document.getElementById('marketingTabContent')
       if (content) content.innerHTML = renderFlowsTab(getMarketingFlows())
     }
