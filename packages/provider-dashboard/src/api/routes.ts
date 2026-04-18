@@ -52,6 +52,35 @@ function safeParseInt(value: string | undefined, defaultValue: number): number {
   return isNaN(parsed) ? defaultValue : parsed
 }
 
+// ============================================================
+// Rate Limiting — simple in-memory sliding window
+// ============================================================
+const rateLimitStore = new Map<string, { count: number; resetAt: number }>()
+// Evict expired entries every 5 minutes
+setInterval(() => {
+  const now = Date.now()
+  for (const [key, val] of rateLimitStore) {
+    if (val.resetAt < now) rateLimitStore.delete(key)
+  }
+}, 5 * 60 * 1000).unref()
+
+function rateLimit(key: string, maxRequests: number, windowMs: number): boolean {
+  const now = Date.now()
+  const entry = rateLimitStore.get(key)
+  if (!entry || entry.resetAt < now) {
+    rateLimitStore.set(key, { count: 1, resetAt: now + windowMs })
+    return true
+  }
+  if (entry.count >= maxRequests) return false
+  entry.count++
+  return true
+}
+
+function getClientIp(req: any): string {
+  return req.raw?.headers?.['x-forwarded-for']?.split(',')[0]?.trim() ||
+         req.raw?.socket?.remoteAddress || 'unknown'
+}
+
 // Helper: escape HTML to prevent XSS
 function escHtml(s: string): string {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
@@ -1910,9 +1939,8 @@ export function registerRoutes(router: Router) {
   // Auth: internal calls from server.ts use localhost — validate via shared secret or admin auth
   router.post('/api/admin/jobs/expire-waitlist', async (req, res) => {
     // Allow internal calls (from server setInterval) or admin auth
-    const srcIp = req.raw?.socket?.remoteAddress || ''
-    const isInternal = srcIp === '127.0.0.1' || srcIp === '::1' || srcIp === '::ffff:127.0.0.1'
-    if (!isInternal) { const admin = await authenticateAdmin(req, res); if (!admin) return }
+    // Always require admin auth (no IP bypass — behind reverse proxy IP is unreliable)
+    const admin = await authenticateAdmin(req, res); if (!admin) return
     const db = getServiceClient()
     const now = new Date().toISOString()
 
@@ -1975,9 +2003,8 @@ export function registerRoutes(router: Router) {
 
   // Send course reminders for tomorrow's sessions
   router.post('/api/admin/jobs/send-reminders', async (req, res) => {
-    const srcIp = req.raw?.socket?.remoteAddress || ''
-    const isInternal = srcIp === '127.0.0.1' || srcIp === '::1' || srcIp === '::ffff:127.0.0.1'
-    if (!isInternal) { const admin = await authenticateAdmin(req, res); if (!admin) return }
+    // Always require admin auth (no IP bypass — behind reverse proxy IP is unreliable)
+    const admin = await authenticateAdmin(req, res); if (!admin) return
     const db = getServiceClient()
     const nowDE = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Berlin' }))
     const tomorrow = new Date(nowDE)
@@ -2094,13 +2121,17 @@ export function registerRoutes(router: Router) {
   })
 
   router.post('/api/auth/register', async (req, res) => {
+    // Rate limit: 3 registrations per IP per hour
+    const ip = getClientIp(req)
+    if (!rateLimit(`register:${ip}`, 3, 60 * 60 * 1000)) return res.error(429, 'Zu viele Registrierungsversuche. Bitte später erneut probieren.')
+
     const { email, password, displayName, companyName, legalForm, contactName, phone, street, zip, city } = req.body as any
 
     if (!email || !password || !displayName || !companyName || !legalForm || !contactName || !phone || !street || !zip || !city) {
       return res.error(400, 'Alle Felder sind erforderlich')
     }
-    if (password.length < 6) {
-      return res.error(400, 'Passwort muss mindestens 6 Zeichen lang sein')
+    if (password.length < 8) {
+      return res.error(400, 'Passwort muss mindestens 8 Zeichen lang sein')
     }
 
     const db = getServiceClient()
@@ -2562,10 +2593,18 @@ export function registerRoutes(router: Router) {
 
   // Public: Waitlist registration (no auth needed — for embed widget)
   router.post('/api/widget/waitlist', async (req, res) => {
+    // Rate limit: 10 waitlist entries per IP per hour
+    const ip = getClientIp(req)
+    if (!rateLimit(`widget-waitlist:${ip}`, 10, 60 * 60 * 1000)) return res.error(429, 'Zu viele Anfragen. Bitte später erneut probieren.')
     const { slug, activityId, child, parent: parentData } = req.body as any
     if (!slug || !activityId) return res.error(400, 'Pflichtfelder fehlen')
     if (!child?.firstName || !child?.lastName || !child?.birthYear) return res.error(400, 'Kind-Daten unvollständig')
     if (!parentData?.firstName || !parentData?.lastName || !parentData?.email) return res.error(400, 'Eltern-Daten unvollständig')
+    // Validate email format
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(parentData.email)) return res.error(400, 'Ungültige E-Mail-Adresse')
+    // Validate birth year
+    const by = parseInt(child.birthYear)
+    if (isNaN(by) || by < 2000 || by > new Date().getFullYear()) return res.error(400, 'Ungültiges Geburtsjahr')
 
     const db = getServiceClient()
     const provider = await ProviderService.getBySlug(slug)
@@ -2645,20 +2684,26 @@ export function registerRoutes(router: Router) {
 
   // Public: Booking inquiry from embed widget (creates a lead/notification)
   router.post('/api/widget/booking-inquiry', async (req, res) => {
+    // Rate limit: 5 inquiries per IP per hour
+    const ip = getClientIp(req)
+    if (!rateLimit(`booking-inquiry:${ip}`, 5, 60 * 60 * 1000)) return res.error(429, 'Zu viele Anfragen.')
     const { slug, course, date, time, name, email, phone, message } = req.body as any
     if (!slug || !name || !email) return res.error(400, 'Name und E-Mail erforderlich')
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.error(400, 'Ungültige E-Mail-Adresse')
+    // Limit field lengths to prevent abuse
+    if (name.length > 200 || (message && message.length > 2000)) return res.error(400, 'Eingabe zu lang')
     const provider = await ProviderService.getBySlug(slug)
     if (!provider) return res.error(404, 'Provider nicht gefunden')
     const db = getServiceClient()
     const { error } = await db.from('booking_inquiries').insert({
       provider_id: provider.id,
-      course_name: course || '',
-      preferred_date: date || '',
-      preferred_time: time || '',
-      parent_name: name,
-      parent_email: email,
-      parent_phone: phone || '',
-      message: message || '',
+      course_name: (course || '').slice(0, 200),
+      preferred_date: (date || '').slice(0, 20),
+      preferred_time: (time || '').slice(0, 20),
+      parent_name: name.slice(0, 200),
+      parent_email: email.slice(0, 200),
+      parent_phone: (phone || '').slice(0, 30),
+      message: (message || '').slice(0, 2000),
       status: 'new',
     })
     if (error) return res.error(500, 'Anfrage konnte nicht gespeichert werden')
@@ -2899,13 +2944,10 @@ export function registerRoutes(router: Router) {
         console.error('Webhook signature verification failed:', err.message)
         return res.error(400, 'Invalid signature')
       }
-    } else if (process.env.NODE_ENV !== 'production') {
-      // Fallback for dev/test only — never accept unverified webhooks in production
-      console.warn('WARNING: Webhook signature not verified (no STRIPE_WEBHOOK_SECRET set)')
-      event = req.body
     } else {
-      console.error('STRIPE_WEBHOOK_SECRET not configured in production!')
-      return res.error(500, 'Webhook not configured')
+      // Always require webhook signature — no dev bypass
+      console.error('STRIPE_WEBHOOK_SECRET not configured or rawBody missing!')
+      return res.error(500, 'Webhook not configured — set STRIPE_WEBHOOK_SECRET')
     }
 
     if (event?.type === 'checkout.session.completed') {
@@ -3264,6 +3306,8 @@ export function registerRoutes(router: Router) {
   router.post('/api/portal/login', async (req, res) => {
     const { email } = req.body as { email?: string }
     if (!email) return res.error(400, 'E-Mail ist erforderlich')
+    // Rate limit: 5 login attempts per email per hour
+    if (!rateLimit(`portal-login:${email.toLowerCase().trim()}`, 5, 60 * 60 * 1000)) return res.error(429, 'Zu viele Login-Versuche. Bitte später erneut probieren.')
     const sb = getServiceClient()
     const { data: parent } = await sb.from('parents').select('id, name').ilike('email', email.trim()).maybeSingle()
     // Always return success (don't leak whether email exists)
@@ -3306,6 +3350,9 @@ export function registerRoutes(router: Router) {
   router.post('/api/portal/verify', async (req, res) => {
     const { token } = req.body as { token?: string }
     if (!token) return res.error(400, 'Token fehlt')
+    // Rate limit: 10 verify attempts per IP per 15 minutes (prevent token guessing)
+    const ip = getClientIp(req)
+    if (!rateLimit(`portal-verify:${ip}`, 10, 15 * 60 * 1000)) return res.error(429, 'Zu viele Versuche. Bitte warten.')
     const sb = getServiceClient()
     const { data: authToken } = await sb.from('parent_auth_tokens')
       .select('id, parent_id, expires_at, used_at')
@@ -3741,6 +3788,11 @@ export function registerRoutes(router: Router) {
   router.post('/api/public/checkin/lookup', async (req, res) => {
     const { providerId, email } = req.body as { providerId?: string; email?: string }
     if (!providerId || !email) return res.error(400, 'providerId und email sind erforderlich')
+    // Rate limit: 10 lookups per IP per 15 minutes
+    const ip = getClientIp(req)
+    if (!rateLimit(`checkin-lookup:${ip}`, 10, 15 * 60 * 1000)) return res.error(429, 'Zu viele Anfragen. Bitte warten.')
+    // Validate UUID format to prevent enumeration
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(providerId)) return res.error(400, 'Ungültige Provider-ID')
     const provider = await ProviderService.getById(providerId)
     if (!provider) return res.error(404, 'Anbieter nicht gefunden')
     const result = await AttendanceService.qrLookup(providerId, email)
@@ -3751,6 +3803,10 @@ export function registerRoutes(router: Router) {
   router.post('/api/public/checkin', async (req, res) => {
     const { providerId, email, bookingIds } = req.body as { providerId?: string; email?: string; bookingIds?: string[] }
     if (!providerId || !email) return res.error(400, 'providerId und email sind erforderlich')
+    // Rate limit: 20 check-ins per IP per 15 minutes
+    const ip = getClientIp(req)
+    if (!rateLimit(`checkin:${ip}`, 20, 15 * 60 * 1000)) return res.error(429, 'Zu viele Anfragen. Bitte warten.')
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(providerId)) return res.error(400, 'Ungültige Provider-ID')
     const provider = await ProviderService.getById(providerId)
     if (!provider) return res.error(404, 'Anbieter nicht gefunden')
 
