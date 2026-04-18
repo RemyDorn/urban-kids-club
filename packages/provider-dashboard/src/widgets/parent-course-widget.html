@@ -1138,28 +1138,28 @@ function closeMakeupModal() {
 // ============================================================
 // Cancel Actions
 // ============================================================
-async function cancelAttendance(attendanceId, childName, date) {
-  if (!confirm(`${childName} für den ${formatDate(date)} absagen?\n\nBei Absage mehr als 24h vorher erhältst du ein Guthaben zum Nachholen.`)) return
-
-  try {
-    await api(`/attendance/${attendanceId}/cancel`, { method: 'POST' })
-    showToast('Termin wurde abgesagt.')
-    loadMyCourses()
-  } catch (e) {
-    showToast(e.message || 'Fehler bei der Absage', true)
-  }
+function cancelAttendance(attendanceId, childName, date) {
+  showConfirmDialog(`${childName} für den ${formatDate(date)} absagen?\n\nBei Absage mehr als 24h vorher erhältst du ein Guthaben zum Nachholen.`, async () => {
+    try {
+      await api(`/attendance/${attendanceId}/cancel`, { method: 'POST' })
+      showToast('Termin wurde abgesagt.')
+      loadMyCourses()
+    } catch (e) {
+      showToast(e.message || 'Fehler bei der Absage', true)
+    }
+  })
 }
 
-async function cancelMakeup(makeupId) {
-  if (!confirm('Nachholtermin wirklich stornieren?\n\nDein Guthaben wird wiederhergestellt.')) return
-
-  try {
-    await api(`/makeup-bookings/${makeupId}`, { method: 'DELETE' })
-    showToast('Nachholtermin storniert. Guthaben wiederhergestellt.')
-    loadCredits()
-  } catch (e) {
-    showToast(e.message || 'Fehler beim Stornieren', true)
-  }
+function cancelMakeup(makeupId) {
+  showConfirmDialog('Nachholtermin wirklich stornieren?\n\nDein Guthaben wird wiederhergestellt.', async () => {
+    try {
+      await api(`/makeup-bookings/${makeupId}`, { method: 'DELETE' })
+      showToast('Nachholtermin storniert. Guthaben wiederhergestellt.')
+      loadCredits()
+    } catch (e) {
+      showToast(e.message || 'Fehler beim Stornieren', true)
+    }
+  })
 }
 
 // ============================================================
@@ -1225,6 +1225,16 @@ function showToast(msg, isError = false) {
   toast.style.background = isError ? 'var(--danger)' : '#1F2937'
   toast.classList.add('visible')
   setTimeout(() => toast.classList.remove('visible'), 3000)
+}
+
+function showConfirmDialog(message, onConfirm) {
+  const overlay = document.createElement('div')
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:1000;display:flex;align-items:center;justify-content:center'
+  overlay.innerHTML = '<div style="background:#fff;border-radius:16px;padding:24px;max-width:340px;width:90%;box-shadow:0 20px 40px rgba(0,0,0,.2)"><p style="font-size:14px;color:#374151;margin-bottom:20px;white-space:pre-line">' + message.replace(/</g,'&lt;') + '</p><div style="display:flex;gap:10px"><button id="cfmCancel" style="flex:1;padding:10px;border:1px solid #e5e7eb;border-radius:10px;background:#fff;color:#374151;font-size:13px;cursor:pointer">Abbrechen</button><button id="cfmOk" style="flex:1;padding:10px;border:none;border-radius:10px;background:var(--primary);color:#fff;font-size:13px;cursor:pointer;font-weight:600">Bestätigen</button></div></div>'
+  document.body.appendChild(overlay)
+  overlay.querySelector('#cfmCancel').onclick = () => overlay.remove()
+  overlay.querySelector('#cfmOk').onclick = () => { overlay.remove(); onConfirm() }
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove() }
 }
 
 // ============================================================

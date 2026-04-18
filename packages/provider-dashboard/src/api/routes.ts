@@ -430,7 +430,14 @@ export function registerRoutes(router: Router) {
   router.put('/api/activities/:id', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const activity = await ActivityService.update(req.params.id, req.body as any, auth.providerId)
+    // Whitelist allowed fields for update
+    const body = req.body as any
+    const allowed: Record<string, unknown> = {}
+    const fields = ['title', 'description', 'category', 'ageRange', 'capacity', 'schedule', 'pricing',
+      'color', 'imageUrl', 'status', 'instructorId', 'roomId', 'platformListing',
+      'payment_online', 'payment_onsite', 'siblingDiscount', 'siblingDiscountPercent']
+    for (const f of fields) { if (body[f] !== undefined) allowed[f] = body[f] }
+    const activity = await ActivityService.update(req.params.id, allowed, auth.providerId)
     if (!activity) return res.error(404, 'Aktivität nicht gefunden')
     res.json({ data: activity })
   })
@@ -580,6 +587,7 @@ export function registerRoutes(router: Router) {
     const auth = await requireAuth(req, res)
     if (!auth) return
     const { amount } = req.body as { amount: number }
+    if (typeof amount !== 'number' || amount < 0 || amount > 100000) return res.error(400, 'Ungültiger Betrag')
     const booking = await BookingService.markPaid(req.params.id, amount, auth.providerId)
     if (!booking) return res.error(404, 'Buchung nicht gefunden')
     res.json({ data: booking })
@@ -1268,51 +1276,51 @@ export function registerRoutes(router: Router) {
     const db = getServiceClient()
     const invoiceId = req.params.id
 
-    // Check access: (a) Supabase JWT in ?token= param, or (b) HMAC view token, or (c) Authorization header
+    // Check access: try multiple auth methods in sequence
     const queryToken = req.query?.token as string | undefined
     let hasAccess = false
     let authProviderId: string | undefined
 
-    // Method 1: JWT access token (from dashboard "view invoice" button)
-    if (queryToken && queryToken.length > 50) {
-      // Looks like a JWT — verify via Supabase
-      try {
-        const { supabase: sbClient } = await import('../lib/supabase')
-        const { data: { user } } = await sbClient.auth.getUser(queryToken)
-        if (user?.email) {
-          const svc = getServiceClient()
-          const { data: prov } = await svc.from('providers').select('id').eq('login_email', user.email).maybeSingle()
-          if (prov) { hasAccess = true; authProviderId = prov.id }
+    if (queryToken) {
+      // Method 1: HMAC view token (32 chars, from emailed invoice link)
+      if (!hasAccess && queryToken.length === 32) {
+        const { createHmac } = await import('node:crypto')
+        const secret = process.env.INVOICE_VIEW_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+        if (secret) {
+          const expected = createHmac('sha256', secret).update(invoiceId).digest('hex').slice(0, 32)
+          hasAccess = (queryToken === expected)
         }
-      } catch { /* invalid JWT */ }
-    }
+      }
 
-    // Method 2: HMAC view token (from emailed invoice link)
-    if (!hasAccess && queryToken && queryToken.length <= 50) {
-      const { createHmac } = await import('node:crypto')
-      const secret = process.env.INVOICE_VIEW_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || ''
-      if (secret) {
-        const expected = createHmac('sha256', secret).update(invoiceId).digest('hex').slice(0, 32)
-        hasAccess = (queryToken === expected)
+      // Method 2: Parent session token (64 chars hex, from portal)
+      if (!hasAccess && queryToken.length === 64 && /^[0-9a-f]+$/i.test(queryToken)) {
+        const { data: session } = await db.from('parent_sessions')
+          .select('parent_id, expires_at').eq('session_token', queryToken).maybeSingle()
+        if (session && new Date(session.expires_at) > new Date()) {
+          hasAccess = true
+        }
+      }
+
+      // Method 3: Supabase JWT (200+ chars, from dashboard "view invoice" button)
+      if (!hasAccess && queryToken.length > 100) {
+        try {
+          const { supabase: sbClient } = await import('../lib/supabase')
+          const { data: { user } } = await sbClient.auth.getUser(queryToken)
+          if (user?.email) {
+            const svc = getServiceClient()
+            const { data: prov } = await svc.from('providers').select('id').eq('login_email', user.email).maybeSingle()
+            if (prov) { hasAccess = true; authProviderId = prov.id }
+          }
+        } catch { /* invalid JWT */ }
       }
     }
 
-    // Method 3: Authorization header (provider JWT)
+    // Method 4: Authorization header (provider JWT)
     if (!hasAccess) {
       try {
         const auth = await (await import('../lib/auth-middleware')).authenticateRequest(req as any)
         if (auth) { hasAccess = true; authProviderId = auth.providerId }
       } catch { /* not authenticated */ }
-    }
-
-    // Method 4: Parent session token in query (for portal invoice view)
-    if (!hasAccess && queryToken && queryToken.length > 30 && queryToken.length <= 50) {
-      const { data: session } = await db.from('parent_sessions')
-        .select('parent_id, expires_at').eq('session_token', queryToken).maybeSingle()
-      if (session && new Date(session.expires_at) > new Date()) {
-        hasAccess = true
-        // Will verify parent owns this invoice below
-      }
     }
 
     if (!hasAccess) return res.error(403, 'Kein Zugriff — bitte anmelden oder gültigen Link verwenden')
@@ -1332,7 +1340,7 @@ export function registerRoutes(router: Router) {
     const statusLabels: Record<string, string> = { draft: 'Entwurf', sent: 'Versendet', paid: 'Bezahlt', overdue: 'Überfällig', cancelled: 'Storniert' }
 
     const lineItemsHtml = lineItems.map((item, i) =>
-      `<tr><td>${i + 1}</td><td>${item.description}</td><td>${fmt(item.unitPrice)} &euro;</td><td>${isKleinunternehmer ? 'entf.' : (Math.round(item.vatRate * 100) + '%')}</td><td>${fmt(item.total)} &euro;</td></tr>`
+      `<tr><td>${i + 1}</td><td>${escHtml(item.description)}</td><td>${fmt(item.unitPrice)} &euro;</td><td>${isKleinunternehmer ? 'entf.' : (Math.round(item.vatRate * 100) + '%')}</td><td>${fmt(item.total)} &euro;</td></tr>`
     ).join('')
 
     // Read template and replace placeholders
@@ -1348,31 +1356,33 @@ export function registerRoutes(router: Router) {
       template = await fs.readFile(path.resolve('src/frontend/invoice-template.html'), 'utf-8')
     }
 
+    // Escape all user-controlled values to prevent XSS in invoice HTML
+    const e = escHtml
     const replacements: Record<string, string> = {
-      '{{invoiceNumber}}': invoice.number,
-      '{{invoiceDate}}': fmtDate(invoice.issued_at),
-      '{{dueDate}}': fmtDate(invoice.due_date),
-      '{{status}}': statusLabels[invoice.status] || invoice.status,
-      '{{providerName}}': provider?.company_name || '',
-      '{{providerLegalForm}}': provider?.legal_form || '',
-      '{{providerStreet}}': provider?.address_street || '',
-      '{{providerZip}}': provider?.address_zip || '',
-      '{{providerCity}}': provider?.address_city || '',
-      '{{providerEmail}}': provider?.email || '',
-      '{{providerPhone}}': provider?.phone || '',
-      '{{providerTaxId}}': provider?.tax_id || '',
-      '{{providerVatId}}': provider?.vat_id || '',
-      '{{logoUrl}}': provider?.logo_url || '',
-      '{{parentName}}': parent?.name || '',
-      '{{parentEmail}}': parent?.email || '',
+      '{{invoiceNumber}}': e(invoice.number),
+      '{{invoiceDate}}': e(fmtDate(invoice.issued_at)),
+      '{{dueDate}}': e(fmtDate(invoice.due_date)),
+      '{{status}}': e(statusLabels[invoice.status] || invoice.status),
+      '{{providerName}}': e(provider?.company_name || ''),
+      '{{providerLegalForm}}': e(provider?.legal_form || ''),
+      '{{providerStreet}}': e(provider?.address_street || ''),
+      '{{providerZip}}': e(provider?.address_zip || ''),
+      '{{providerCity}}': e(provider?.address_city || ''),
+      '{{providerEmail}}': e(provider?.email || ''),
+      '{{providerPhone}}': e(provider?.phone || ''),
+      '{{providerTaxId}}': e(provider?.tax_id || ''),
+      '{{providerVatId}}': e(provider?.vat_id || ''),
+      '{{logoUrl}}': e(provider?.logo_url || ''),
+      '{{parentName}}': e(parent?.name || ''),
+      '{{parentEmail}}': e(parent?.email || ''),
       '{{lineItemsHtml}}': lineItemsHtml,
       '{{subtotal}}': fmt(invoice.subtotal),
       '{{tax}}': fmt(invoice.tax),
       '{{total}}': fmt(invoice.total),
       '{{vatPercent}}': String(vatPercent),
-      '{{bankHolder}}': provider?.bank_holder || provider?.company_name || '',
-      '{{bankIban}}': provider?.bank_iban || '',
-      '{{bankBic}}': provider?.bank_bic || '',
+      '{{bankHolder}}': e(provider?.bank_holder || provider?.company_name || ''),
+      '{{bankIban}}': e(provider?.bank_iban || ''),
+      '{{bankBic}}': e(provider?.bank_bic || ''),
     }
 
     // Handle conditional blocks
@@ -2291,7 +2301,16 @@ export function registerRoutes(router: Router) {
   router.post('/api/course-blocks', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const result = await CourseBlockService.createBlock(req.body)
+    const body = req.body as any
+    // Basic validation
+    if (!body.activityId) return res.error(400, 'activityId erforderlich')
+    if (!body.startDate || !body.totalSessions) return res.error(400, 'startDate und totalSessions erforderlich')
+    if (body.totalSessions < 1 || body.totalSessions > 52) return res.error(400, 'totalSessions muss zwischen 1 und 52 liegen')
+    if (body.capacity && (body.capacity < 1 || body.capacity > 200)) return res.error(400, 'Ungültige Kapazität')
+    // Ensure provider owns the activity
+    const act = await ActivityService.getById(body.activityId)
+    if (!act || act.providerId !== auth.providerId) return res.error(403, 'Kurs nicht gefunden oder kein Zugriff')
+    const result = await CourseBlockService.createBlock(body)
     if ('error' in result) return res.error(400, result.error)
     res.status(201).json({ data: result })
   })
@@ -2516,7 +2535,10 @@ export function registerRoutes(router: Router) {
   router.post('/api/credits/manual', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const result = await SessionCreditService.issueManualCredit(req.body)
+    const { enrollmentId, reason } = req.body as any
+    if (!enrollmentId) return res.error(400, 'enrollmentId erforderlich')
+    if (!reason || typeof reason !== 'string') return res.error(400, 'Grund erforderlich')
+    const result = await SessionCreditService.issueManualCredit({ enrollmentId, reason: reason.slice(0, 500) })
     if ('error' in result) return res.error(400, result.error)
     res.status(201).json({ data: result })
   })

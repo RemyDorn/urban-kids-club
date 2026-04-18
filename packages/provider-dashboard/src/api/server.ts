@@ -183,6 +183,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:transparent;color:#1f29
 (async()=>{
 const slug='${slug}',app=document.getElementById('app'),BC='${brandColor}'
 function esc(s){if(!s)return'';const d=document.createElement('div');d.textContent=s;return d.innerHTML}
+function showMsg(msg,type){const e=document.querySelector('.wdg-toast');if(e)e.remove();const t=document.createElement('div');t.className='wdg-toast';t.style.cssText='position:fixed;bottom:16px;left:50%;transform:translateX(-50%);padding:10px 20px;border-radius:10px;font-size:13px;font-weight:500;z-index:9999;color:#fff;background:'+(type==='error'?'#dc2626':'#059669')+';box-shadow:0 4px 16px rgba(0,0,0,.15);animation:fadeIn .3s ease';t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),3500)}
 const DN={MO:1,TU:2,WE:3,TH:4,FR:5,SA:6,SU:0,DI:2,MI:3,DO:4,SO:0}
 const ML=['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember']
 const DL=['Mo','Di','Mi','Do','Fr','Sa','So']
@@ -267,7 +268,7 @@ window._waitlistCourse=async function(title,date){
   const sd=new Date(+date.split('-')[0],+date.split('-')[1]-1,+date.split('-')[2])
   const dateStr=sd.getDate()+'. '+ML[sd.getMonth()]+' '+sd.getFullYear()
   const course=courses.find(c=>c.title===title)
-  if(!course){alert('Kurs nicht gefunden');return}
+  if(!course){showMsg('Kurs nicht gefunden','error');return}
   window._wlActId=course.id
   window._wlTitle=title
   window._wlDate=dateStr
@@ -291,7 +292,7 @@ window._submitWaitlist=async function(){
   var f=function(s){var el=document.getElementById(s);return el?el.value.trim():''}
   var childFirst=f('wlChildFirst'),childLast=f('wlChildLast'),childYear=f('wlChildYear')
   var parentFirst=f('wlParentFirst'),parentLast=f('wlParentLast'),email=f('wlEmail'),phone=f('wlPhone')
-  if(!childFirst||!childLast||!childYear||!parentFirst||!parentLast||!email){alert('Bitte alle Pflichtfelder ausfüllen');return}
+  if(!childFirst||!childLast||!childYear||!parentFirst||!parentLast||!email){showMsg('Bitte alle Pflichtfelder ausfüllen','error');return}
   var btn=document.querySelector('.book-modal .btn-send')
   if(btn){btn.textContent='Wird eingetragen...';btn.disabled=true}
   try{
@@ -300,7 +301,7 @@ window._submitWaitlist=async function(){
     var modal=document.querySelector('.book-modal')
     if(modal)modal.remove()
     app.insertAdjacentHTML('beforeend','<div class="book-modal"><div class="book-modal-inner" style="text-align:center"><div style="font-size:48px;margin-bottom:12px">✅</div><h3>'+(data.alreadyExists?'Bereits eingetragen':'Auf der Warteliste!')+'</h3><p style="margin:12px 0;color:#64748b;font-size:13px">'+(data.alreadyExists?'Du bist bereits auf der Warteliste für diesen Kurs.':'Super! Wir benachrichtigen dich, sobald ein Kursblock verfügbar ist.')+'</p><button class="btn-send" onclick="var m=document.querySelector(String.fromCharCode(46,98,111,111,107,45,109,111,100,97,108));if(m)m.remove()">Alles klar</button></div></div>')
-  }catch(e){alert('Verbindungsfehler');if(btn){btn.textContent='Auf Warteliste eintragen';btn.disabled=false}}
+  }catch(e){showMsg('Verbindungsfehler','error');if(btn){btn.textContent='Auf Warteliste eintragen';btn.disabled=false}}
 }
 window._bookCourse=async function(title,date,time){
   const sd=new Date(+date.split('-')[0],+date.split('-')[1]-1,+date.split('-')[2])
@@ -309,14 +310,14 @@ window._bookCourse=async function(title,date,time){
 
   // Find activity ID from courses array
   const course=courses.find(c=>c.title===title)
-  if(!course){alert('Kurs nicht gefunden');return}
+  if(!course){showMsg('Kurs nicht gefunden','error');return}
 
   // Fetch activity checkout details
   let actData
   try{
     const r=await fetch('/api/checkout/activity/'+course.id)
     actData=await r.json()
-  }catch(e){alert('Fehler beim Laden der Kursdaten');return}
+  }catch(e){showMsg('Fehler beim Laden der Kursdaten','error');return}
 
   const act=actData.activity
   const prov=actData.provider
@@ -410,7 +411,7 @@ window._bookCourse=async function(title,date,time){
         const cpL=m.querySelector('#cpLast').value.trim()
         const cpE=m.querySelector('#cpEmail').value.trim()
         const cpP=m.querySelector('#cpPhone').value.trim()
-        if(!ckF||!ckL||!ckY||!cpF||!cpL||!cpE||!cpP){alert('Bitte alle Felder ausfüllen.');return}
+        if(!ckF||!ckL||!ckY||!cpF||!cpL||!cpE||!cpP){showMsg('Bitte alle Felder ausfüllen.','error');return}
         window._checkoutChild={firstName:ckF,lastName:ckL,birthYear:parseInt(ckY)}
         window._checkoutParent={firstName:cpF,lastName:cpL,email:cpE,phone:cpP}
         if(!hasOnline){window._checkoutPayMethod='onsite'}
@@ -434,17 +435,17 @@ window._bookCourse=async function(title,date,time){
     if(backBtnAgb) backBtnAgb.onclick=function(){step=step-1;renderStep()}
     if(step===agbStep){
       m.querySelector('#btnSubmit').onclick=async function(){
-        if(!m.querySelector('#agbCheck').checked){alert('Bitte AGB akzeptieren.');return}
-        if(cancel.custom_text&&!m.querySelector('#stornoCheck')?.checked){alert('Bitte Stornierungsbedingungen akzeptieren.');return}
+        if(!m.querySelector('#agbCheck').checked){showMsg('Bitte AGB akzeptieren.','error');return}
+        if(cancel.custom_text&&!m.querySelector('#stornoCheck')?.checked){showMsg('Bitte Stornierungsbedingungen akzeptieren.','error');return}
         this.textContent='Wird verarbeitet...'
         this.disabled=true
         try{
           const r=await fetch('/api/checkout/create-session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({slug:slug,activityId:course.id,blockId:course.blockId||null,bookedDate:window._checkoutDate||null,child:window._checkoutChild,parent:window._checkoutParent,paymentMethod:window._checkoutPayMethod})})
           const data=await r.json()
-          if(!r.ok){var errMsg=data.error||'Fehler beim Buchen';if(errMsg.includes('Warteliste')||errMsg.includes('warteliste')||errMsg.includes('voll')){m.querySelector('.book-modal-inner').innerHTML='<div style="text-align:center;padding:24px"><div style="width:56px;height:56px;border-radius:50%;background:#f59e0b;color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto 16px">📋</div><h3 style="font-size:18px;font-weight:700;color:#1f2937;margin-bottom:8px">Auf der Warteliste!</h3><p style="font-size:13px;color:#64748b;line-height:1.6">'+errMsg+'</p><button onclick="this.closest(\\'.book-modal\\').remove()" style="margin-top:16px;padding:10px 24px;border:1px solid #e2e8f0;border-radius:10px;background:#fff;color:#374151;font-size:13px;cursor:pointer">Schließen</button></div>'}else{alert(errMsg);this.textContent='Erneut versuchen';this.disabled=false}return}
+          if(!r.ok){var errMsg=data.error||'Fehler beim Buchen';if(errMsg.includes('Warteliste')||errMsg.includes('warteliste')||errMsg.includes('voll')){m.querySelector('.book-modal-inner').innerHTML='<div style="text-align:center;padding:24px"><div style="width:56px;height:56px;border-radius:50%;background:#f59e0b;color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto 16px">📋</div><h3 style="font-size:18px;font-weight:700;color:#1f2937;margin-bottom:8px">Auf der Warteliste!</h3><p style="font-size:13px;color:#64748b;line-height:1.6">'+errMsg+'</p><button onclick="this.closest(\\'.book-modal\\').remove()" style="margin-top:16px;padding:10px 24px;border:1px solid #e2e8f0;border-radius:10px;background:#fff;color:#374151;font-size:13px;cursor:pointer">Schließen</button></div>'}else{showMsg(errMsg,'error');this.textContent='Erneut versuchen';this.disabled=false}return}
           if(data.redirect){window.top.location.href=data.redirect}
           else{m.querySelector('.book-modal-inner').innerHTML='<div style="text-align:center;padding:24px"><div style="width:56px;height:56px;border-radius:50%;background:#059669;color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto 16px">✓</div><h3 style="font-size:18px;font-weight:700;color:#1f2937;margin-bottom:8px">Buchung bestätigt!</h3><p style="font-size:13px;color:#64748b">Vielen Dank! Sie erhalten eine Bestätigung per E-Mail.</p><button onclick="this.closest(\\'.book-modal\\').remove()" style="margin-top:16px;padding:10px 24px;border:1px solid #e2e8f0;border-radius:10px;background:#fff;color:#374151;font-size:13px;cursor:pointer">Schließen</button></div>'}
-        }catch(e){alert('Netzwerkfehler');this.textContent='Erneut versuchen';this.disabled=false}
+        }catch(e){showMsg('Netzwerkfehler','error');this.textContent='Erneut versuchen';this.disabled=false}
       }
     }
   }
@@ -650,7 +651,7 @@ async function doCheckin(){
     const r=await fetch(API+'/api/public/checkin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({providerId:PID,email:_email,bookingIds:ids})});
     const d=(await r.json()).data;
     if(!d.success){
-      alert(d.error||'Fehler');btn.disabled=false;txt.style.display='';sp.style.display='none';return;
+      showMsg(d.error||'Fehler','error');btn.disabled=false;txt.style.display='';sp.style.display='none';return;
     }
     // Show confirmation
     const card=document.getElementById('card');
@@ -674,7 +675,7 @@ async function doCheckin(){
       '<div class="footer">Powered by Urban Kids Club</div>';
     if(d.redirectUrl)setTimeout(function(){window.location.href=d.redirectUrl},5000);
   }catch(err){
-    alert('Verbindungsfehler');btn.disabled=false;txt.style.display='';sp.style.display='none';
+    showMsg('Verbindungsfehler','error');btn.disabled=false;txt.style.display='';sp.style.display='none';
   }
 }
 

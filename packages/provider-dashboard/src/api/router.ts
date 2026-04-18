@@ -72,11 +72,7 @@ export class Router {
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
 
-    // Security Headers
-    res.setHeader('X-Content-Type-Options', 'nosniff')
-    res.setHeader('X-Frame-Options', 'SAMEORIGIN')
-    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
-    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+    // Security Headers set in server.ts createServer handler (covers all responses)
 
     if (req.method === 'OPTIONS') {
       res.writeHead(204)
