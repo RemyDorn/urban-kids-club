@@ -413,6 +413,10 @@
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
           Berichte
         </button>
+        <button onclick="navigate('holidays')" data-page="holidays" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-brand-300 transition-all">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+          Ferien & Saisons
+        </button>
         <button onclick="navigate('embed')" data-page="embed" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-brand-300 transition-all">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
           Einbettung
@@ -768,14 +772,19 @@
         opts.headers['Content-Type'] = 'application/json'
         opts.body = JSON.stringify(body)
       }
-      const res = await fetch(API + path, opts)
-      if (res.status === 401) {
-        currentSession = null
-        showLoginScreen()
-        showLoginError('Sitzung abgelaufen. Bitte erneut anmelden.')
-        return { data: null, error: 'unauthorized' }
+      try {
+        const res = await fetch(API + path, opts)
+        if (res.status === 401) {
+          currentSession = null
+          showLoginScreen()
+          showLoginError('Sitzung abgelaufen. Bitte erneut anmelden.')
+          return { data: null, error: 'unauthorized' }
+        }
+        return await res.json()
+      } catch (e) {
+        showToast('Verbindungsfehler — bitte prüfe deine Internetverbindung', 'error')
+        return { data: null, error: 'network' }
       }
-      return res.json()
     }
 
     // --- Init ---
@@ -944,7 +953,12 @@
       content.classList.add('fade-in')
 
       const renderers = { dashboard: renderDashboard, activities: renderActivities, bookings: renderBookings, courseblocks: renderCourseBlocks, customers: renderCustomers, trials: renderTrials, invoices: renderInvoices, team: renderTeam, documents: renderDocuments, reports: renderReports, holidays: renderHolidays, embed: renderEmbed, marketing: renderMarketing, settings: renderSettings }
-      if (renderers[page]) renderers[page]()
+      if (renderers[page]) {
+        try { renderers[page]() } catch(e) {
+          console.error('Render error:', e)
+          document.getElementById('content').innerHTML = '<div class="p-8 text-center"><div class="text-3xl mb-3">⚠️</div><p class="text-gray-600 mb-2">Fehler beim Laden der Seite</p><p class="text-sm text-gray-400">' + escapeHtml(e.message || '') + '</p><button onclick="navigate(\'' + page + '\')" class="mt-4 px-4 py-2 bg-brand-500 text-white rounded-lg text-sm">Erneut versuchen</button></div>'
+        }
+      }
     }
 
     // --- Calendar (Hauptansicht) ---
@@ -3016,8 +3030,11 @@
     }
 
     async function markBookingPaid(id, amount) {
-      await api(`/bookings/${id}/pay`, 'POST', { amount })
-      navigate('bookings')
+      try {
+        await api(`/bookings/${id}/pay`, 'POST', { amount })
+        showToast('Zahlung markiert', 'success')
+        navigate('bookings')
+      } catch(e) { showToast('Fehler beim Markieren der Zahlung', 'error') }
     }
     function cancelBooking(id) {
       showConfirm('Buchung wirklich stornieren?', async () => {
@@ -3515,13 +3532,19 @@
     }
 
     async function sendInvoice(id) {
-      await api('/invoices/' + id + '/send', 'POST')
-      navigate('invoices')
+      try {
+        await api('/invoices/' + id + '/send', 'POST')
+        showToast('Rechnung versendet!', 'success')
+        navigate('invoices')
+      } catch(e) { showToast('Fehler beim Versenden', 'error') }
     }
 
     async function markInvoicePaid(id) {
-      await api('/invoices/' + id + '/pay', 'POST')
-      navigate('invoices')
+      try {
+        await api('/invoices/' + id + '/pay', 'POST')
+        showToast('Rechnung als bezahlt markiert', 'success')
+        navigate('invoices')
+      } catch(e) { showToast('Fehler beim Markieren', 'error') }
     }
 
     function cancelInvoice(id) {
