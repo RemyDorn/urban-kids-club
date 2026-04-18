@@ -685,6 +685,16 @@ function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').repl
 
 // Server starten
 const server = createServer((req, res) => {
+  // Security Headers — set on ALL responses (before any early returns)
+  res.setHeader('X-Content-Type-Options', 'nosniff')
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+  // X-Frame-Options set per-path (widgets need to be embeddable)
+  const reqPath = (req.url ?? '/').split('?')[0]
+  if (!reqPath.startsWith('/widget/') && !reqPath.startsWith('/embed/')) {
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN')
+  }
+
   const url = req.url ?? '/'
 
   // PWA Assets
