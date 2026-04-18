@@ -53,7 +53,7 @@ function safeParseInt(value: string | undefined, defaultValue: number): number {
 }
 
 // ============================================================
-// Rate Limiting — simple in-memory sliding window
+// Rate Limiting — simple in-memory fixed window
 // ============================================================
 const rateLimitStore = new Map<string, { count: number; resetAt: number }>()
 // Evict expired entries every 5 minutes
@@ -435,9 +435,18 @@ export function registerRoutes(router: Router) {
     const body = req.body as any
     const allowed: Record<string, unknown> = {}
     const fields = ['title', 'description', 'category', 'ageRange', 'capacity', 'schedule', 'pricing',
-      'color', 'imageUrl', 'status', 'instructorId', 'roomId', 'platformListing',
-      'payment_online', 'payment_onsite', 'siblingDiscount', 'siblingDiscountPercent']
+      'color', 'imageUrl', 'images', 'status', 'instructorId', 'roomId', 'locationId', 'platformListing',
+      'payment_online', 'payment_onsite', 'paymentOnline', 'paymentOnsite',
+      'waitlistEnabled', 'trialEnabled', 'tags',
+      'siblingDiscount', 'siblingDiscountPercent']
     for (const f of fields) { if (body[f] !== undefined) allowed[f] = body[f] }
+    // Server-side enforcement: block platform listing if provider's platform is not enabled
+    if ((allowed as any).platformListing?.enabled) {
+      const provider = await ProviderService.getById(auth.providerId)
+      if (!provider?.platformEnabled) {
+        return res.error(403, 'Plattform-Anbindung ist nicht freigeschaltet. Kontaktiere support@urbankids.club für mehr Informationen.')
+      }
+    }
     const activity = await ActivityService.update(req.params.id, allowed, auth.providerId)
     if (!activity) return res.error(404, 'Aktivität nicht gefunden')
     res.json({ data: activity })
@@ -1566,6 +1575,12 @@ export function registerRoutes(router: Router) {
   router.get('/api/parents/:parentId/data-export', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
+    // Verify parent has bookings with this provider
+    const allBookings = await BookingService.listByParent(req.params.parentId)
+    const providerActivities = await ActivityService.listByProvider(auth.providerId)
+    const providerActivityIds = new Set(providerActivities.map(a => a.id))
+    const hasRelation = allBookings.some(b => providerActivityIds.has(b.activityId))
+    if (!hasRelation) return res.error(403, 'Kein Zugriff auf diese Elterndaten')
     const data = await ConsentService.exportParentData(req.params.parentId)
     res.json({ data })
   })
@@ -2195,9 +2210,10 @@ export function registerRoutes(router: Router) {
   router.post('/api/auth/login', async (req, res) => {
     const { email, password } = req.body as { email: string; password: string }
     if (!email || !password) return res.error(400, 'E-Mail und Passwort erforderlich')
-    // Rate limit: 10 login attempts per IP per 15 minutes
+    // Rate limit: per IP + per email (prevents both botnet and targeted brute-force)
     const ip = getClientIp(req)
     if (!rateLimit(`auth-login:${ip}`, 10, 15 * 60 * 1000)) return res.error(429, 'Zu viele Anmeldeversuche. Bitte warten.')
+    if (!rateLimit(`auth-login-email:${email.toLowerCase().trim()}`, 5, 15 * 60 * 1000)) return res.error(429, 'Zu viele Anmeldeversuche für dieses Konto. Bitte warten.')
     const { loginProvider } = await import('../lib/auth')
     const result = await loginProvider(email, password)
     if ('error' in result) return res.error(401, result.error)
@@ -2213,6 +2229,9 @@ export function registerRoutes(router: Router) {
 
     if (!email || !password || !displayName || !companyName || !legalForm || !contactName || !phone || !street || !zip || !city) {
       return res.error(400, 'Alle Felder sind erforderlich')
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.error(400, 'Ungültige E-Mail-Adresse')
     }
     if (password.length < 8) {
       return res.error(400, 'Passwort muss mindestens 8 Zeichen lang sein')
@@ -2474,9 +2493,21 @@ export function registerRoutes(router: Router) {
 
   // --- Session Attendance ---
 
+  // Helper: verify session belongs to provider (session → block → activity → provider)
+  async function verifySessionOwnership(sessionId: string, providerId: string): Promise<boolean> {
+    const db = getServiceClient()
+    const { data: session } = await db.from('block_sessions').select('block_id').eq('id', sessionId).maybeSingle()
+    if (!session) return false
+    const { data: block } = await db.from('course_blocks').select('activity_id').eq('id', session.block_id).maybeSingle()
+    if (!block) return false
+    const { data: activity } = await db.from('activities').select('provider_id').eq('id', block.activity_id).maybeSingle()
+    return activity?.provider_id === providerId
+  }
+
   router.get('/api/sessions/:id/attendance', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
+    if (!await verifySessionOwnership(req.params.id, auth.providerId)) return res.error(403, 'Kein Zugriff')
     const attendance = await CourseBlockService.getAttendanceBySession(req.params.id)
     res.json({ data: attendance, count: attendance.length })
   })
@@ -2484,6 +2515,7 @@ export function registerRoutes(router: Router) {
   router.post('/api/sessions/:id/mark-attendance', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
+    if (!await verifySessionOwnership(req.params.id, auth.providerId)) return res.error(403, 'Kein Zugriff')
     const result = await CourseBlockService.markAttendance(req.body.attendanceId, req.body.status)
     if ('error' in result) return res.error(400, result.error)
     res.json({ data: result })
@@ -2494,6 +2526,10 @@ export function registerRoutes(router: Router) {
   router.post('/api/attendance/:id/cancel', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
+    // Verify attendance record belongs to provider
+    const db = getServiceClient()
+    const { data: att } = await db.from('session_attendance_records').select('session_id').eq('id', req.params.id).maybeSingle()
+    if (!att || !await verifySessionOwnership(att.session_id, auth.providerId)) return res.error(403, 'Kein Zugriff')
     const result = await SessionCreditService.handleParentCancellation(req.params.id)
     if ('error' in result) return res.error(400, result.error)
     res.json({ data: result })
@@ -2518,7 +2554,11 @@ export function registerRoutes(router: Router) {
     if (!auth) return
     const status = req.query.status as any
     const credits = await SessionCreditService.getCreditsByParent(req.params.id, status)
-    res.json({ data: credits, count: credits.length })
+    // Filter to only credits from this provider's activities
+    const providerActivities = await ActivityService.listByProvider(auth.providerId)
+    const providerActivityIds = new Set(providerActivities.map(a => a.id))
+    const filtered = credits.filter((c: any) => providerActivityIds.has(c.activityId))
+    res.json({ data: filtered, count: filtered.length })
   })
 
   router.get('/api/credits/:id', async (req, res) => {
@@ -2603,7 +2643,11 @@ export function registerRoutes(router: Router) {
     const auth = await requireAuth(req, res)
     if (!auth) return
     const makeups = await MakeupBookingService.getMakeupsByParent(req.params.id)
-    res.json({ data: makeups, count: makeups.length })
+    // Filter to only makeups from this provider's activities
+    const providerActivities = await ActivityService.listByProvider(auth.providerId)
+    const providerActivityIds = new Set(providerActivities.map(a => a.id))
+    const filtered = makeups.filter((m: any) => providerActivityIds.has(m.activityId))
+    res.json({ data: filtered, count: filtered.length })
   })
 
   router.get('/api/makeup-bookings/:id', async (req, res) => {
@@ -3357,15 +3401,16 @@ export function registerRoutes(router: Router) {
     if (auth.providerId !== req.params.id) return res.error(403, 'Zugriff verweigert')
     const { clientId, secret } = req.body as any
     if (!clientId || !secret) return res.error(400, 'Client ID und Secret erforderlich')
-    // Encrypt PayPal secret before storage
-    const { createCipheriv, createDecipheriv, randomBytes: rndBytes } = await import('node:crypto')
+    // Encrypt PayPal secret before storage (never store plaintext)
+    const { createCipheriv, randomBytes: rndBytes } = await import('node:crypto')
     const encKey = process.env.ENCRYPTION_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || ''
-    let encryptedSecret = secret
-    if (encKey && encKey.length >= 32) {
-      const iv = rndBytes(16)
-      const cipher = createCipheriv('aes-256-cbc', Buffer.from(encKey.slice(0, 32)), iv)
-      encryptedSecret = 'enc:' + iv.toString('hex') + ':' + cipher.update(secret, 'utf8', 'hex') + cipher.final('hex')
+    if (!encKey || Buffer.from(encKey, 'utf8').length < 32) {
+      return res.error(500, 'Verschlüsselung nicht konfiguriert — ENCRYPTION_KEY muss mindestens 32 Zeichen lang sein')
     }
+    const keyBuf = Buffer.from(encKey, 'utf8').subarray(0, 32)
+    const iv = rndBytes(16)
+    const cipher = createCipheriv('aes-256-cbc', keyBuf, iv)
+    const encryptedSecret = 'enc:' + iv.toString('hex') + ':' + cipher.update(secret, 'utf8', 'hex') + cipher.final('hex')
     const db = getServiceClient()
     const { error } = await db.from('providers').update({
       paypal_client_id: clientId,
