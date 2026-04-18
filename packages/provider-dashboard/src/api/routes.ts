@@ -311,6 +311,64 @@ export function registerRoutes(router: Router) {
     res.json({ data: result })
   })
 
+  // Verify invite token (public — called from invite acceptance page)
+  router.get('/api/team/invite/verify', async (req, res) => {
+    const token = req.query?.token as string
+    if (!token) return res.error(400, 'Token fehlt')
+    const db = getServiceClient()
+    const { data: member } = await db.from('team_members')
+      .select('id, name, email, role, provider_id, user_id, invite_token')
+      .eq('invite_token', token).maybeSingle()
+    if (!member) return res.error(404, 'Einladung nicht gefunden oder abgelaufen')
+    if (member.user_id) return res.error(400, 'Einladung bereits angenommen')
+    // Get provider name for display
+    const { data: provider } = await db.from('providers').select('company_name, display_name').eq('id', member.provider_id).maybeSingle()
+    res.json({ data: { name: member.name, email: member.email, role: member.role, providerName: provider?.display_name || provider?.company_name || '' } })
+  })
+
+  // Accept invite — create auth user + link to team member (public)
+  router.post('/api/team/invite/accept', async (req, res) => {
+    const { token, password } = req.body as { token?: string; password?: string }
+    if (!token || !password) return res.error(400, 'Token und Passwort erforderlich')
+    if (password.length < 8) return res.error(400, 'Passwort muss mindestens 8 Zeichen lang sein')
+    // Rate limit
+    const ip = getClientIp(req)
+    if (!rateLimit(`invite-accept:${ip}`, 5, 15 * 60 * 1000)) return res.error(429, 'Zu viele Versuche')
+
+    const db = getServiceClient()
+    const { data: member } = await db.from('team_members')
+      .select('id, name, email, role, provider_id, user_id, invite_token')
+      .eq('invite_token', token).maybeSingle()
+    if (!member) return res.error(404, 'Einladung nicht gefunden')
+    if (member.user_id) return res.error(400, 'Einladung bereits angenommen')
+
+    // Create auth user
+    const { data: authData, error: authError } = await db.auth.admin.createUser({
+      email: member.email, password, email_confirm: true,
+    })
+    if (authError) {
+      // User might already exist (e.g. owner with same email)
+      if (authError.message?.includes('already been registered')) {
+        return res.error(400, 'E-Mail ist bereits registriert. Bitte melde dich direkt an.')
+      }
+      return res.error(500, 'Fehler beim Erstellen des Kontos: ' + authError.message)
+    }
+
+    // Link auth user to team member + set provider login_email
+    await db.from('team_members').update({
+      user_id: authData.user.id,
+      invite_token: null, // Clear token after use
+      last_login_at: new Date().toISOString(),
+    }).eq('id', member.id)
+
+    // Set user metadata with provider_id
+    await db.auth.admin.updateUserById(authData.user.id, {
+      user_metadata: { provider_id: member.provider_id, team_member_id: member.id },
+    })
+
+    res.json({ data: { email: member.email, name: member.name } })
+  })
+
   // Get available roles and permissions
   router.get('/api/roles', async (req, res) => {
     const auth = await requireAuth(req, res)

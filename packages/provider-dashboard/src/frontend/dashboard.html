@@ -531,6 +531,15 @@
 
     async function checkAuth() {
       await _supabaseReady
+
+      // Check for invite token in URL
+      const urlParams = new URLSearchParams(window.location.search)
+      const inviteToken = urlParams.get('invite')
+      if (inviteToken) {
+        showInviteAcceptScreen(inviteToken)
+        return
+      }
+
       if (!sb) { showLoginScreen(); return }
       try {
         const { data: { session } } = await sb.auth.getSession()
@@ -551,6 +560,106 @@
       } catch (err) {
         console.error('Auth check failed:', err)
         showLoginScreen()
+      }
+    }
+
+    // Invite acceptance screen — team member sets their password
+    function showInviteAcceptScreen(token) {
+      document.getElementById('loginScreen').style.display = 'none'
+      document.getElementById('dashboardApp').style.display = 'none'
+      document.getElementById('pendingScreen').style.display = 'none'
+
+      let container = document.getElementById('inviteScreen')
+      if (!container) {
+        container = document.createElement('div')
+        container.id = 'inviteScreen'
+        container.className = 'fixed inset-0 z-50 flex items-center justify-center'
+        document.body.appendChild(container)
+      }
+      container.style.display = 'flex'
+      container.innerHTML = `
+        <div class="absolute inset-0" style="background:#1a0a00"></div>
+        <div class="relative w-full max-w-md mx-4 rounded-2xl p-8 shadow-2xl" style="background:#2d1810;border:1px solid #5a3828">
+          <div class="flex flex-col items-center mb-6">
+            <div class="w-16 h-16 rounded-2xl flex items-center justify-center text-white font-bold text-2xl mb-4" style="background:linear-gradient(135deg,#d4956a,#b87a50)">U</div>
+            <h1 class="text-xl font-bold font-heading" style="color:#f5e6d3">EINLADUNG ANNEHMEN</h1>
+            <p class="text-sm mt-1" style="color:#c49980">Lege dein Passwort fest, um dich anzumelden</p>
+          </div>
+          <div id="inviteError" style="display:none;background:rgba(220,38,38,0.15);color:#fca5a5;border:1px solid rgba(220,38,38,0.3)" class="mb-4 p-3 rounded-lg text-sm"></div>
+          <div id="inviteSuccess" style="display:none;background:rgba(34,197,94,0.15);color:#86efac;border:1px solid rgba(34,197,94,0.3)" class="mb-4 p-3 rounded-lg text-sm"></div>
+          <div id="inviteForm" class="space-y-4">
+            <div id="inviteInfo" class="text-center py-4" style="color:#c49980"><span class="text-sm">Einladung wird geprüft...</span></div>
+            <div id="inviteFields" style="display:none" class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium mb-1.5" style="color:#f5e6d3">Passwort (min. 8 Zeichen)</label>
+                <input id="invitePassword" type="password" placeholder="Passwort festlegen" class="w-full px-4 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2" style="background:#1a0a00;border:1px solid #5a3828;color:#f5e6d3">
+              </div>
+              <div>
+                <label class="block text-sm font-medium mb-1.5" style="color:#f5e6d3">Passwort wiederholen</label>
+                <input id="invitePasswordConfirm" type="password" placeholder="Passwort wiederholen" class="w-full px-4 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2" style="background:#1a0a00;border:1px solid #5a3828;color:#f5e6d3">
+              </div>
+              <button type="button" id="inviteAcceptBtn" onclick="acceptInvite('${escapeHtml(token)}')" class="w-full py-2.5 rounded-lg text-sm font-semibold text-white" style="background:linear-gradient(135deg,#d4956a,#b87a50)">Konto erstellen & Anmelden</button>
+            </div>
+          </div>
+        </div>
+      `
+      // Verify invite token via API
+      verifyInviteToken(token)
+    }
+
+    async function verifyInviteToken(token) {
+      try {
+        const res = await fetch(API + '/team/invite/verify?token=' + encodeURIComponent(token))
+        const data = await res.json()
+        if (!res.ok || !data.data) {
+          document.getElementById('inviteInfo').innerHTML = '<div class="text-red-400 text-sm">Dieser Einladungslink ist ungültig oder abgelaufen.</div><a href="/" class="text-sm underline mt-4 inline-block" style="color:#d4956a">Zur Anmeldung</a>'
+          return
+        }
+        const member = data.data
+        document.getElementById('inviteInfo').innerHTML = '<div class="mb-2" style="color:#f5e6d3"><strong>' + escapeHtml(member.providerName || '') + '</strong> hat dich eingeladen.</div><div style="color:#c49980" class="text-sm">Name: ' + escapeHtml(member.name) + '<br>Rolle: ' + escapeHtml(member.role) + '</div>'
+        document.getElementById('inviteFields').style.display = 'block'
+      } catch (e) {
+        document.getElementById('inviteInfo').innerHTML = '<div class="text-red-400 text-sm">Verbindungsfehler. Bitte versuche es erneut.</div>'
+      }
+    }
+
+    async function acceptInvite(token) {
+      const pw = document.getElementById('invitePassword').value
+      const pwConfirm = document.getElementById('invitePasswordConfirm').value
+      const errEl = document.getElementById('inviteError')
+      const successEl = document.getElementById('inviteSuccess')
+      errEl.style.display = 'none'
+
+      if (pw.length < 8) { errEl.textContent = 'Passwort muss mindestens 8 Zeichen lang sein.'; errEl.style.display = 'block'; return }
+      if (pw !== pwConfirm) { errEl.textContent = 'Passwörter stimmen nicht überein.'; errEl.style.display = 'block'; return }
+
+      const btn = document.getElementById('inviteAcceptBtn')
+      btn.disabled = true; btn.textContent = 'Wird erstellt...'
+
+      try {
+        const res = await fetch(API + '/team/invite/accept', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token, password: pw }),
+        })
+        const data = await res.json()
+        if (!res.ok) { errEl.textContent = data.error || 'Fehler bei der Registrierung.'; errEl.style.display = 'block'; return }
+        successEl.textContent = 'Konto erstellt! Du wirst weitergeleitet...'
+        successEl.style.display = 'block'
+        document.getElementById('inviteFields').style.display = 'none'
+        // Auto-login
+        setTimeout(async () => {
+          await _supabaseReady
+          if (sb && data.data?.email) {
+            const { error } = await sb.auth.signInWithPassword({ email: data.data.email, password: pw })
+            if (!error) { window.location.href = '/'; return }
+          }
+          window.location.href = '/'
+        }, 1500)
+      } catch (e) {
+        errEl.textContent = 'Verbindungsfehler.'; errEl.style.display = 'block'
+      } finally {
+        btn.disabled = false; btn.textContent = 'Konto erstellen & Anmelden'
       }
     }
 
@@ -3603,7 +3712,9 @@
                     <span class="px-2 py-0.5 rounded text-xs font-medium ${hasFZ ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}" title="Führungszeugnis">${hasFZ ? '✓' : '✗'} FZ</span>
                     <span class="px-2 py-0.5 rounded text-xs font-medium ${hasFirstAid ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}" title="Erste Hilfe">${hasFirstAid ? '✓' : '✗'} EH</span>
                   </div>
-                  ${!m.userId ? `<button onclick="inviteTeamMember('${m.id}')" class="text-xs bg-brand-100 text-brand-700 px-3 py-1 rounded-lg hover:bg-brand-200 font-medium" title="Einladung senden">Einladen</button>` : '<span class="text-xs text-green-600 font-medium">Angemeldet</span>'}
+                  ${m.userId ? '<span class="text-xs text-green-600 font-medium flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>Angemeldet</span>'
+                    : m.inviteSentAt ? `<div class="flex items-center gap-2"><span class="text-xs text-amber-600 font-medium flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>Einladung gesendet</span><button onclick="inviteTeamMember('${m.id}')" class="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded hover:bg-amber-200 font-medium">Erneut senden</button></div>`
+                    : `<button onclick="inviteTeamMember('${m.id}')" class="text-xs bg-brand-100 text-brand-700 px-3 py-1 rounded-lg hover:bg-brand-200 font-medium">Einladen</button>`}
                   <label class="toggle"><input type="checkbox" ${m.active ? 'checked' : ''} onchange="toggleTeamMember('${m.id}', this.checked)"><span class="slider"></span></label>
                   <button onclick="deleteTeamMember('${m.id}', '${escapeHtml(m.name)}')" class="text-xs text-red-400 hover:text-red-600 px-1" title="Entfernen">✕</button>
                 </div>
@@ -3686,7 +3797,7 @@
               <div class="text-xs text-blue-700">Nach dem Hinzufügen kann eine Einladung per E-Mail gesendet werden, damit das Mitglied sich anmelden kann.</div>
             </div>
 
-            <button type="submit" class="w-full bg-brand-500 text-white py-2.5 rounded-lg font-medium hover:bg-brand-600">Hinzufügen</button>
+            <button type="submit" class="w-full bg-brand-500 text-white py-2.5 rounded-lg font-medium hover:bg-brand-600">Hinzufügen & Einladen</button>
           </form>
         </div>
       `
@@ -3765,16 +3876,30 @@
     async function saveTeamMember(e) {
       e.preventDefault()
       const f = new FormData(e.target)
-      const docs = []
-      if (f.get('hasFZ')) docs.push({ id: 'doc_' + Date.now(), type: 'fuehrungszeugnis', name: 'Erw. Führungszeugnis', verified: true })
-      if (f.get('hasFirstAid')) docs.push({ id: 'doc_' + Date.now() + 'b', type: 'first_aid', name: 'Erste-Hilfe', verified: true })
-      await api(`/providers/${currentProvider.id}/team`, 'POST', {
-        name: f.get('name'), email: f.get('email'), phone: f.get('phone'), role: f.get('role'),
-        specializations: (f.get('specializations') || '').split(',').map(s => s.trim()).filter(Boolean),
-        documents: docs, absences: [],
-      })
-      document.getElementById('teamModal').className = 'hidden'
-      navigate('team')
+      const btn = e.target.querySelector('button[type="submit"]')
+      if (btn) { btn.disabled = true; btn.textContent = 'Wird angelegt...' }
+      try {
+        const result = await api(`/providers/${currentProvider.id}/team`, 'POST', {
+          name: f.get('name'), email: f.get('email'), phone: f.get('phone'), role: f.get('role'),
+          specializations: (f.get('specializations') || '').split(',').map(s => s.trim()).filter(Boolean),
+        })
+        if (result.error) { showToast(result.error, 'error'); return }
+        // Auto-send invite after creating
+        if (result.data?.id) {
+          try {
+            await api('/team/' + result.data.id + '/invite', 'POST')
+            showToast('Teammitglied angelegt und Einladung gesendet!', 'success')
+          } catch { showToast('Angelegt, aber Einladung konnte nicht gesendet werden.', 'info') }
+        } else {
+          showToast('Teammitglied angelegt!', 'success')
+        }
+        document.getElementById('teamModal').className = 'hidden'
+        navigate('team')
+      } catch (err) {
+        showToast('Fehler: ' + (err.message || 'Unbekannt'), 'error')
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Hinzufügen & Einladen' }
+      }
     }
 
     async function saveDoc(e, memberId) {
@@ -3799,8 +3924,10 @@
 
     async function inviteTeamMember(id) {
       try {
-        await api('/team/' + id + '/invite', 'POST')
+        const result = await api('/team/' + id + '/invite', 'POST')
+        if (result.error) { showToast('Fehler: ' + result.error, 'error'); return }
         showToast('Einladung gesendet!', 'success')
+        navigate('team')
       } catch(e) { showToast('Fehler beim Senden der Einladung', 'error') }
     }
 

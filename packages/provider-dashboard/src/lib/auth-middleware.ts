@@ -37,14 +37,33 @@ export async function authenticateRequest(req: ParsedRequest): Promise<AuthConte
 
   // Use service_role client to bypass RLS for provider lookup
   const serviceClient = getServiceClient()
-  const { data: provider, error: provErr } = await serviceClient
+
+  // Try 1: Direct provider owner (login_email matches)
+  const { data: provider } = await serviceClient
     .from('providers')
     .select('id')
     .eq('login_email', user.email)
-    .single()
+    .maybeSingle()
 
-  if (provErr || !provider) {
-    throw new AuthError(403, 'Kein Anbieter-Konto für diese E-Mail')
+  if (!provider) {
+    // Try 2: Team member (linked via user_id or email)
+    const { data: teamMember } = await serviceClient
+      .from('team_members')
+      .select('provider_id')
+      .or(`user_id.eq.${user.id},email.eq.${user.email}`)
+      .eq('active', true)
+      .maybeSingle()
+
+    if (!teamMember) {
+      throw new AuthError(403, 'Kein Anbieter-Konto für diese E-Mail')
+    }
+
+    providerCache.set(user.email, {
+      providerId: teamMember.provider_id,
+      expiresAt: Date.now() + CACHE_TTL,
+    })
+
+    return { userId: user.id, email: user.email, providerId: teamMember.provider_id }
   }
 
   providerCache.set(user.email, {

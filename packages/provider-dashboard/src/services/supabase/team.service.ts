@@ -42,6 +42,7 @@ export interface TeamMember {
   active: boolean
   userId: string | null
   inviteToken: string | null
+  inviteSentAt: string | null
   lastLoginAt: string | null
   createdAt: Date
 }
@@ -60,6 +61,7 @@ function fromDb(r: Record<string, any>): TeamMember {
     active: r.active ?? true,
     userId: r.user_id ?? null,
     inviteToken: r.invite_token ?? null,
+    inviteSentAt: r.invite_sent_at ?? null,
     lastLoginAt: r.last_login_at ?? null,
     createdAt: new Date(r.created_at),
   }
