@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.tailwindcss.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://*.supabase.co https://yuilhiqnrjuuqoqggihm.supabase.co https://cdn.jsdelivr.net">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.tailwindcss.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://*.supabase.co https://cdn.jsdelivr.net">
   <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <!-- PWA -->
   <link rel="manifest" href="/manifest.json">
@@ -483,9 +483,7 @@
         SUPABASE_URL = cfg.supabaseUrl
         SUPABASE_ANON_KEY = cfg.supabaseAnonKey
       } catch (e) {
-        // Fallback to hardcoded live values
-        SUPABASE_URL = 'https://yuilhiqnrjuuqoqggihm.supabase.co'
-        SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl1aWxoaXFucmp1dXFvcWdnaWhtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxNzUxMDAsImV4cCI6MjA5MDc1MTEwMH0.8dnGBOapmuTwEUy0VG-VnSgIAgRf10F4L1wi9gcE0iw'
+        console.error('Config-Endpoint nicht erreichbar — Supabase kann nicht initialisiert werden')
       }
       sb = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null
     }
@@ -866,6 +864,21 @@
       // Close sidebar
       closeSidebar()
     })
+
+    // Button loading state utility
+    function withLoading(btn, asyncFn) {
+      if (typeof btn === 'string') btn = document.querySelector(btn)
+      if (!btn || btn.disabled) return
+      const origText = btn.innerHTML
+      btn.disabled = true
+      btn.style.opacity = '0.6'
+      btn.innerHTML = '<span class="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>'
+      asyncFn().finally(() => {
+        btn.disabled = false
+        btn.style.opacity = ''
+        btn.innerHTML = origText
+      })
+    }
 
     // Client-side table filter
     function filterTable(query, tableId) {
@@ -4267,10 +4280,10 @@
 
       c.innerHTML = `
         <!-- Tabs -->
-        <div class="flex gap-2 mb-6">
-          <button onclick="window._cbTab='blocks'; renderCourseBlocks()" class="px-4 py-2 rounded-lg text-sm font-semibold ${tab === 'blocks' ? 'bg-brand-500 text-white' : 'bg-white text-gray-600 hover:bg-brand-100'}">Kursblöcke</button>
-          <button onclick="window._cbTab='credits'; renderCourseBlocks()" class="px-4 py-2 rounded-lg text-sm font-semibold ${tab === 'credits' ? 'bg-brand-500 text-white' : 'bg-white text-gray-600 hover:bg-brand-100'}">Guthaben</button>
-          <button onclick="window._cbTab='attendance'; renderCourseBlocks()" class="px-4 py-2 rounded-lg text-sm font-semibold ${tab === 'attendance' ? 'bg-brand-500 text-white' : 'bg-white text-gray-600 hover:bg-brand-100'}">Anwesenheit</button>
+        <div class="flex gap-1 mb-6 border-b border-gray-200">
+          <button onclick="window._cbTab='blocks'; renderCourseBlocks()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${tab === 'blocks' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}">Kursblöcke</button>
+          <button onclick="window._cbTab='credits'; renderCourseBlocks()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${tab === 'credits' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}">Guthaben</button>
+          <button onclick="window._cbTab='attendance'; renderCourseBlocks()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${tab === 'attendance' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}">Anwesenheit</button>
         </div>
         <div id="cb-content"></div>
       `

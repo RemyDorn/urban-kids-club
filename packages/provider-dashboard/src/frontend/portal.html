@@ -275,7 +275,8 @@ async function renderMessages() {
 }
 
 function renderMessageView(el) {
-  let html = '<div style="display:grid;grid-template-columns:200px 1fr;gap:12px;min-height:400px">';
+  const isMobile = window.innerWidth < 600;
+  let html = '<div style="display:grid;grid-template-columns:' + (isMobile ? '1fr' : '200px 1fr') + ';gap:12px;min-height:' + (isMobile ? '200px' : '400px') + '">';
 
   // Provider list
   html += '<div class="card" style="padding:8px">';

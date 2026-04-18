@@ -2148,7 +2148,7 @@ export function registerRoutes(router: Router) {
         longitude: 0,
         login_email: email,
         slug: slug,
-        status: 'onboarding',
+        status: 'active',
         subscription: 'free',
       })
       .select()
@@ -2175,7 +2175,7 @@ export function registerRoutes(router: Router) {
       address_zip: zip,
       address_city: city,
       description: `Selbst-Registrierung über Provider Dashboard. Anzeigename: ${displayName}, Rechtsform: ${legalForm}`,
-      status: 'onboarding',
+      status: 'active',
       converted_provider_id: provider.id,
     }).then(() => {}).catch(() => {}) // Non-critical, don't fail registration
 
