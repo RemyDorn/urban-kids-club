@@ -10,9 +10,11 @@ const TABLE = 'provider_bookings'
 
 export const SupabaseBookingService = {
 
-  async list(providerId: ID, filters?: { status?: BookingStatus; paymentStatus?: PaymentStatus }): Promise<Booking[]> {
+  async list(providerId: ID, filters?: { status?: BookingStatus; paymentStatus?: PaymentStatus; limit?: number; offset?: number }): Promise<Booking[]> {
     const sb = getServiceClient()
-    let query = sb.from(TABLE).select('*').eq('provider_id', providerId).order('created_at', { ascending: false })
+    const limit = filters?.limit ?? 100
+    const offset = filters?.offset ?? 0
+    let query = sb.from(TABLE).select('*').eq('provider_id', providerId).order('created_at', { ascending: false }).range(offset, offset + limit - 1)
     if (filters?.status) query = query.eq('status', filters.status)
     if (filters?.paymentStatus) query = query.eq('payment_status', filters.paymentStatus)
     const { data, error } = await query
@@ -71,39 +73,65 @@ export const SupabaseBookingService = {
     return data ? bookingFromDb(data) : undefined
   },
 
-  async listByActivity(activityId: ID): Promise<Booking[]> {
+  async listByActivity(activityId: ID, opts?: { limit?: number; offset?: number }): Promise<Booking[]> {
     const sb = getServiceClient()
-    const { data, error } = await sb.from(TABLE).select('*').eq('activity_id', activityId).order('created_at', { ascending: false })
+    const limit = opts?.limit ?? 100
+    const offset = opts?.offset ?? 0
+    const { data, error } = await sb.from(TABLE).select('*').eq('activity_id', activityId).order('created_at', { ascending: false }).range(offset, offset + limit - 1)
     if (error) throw error
     return (data ?? []).map(bookingFromDb)
   },
 
-  async listByParent(parentId: ID): Promise<Booking[]> {
+  async listByParent(parentId: ID, opts?: { limit?: number; offset?: number }): Promise<Booking[]> {
     const sb = getServiceClient()
-    const { data, error } = await sb.from(TABLE).select('*').eq('parent_id', parentId).order('created_at', { ascending: false })
+    const limit = opts?.limit ?? 100
+    const offset = opts?.offset ?? 0
+    const { data, error } = await sb.from(TABLE).select('*').eq('parent_id', parentId).order('created_at', { ascending: false }).range(offset, offset + limit - 1)
     if (error) throw error
     return (data ?? []).map(bookingFromDb)
   },
 
   async getStats(providerId: ID): Promise<{ total: number; confirmed: number; cancelled: number; completed: number; pending: number; waitlisted: number; noShow: number; revenue: number }> {
     const sb = getServiceClient()
-    const { data, error } = await sb.from(TABLE).select('status, amount_paid').eq('provider_id', providerId)
-    if (error) throw error
-    const rows = data ?? []
+    const statuses = ['confirmed', 'cancelled', 'completed', 'pending', 'waitlisted', 'no_show'] as const
+    const counts: Record<string, number> = {}
+
+    // Parallel count queries (much cheaper than loading all rows)
+    await Promise.all(statuses.map(async (status) => {
+      const { count, error } = await sb.from(TABLE).select('*', { count: 'exact', head: true })
+        .eq('provider_id', providerId).eq('status', status)
+      if (error) throw error
+      counts[status] = count ?? 0
+    }))
+
+    // Total count
+    const { count: total, error: totalError } = await sb.from(TABLE).select('*', { count: 'exact', head: true })
+      .eq('provider_id', providerId)
+    if (totalError) throw totalError
+
+    // Revenue sum - only load paid amounts (not all rows)
+    const { data: revenueRows, error: revError } = await sb.from(TABLE)
+      .select('amount_paid')
+      .eq('provider_id', providerId)
+      .not('amount_paid', 'is', null)
+      .gt('amount_paid', 0)
+    if (revError) throw revError
+    const revenue = (revenueRows ?? []).reduce((s: number, r: any) => s + (r.amount_paid ?? 0), 0)
+
     return {
-      total: rows.length,
-      confirmed: rows.filter((r: any) => r.status === 'confirmed').length,
-      cancelled: rows.filter((r: any) => r.status === 'cancelled').length,
-      completed: rows.filter((r: any) => r.status === 'completed').length,
-      pending: rows.filter((r: any) => r.status === 'pending').length,
-      waitlisted: rows.filter((r: any) => r.status === 'waitlisted').length,
-      noShow: rows.filter((r: any) => r.status === 'no_show').length,
-      revenue: rows.reduce((s: number, r: any) => s + (r.amount_paid ?? 0), 0),
+      total: total ?? 0,
+      confirmed: counts.confirmed ?? 0,
+      cancelled: counts.cancelled ?? 0,
+      completed: counts.completed ?? 0,
+      pending: counts.pending ?? 0,
+      waitlisted: counts.waitlisted ?? 0,
+      noShow: counts.no_show ?? 0,
+      revenue,
     }
   },
 
   // Alias for routes compatibility
-  async listByProvider(providerId: ID, filters?: { status?: BookingStatus; paymentStatus?: PaymentStatus }): Promise<Booking[]> {
+  async listByProvider(providerId: ID, filters?: { status?: BookingStatus; paymentStatus?: PaymentStatus; limit?: number; offset?: number }): Promise<Booking[]> {
     return this.list(providerId, filters)
   },
 }

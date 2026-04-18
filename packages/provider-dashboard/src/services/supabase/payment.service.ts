@@ -10,11 +10,14 @@ import type { PaymentRecord, PaymentMethod, SepaMandate, Currency, ID } from '..
 
 export const SupabasePaymentService = {
 
-  async list(providerId: ID, filters?: { method?: PaymentMethod; status?: string }): Promise<PaymentRecord[]> {
+  async list(providerId: ID, filters?: { method?: PaymentMethod; status?: string; limit?: number; offset?: number }): Promise<PaymentRecord[]> {
     const sb = getServiceClient()
+    const limit = filters?.limit ?? 100
+    const offset = filters?.offset ?? 0
     let query = sb.from('payments').select('*').eq('provider_id', providerId).order('created_at', { ascending: false })
     if (filters?.method) query = query.eq('method', filters.method)
     if (filters?.status) query = query.eq('status', filters.status)
+    query = query.range(offset, offset + limit - 1)
     const { data, error } = await query
     if (error) throw error
     return (data ?? []).map(paymentFromDb)
@@ -86,7 +89,7 @@ export const SupabasePaymentService = {
   },
 
   // Alias for routes compatibility
-  async listByProvider(providerId: ID, filters?: { method?: PaymentMethod; status?: string }): Promise<PaymentRecord[]> {
+  async listByProvider(providerId: ID, filters?: { method?: PaymentMethod; status?: string; limit?: number; offset?: number }): Promise<PaymentRecord[]> {
     return this.list(providerId, filters)
   },
 }

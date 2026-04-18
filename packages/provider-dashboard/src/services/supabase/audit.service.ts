@@ -32,12 +32,14 @@ export const SupabaseAuditService = {
     return auditLogFromDb(data)
   },
 
-  async list(providerId: ID, filters?: { entityType?: string; action?: string; limit?: number }): Promise<AuditLogEntry[]> {
+  async list(providerId: ID, filters?: { entityType?: string; action?: string; limit?: number; offset?: number }): Promise<AuditLogEntry[]> {
     const sb = getServiceClient()
+    const limit = filters?.limit ?? 100
+    const offset = filters?.offset ?? 0
     let query = sb.from(TABLE).select('*').eq('provider_id', providerId).order('timestamp', { ascending: false })
     if (filters?.entityType) query = query.eq('entity_type', filters.entityType)
     if (filters?.action) query = query.eq('action', filters.action)
-    query = query.limit(filters?.limit ?? 100)
+    query = query.range(offset, offset + limit - 1)
     const { data, error } = await query
     if (error) throw error
     return (data ?? []).map(auditLogFromDb)
@@ -53,5 +55,28 @@ export const SupabaseAuditService = {
 
   async getRecentActivity(providerId: ID, limit: number = 20): Promise<AuditLogEntry[]> {
     return this.list(providerId, { limit })
+  },
+
+  /** Purge audit log entries older than N days. Call from a daily cron/background job. */
+  async purgeOldEntries(daysToKeep = 365): Promise<number> {
+    const sb = getServiceClient()
+    const cutoff = new Date()
+    cutoff.setDate(cutoff.getDate() - daysToKeep)
+    const cutoffStr = cutoff.toISOString()
+
+    // Count before delete
+    const { count } = await sb.from(TABLE)
+      .select('*', { count: 'exact', head: true })
+      .lt('created_at', cutoffStr)
+
+    if (count && count > 0) {
+      const { error } = await sb.from(TABLE)
+        .delete()
+        .lt('created_at', cutoffStr)
+      if (error) throw error
+      console.log(`[AuditCleanup] Purged ${count} entries older than ${daysToKeep} days`)
+    }
+
+    return count ?? 0
   },
 }

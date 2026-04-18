@@ -10,9 +10,11 @@ const TABLE = 'parents'
 
 export const SupabaseParentService = {
 
-  async list(input: { providerId: ID; query?: string } | ID): Promise<Parent[]> {
+  async list(input: { providerId: ID; query?: string; limit?: number; offset?: number } | ID): Promise<Parent[]> {
     const providerId = typeof input === 'object' ? input.providerId : input
     const query = typeof input === 'object' ? input.query : undefined
+    const limit = typeof input === 'object' ? (input.limit ?? 100) : 100
+    const offset = typeof input === 'object' ? (input.offset ?? 0) : 0
     const sb = getServiceClient()
     // Parents who have bookings with this provider
     const { data: bookingRows, error: bErr } = await sb
@@ -28,6 +30,7 @@ export const SupabaseParentService = {
       const sanitized = query.replace(/[,().%*]/g, '')
       if (sanitized) dbQuery = dbQuery.or(`name.ilike.%${sanitized}%,email.ilike.%${sanitized}%`)
     }
+    dbQuery = dbQuery.range(offset, offset + limit - 1)
     const { data, error } = await dbQuery
     if (error) throw error
     return (data ?? []).map(parentFromDb)

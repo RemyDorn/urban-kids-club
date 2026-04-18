@@ -10,10 +10,13 @@ const TABLE = 'invoices'
 
 export const SupabaseInvoiceService = {
 
-  async list(providerId: ID, filters?: { status?: InvoiceStatus }): Promise<Invoice[]> {
+  async list(providerId: ID, filters?: { status?: InvoiceStatus; limit?: number; offset?: number }): Promise<Invoice[]> {
     const sb = getServiceClient()
+    const limit = filters?.limit ?? 100
+    const offset = filters?.offset ?? 0
     let query = sb.from(TABLE).select('*').eq('provider_id', providerId).order('issued_at', { ascending: false })
     if (filters?.status) query = query.eq('status', filters.status)
+    query = query.range(offset, offset + limit - 1)
     const { data, error } = await query
     if (error) throw error
     return (data ?? []).map(invoiceFromDb)
@@ -220,7 +223,7 @@ export const SupabaseInvoiceService = {
   },
 
   // Alias for routes compatibility
-  async listByProvider(providerId: ID, filters?: { status?: InvoiceStatus }): Promise<Invoice[]> {
+  async listByProvider(providerId: ID, filters?: { status?: InvoiceStatus; limit?: number; offset?: number }): Promise<Invoice[]> {
     return this.list(providerId, filters)
   },
 }

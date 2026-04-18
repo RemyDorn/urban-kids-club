@@ -48,16 +48,19 @@ export const SupabaseWaitlistService = {
   },
 
   // Routes compatibility aliases
-  async listByActivity(activityId: ID): Promise<WaitlistEntry[]> {
-    return this.list(activityId)
+  async listByActivity(activityId: ID, options?: { limit?: number; offset?: number }): Promise<WaitlistEntry[]> {
+    return this.list(activityId, options)
   },
 
-  async list(activityId: ID): Promise<WaitlistEntry[]> {
+  async list(activityId: ID, options?: { limit?: number; offset?: number }): Promise<WaitlistEntry[]> {
     const sb = getServiceClient()
+    const limit = options?.limit ?? 100
+    const offset = options?.offset ?? 0
     const { data, error } = await sb.from(TABLE).select('*')
       .eq('activity_id', activityId)
       .in('status', ['waiting', 'offered'])
       .order('position', { ascending: true })
+      .range(offset, offset + limit - 1)
     if (error) throw error
     return (data ?? []).map(waitlistEntryFromDb)
   },

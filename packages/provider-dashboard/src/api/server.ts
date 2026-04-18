@@ -701,12 +701,17 @@ const server = createServer((req, res) => {
   // PWA Assets
   const path = url.split('?')[0]
   if (path === '/manifest.json') {
-    res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8'); res.statusCode = 200
+    res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8')
+    res.setHeader('Cache-Control', 'public, max-age=604800') // 7 days
+    res.statusCode = 200
     res.end(manifestJson)
     return
   }
   if (path === '/sw.js') {
-    res.setHeader('Content-Type', 'application/javascript; charset=utf-8'); res.setHeader('Service-Worker-Allowed', '/'); res.statusCode = 200
+    res.setHeader('Content-Type', 'application/javascript; charset=utf-8')
+    res.setHeader('Service-Worker-Allowed', '/')
+    res.setHeader('Cache-Control', 'no-cache') // always revalidate SW
+    res.statusCode = 200
     res.end(swJs)
     return
   }
@@ -715,7 +720,9 @@ const server = createServer((req, res) => {
     const iconData = pwaIcons.get(fileName)
     if (iconData) {
       const ct = fileName.endsWith('.svg') ? 'image/svg+xml' : 'image/png'
-      res.setHeader('Content-Type', ct); res.setHeader('Cache-Control', 'public, max-age=86400'); res.statusCode = 200
+      res.setHeader('Content-Type', ct)
+      res.setHeader('Cache-Control', 'public, max-age=604800') // 7 days
+      res.statusCode = 200
       res.end(iconData)
       return
     }
@@ -723,14 +730,18 @@ const server = createServer((req, res) => {
 
   // Frontend: Root-URL → Dashboard HTML ausliefern
   if (path === '/' || path === '/index.html') {
-    res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.statusCode = 200
+    res.setHeader('Content-Type', 'text/html; charset=utf-8')
+    res.setHeader('Cache-Control', 'no-cache') // always revalidate HTML
+    res.statusCode = 200
     res.end(dashboardHtml)
     return
   }
 
   // Admin Dashboard
   if (path === '/admin' || path === '/admin/') {
-    res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.statusCode = 200
+    res.setHeader('Content-Type', 'text/html; charset=utf-8')
+    res.setHeader('Cache-Control', 'no-cache')
+    res.statusCode = 200
     res.end(adminHtml)
     return
   }
@@ -740,14 +751,18 @@ const server = createServer((req, res) => {
     const parts = path.split('/').filter(Boolean) // ['embed', slug, type]
     const slug = parts[1] || ''
     const embedType = parts[2] || 'calendar'
-    res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.statusCode = 200
+    res.setHeader('Content-Type', 'text/html; charset=utf-8')
+    res.setHeader('Cache-Control', 'no-cache')
+    res.statusCode = 200
     res.end(generateEmbedHtml(slug, embedType, url))
     return
   }
 
   // Parent Portal
   if (path === '/portal' || path === '/portal/' || path.startsWith('/portal/?')) {
-    res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.statusCode = 200
+    res.setHeader('Content-Type', 'text/html; charset=utf-8')
+    res.setHeader('Cache-Control', 'no-cache')
+    res.statusCode = 200
     res.end(portalHtml)
     return
   }
@@ -756,7 +771,9 @@ const server = createServer((req, res) => {
   if (path.startsWith('/checkin/')) {
     const providerId = path.split('/')[2] || ''
     if (providerId) {
-      res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.statusCode = 200
+      res.setHeader('Content-Type', 'text/html; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
       res.end(generateCheckinHtml(providerId))
       return
     }
@@ -765,6 +782,7 @@ const server = createServer((req, res) => {
   // Widget: Parent-Course-Widget ausliefern
   if (url.startsWith('/widget/')) {
     res.setHeader('Content-Type', 'text/html; charset=utf-8')
+    res.setHeader('Cache-Control', 'no-cache')
     res.statusCode = 200
     // Widget: X-Frame-Options already excluded above for /widget/ paths
     res.end(parentWidgetHtml)
@@ -783,7 +801,8 @@ const server = createServer((req, res) => {
     } as typeof res.end
   }
 
-  // Alles andere → API Router
+  // Alles andere → API Router (no-store: don't cache API responses)
+  res.setHeader('Cache-Control', 'no-store')
   router.handle(req, res)
 })
 

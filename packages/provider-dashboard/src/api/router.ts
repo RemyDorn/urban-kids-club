@@ -33,8 +33,16 @@ interface Route {
   handler: RouteHandler
 }
 
+export type MiddlewareHandler = (req: ParsedRequest, res: ApiResponse, next: () => Promise<void>) => void | Promise<void>
+
 export class Router {
   private routes: Route[] = []
+  private middlewares: MiddlewareHandler[] = []
+
+  /** Register middleware that runs before every route handler */
+  use(handler: MiddlewareHandler) {
+    this.middlewares.push(handler)
+  }
 
   private addRoute(method: string, path: string, handler: RouteHandler) {
     const paramNames: string[] = []
@@ -59,14 +67,17 @@ export class Router {
   async handle(req: IncomingMessage, res: ServerResponse) {
     // CORS Headers – Widget/public endpoints allow any origin, authenticated endpoints restrict
     const requestPath = (req.url ?? '/').split('?')[0]
-    const isPublicEndpoint = requestPath.startsWith('/api/widget/') ||
-      requestPath.startsWith('/api/public/') ||
-      requestPath.startsWith('/api/checkout/') ||
-      requestPath.startsWith('/api/providers/by-slug/') ||
-      requestPath === '/api/config' ||
-      requestPath === '/api/health'
+    // Normalize versioned API paths for CORS check: /api/v1/widget/... → /api/widget/...
+    const normalizedRequestPath = requestPath.replace(/^\/api\/v\d+\//, '/api/')
+    const isPublicEndpoint = normalizedRequestPath.startsWith('/api/widget/') ||
+      normalizedRequestPath.startsWith('/api/public/') ||
+      normalizedRequestPath.startsWith('/api/checkout/') ||
+      normalizedRequestPath.startsWith('/api/providers/by-slug/') ||
+      normalizedRequestPath === '/api/config' ||
+      normalizedRequestPath === '/api/health'
     const corsOrigin = process.env.CORS_ORIGIN
-    const allowedOrigin = isPublicEndpoint ? '*' : (corsOrigin || '*')
+    const defaultOrigin = process.env.APP_PUBLIC_URL || 'https://dev.urbankids.club'
+    const allowedOrigin = isPublicEndpoint ? '*' : (corsOrigin || defaultOrigin)
     res.setHeader('Access-Control-Allow-Origin', allowedOrigin)
     if (allowedOrigin !== '*') res.setHeader('Vary', 'Origin')
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
@@ -83,6 +94,19 @@ export class Router {
     const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`)
     const method = req.method ?? 'GET'
     const path = url.pathname
+
+    // Normalize versioned API paths: /api/v1/widget/... → /api/widget/...
+    // This allows existing handlers to work without changes while supporting versioned URLs.
+    // Currently only v1 is supported; future versions can branch to separate handlers.
+    let normalizedPath = path
+    const versionMatch = path.match(/^\/api\/v(\d+)\/(.*)/)
+    if (versionMatch) {
+      const version = parseInt(versionMatch[1])
+      if (version === 1) {
+        normalizedPath = '/api/' + versionMatch[2]
+      }
+      // Future: if (version === 2) { use v2 handlers }
+    }
 
     // Query params
     const query: Record<string, string> = {}
@@ -107,7 +131,7 @@ export class Router {
     // Route finden
     for (const route of this.routes) {
       if (route.method !== method) continue
-      const match = path.match(route.pattern)
+      const match = normalizedPath.match(route.pattern)
       if (!match) continue
 
       const params: Record<string, string> = {}
@@ -136,7 +160,17 @@ export class Router {
       }
 
       try {
-        await route.handler(parsedReq, apiRes)
+        // Run middleware chain, then the route handler
+        let middlewareIndex = 0
+        const runNext = async (): Promise<void> => {
+          if (middlewareIndex < this.middlewares.length) {
+            const mw = this.middlewares[middlewareIndex++]
+            await mw(parsedReq, apiRes, runNext)
+          } else {
+            await route.handler(parsedReq, apiRes)
+          }
+        }
+        await runNext()
       } catch (err) {
         console.error(`Error handling ${method} ${path}:`, err)
         if (!res.headersSent) {

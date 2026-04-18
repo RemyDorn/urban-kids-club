@@ -80,6 +80,53 @@ class ResendEmailProvider implements EmailProvider {
   }
 }
 
+// --- Retry Helper ---
+
+/** Send email with retry on transient failures */
+async function sendWithRetry(
+  sendFn: () => Promise<EmailResult>,
+  maxRetries = 3,
+  label = 'Email'
+): Promise<EmailResult> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const result = await sendFn()
+      if (result.success) return result
+      // Check if the error looks transient (server-side / network)
+      const isTransient =
+        result.error?.includes('500') ||
+        result.error?.includes('502') ||
+        result.error?.includes('503') ||
+        result.error?.includes('504') ||
+        result.error?.includes('ECONNRESET') ||
+        result.error?.includes('ETIMEDOUT') ||
+        result.error?.includes('fetch failed')
+      if (attempt === maxRetries || !isTransient) {
+        console.error(`[${label}] Failed after ${attempt} attempt(s):`, result.error)
+        return result
+      }
+      const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000)
+      console.warn(`[${label}] Attempt ${attempt} failed, retrying in ${delay}ms...`)
+      await new Promise(r => setTimeout(r, delay))
+    } catch (err: any) {
+      const isTransient =
+        err?.status >= 500 ||
+        err?.code === 'ECONNRESET' ||
+        err?.code === 'ETIMEDOUT' ||
+        err?.message?.includes('fetch failed')
+      if (attempt === maxRetries || !isTransient) {
+        console.error(`[${label}] Failed after ${attempt} attempt(s):`, err?.message || err)
+        return { success: false, error: `${label} fehlgeschlagen: ${err?.message || err}` }
+      }
+      const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000)
+      console.warn(`[${label}] Attempt ${attempt} failed, retrying in ${delay}ms...`)
+      await new Promise(r => setTimeout(r, delay))
+    }
+  }
+  // Should never reach here, but satisfy TypeScript
+  return { success: false, error: `${label} failed after max retries` }
+}
+
 // --- Provider Factory ---
 
 function createEmailProvider(): EmailProvider {
@@ -95,8 +142,14 @@ const emailProvider = createEmailProvider()
 // --- Public API ---
 
 export const EmailService = {
-  async send(options: EmailOptions): Promise<EmailResult> {
-    return emailProvider.send(options)
+  /** Send email with retry (use for critical emails) */
+  async send(options: EmailOptions, retry = true): Promise<EmailResult> {
+    if (!retry) return emailProvider.send(options)
+    return sendWithRetry(
+      () => emailProvider.send(options),
+      3,
+      `Email → ${options.to}`
+    )
   },
 
   // --- Vorgefertigte Templates ---
@@ -239,7 +292,7 @@ export const EmailService = {
         </div>
       `,
       text: `Erinnerung: ${data.childName} hat morgen um ${data.time} eine Probestunde bei "${data.courseName}".`,
-    })
+    }, false)
   },
 
   async sendWaitlistOffer(to: string, data: {
@@ -342,7 +395,7 @@ export const EmailService = {
         </div>
       `,
       text: `Platz frei in "${data.courseName}" für ${data.childName}. Bitte innerhalb von ${data.deadlineHours}h bestätigen.`,
-    })
+    }, false)
   },
 
   // --- Probestunden Follow-up ---
@@ -383,10 +436,10 @@ export const EmailService = {
         </div>
       `,
       text: `Hey ${data.parentName}, wie war die Probestunde von ${data.childName} bei "${data.courseName}"? Wenn es gefallen hat, sichere dir jetzt einen festen Platz! ${data.bookingUrl || ''} — ${data.providerName}`,
-    })
+    }, false)
   },
 
-  async sendTrialReminder(to: string, data: {
+  async sendTrialReminderBranded(to: string, data: {
     parentName: string
     childName: string
     courseName: string
@@ -429,7 +482,7 @@ export const EmailService = {
         </div>
       `,
       text: `Hey ${data.parentName}, Erinnerung: ${data.childName} hat morgen um ${data.trialTime} Uhr eine Probestunde bei "${data.courseName}" (${data.providerName}). Wir freuen uns!`,
-    })
+    }, false)
   },
 
   // --- Kurs-Erinnerung 24h vorher ---
@@ -472,7 +525,7 @@ export const EmailService = {
         </div>
       `,
       text: `Hey ${data.parentName}, Erinnerung: ${data.childName} hat morgen um ${data.courseTime} Uhr "${data.courseName}" bei ${data.providerName}. Wir freuen uns!`,
-    })
+    }, false)
   },
 
   // --- Kurs-Einladung ---
@@ -520,7 +573,7 @@ export const EmailService = {
         </div>
       `,
       text: `Hey ${data.parentName}, neuer Kurs "${data.courseName}" bei ${data.providerName} — perfekt für ${data.childName}! ${data.courseDetails} Jetzt buchen: ${data.bookingUrl}${data.couponCode ? ' Rabatt-Code: ' + data.couponCode : ''}`,
-    })
+    }, false)
   },
 
   async sendCancellation(to: string, data: {

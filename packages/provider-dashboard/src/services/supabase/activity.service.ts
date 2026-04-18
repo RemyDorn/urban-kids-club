@@ -10,11 +10,14 @@ const TABLE = 'activities'
 
 export const SupabaseActivityService = {
 
-  async list(providerId: ID, filters?: { status?: ActivityStatus; category?: string; query?: string }): Promise<Activity[]> {
+  async list(providerId: ID, filters?: { status?: ActivityStatus; category?: string; query?: string; limit?: number; offset?: number }): Promise<Activity[]> {
     const sb = getServiceClient()
+    const limit = filters?.limit ?? 100
+    const offset = filters?.offset ?? 0
     let query = sb.from(TABLE).select('*').eq('provider_id', providerId).order('created_at', { ascending: false })
     if (filters?.status) query = query.eq('status', filters.status)
     if (filters?.category) query = query.eq('category', filters.category)
+    query = query.range(offset, offset + limit - 1)
     const { data, error } = await query
     if (error) throw error
     let result = (data ?? []).map(activityFromDb)
@@ -122,7 +125,7 @@ export const SupabaseActivityService = {
   },
 
   // Alias for routes compatibility
-  async listByProvider(providerId: ID, filters?: { status?: ActivityStatus; category?: string; query?: string }): Promise<Activity[]> {
+  async listByProvider(providerId: ID, filters?: { status?: ActivityStatus; category?: string; query?: string; limit?: number; offset?: number }): Promise<Activity[]> {
     return this.list(providerId, filters)
   },
 }

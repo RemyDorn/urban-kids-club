@@ -22,11 +22,14 @@ export const SupabaseNotificationService = {
     return notificationFromDb(data)
   },
 
-  async list(recipientId: ID): Promise<Notification[]> {
+  async list(recipientId: ID, options?: { limit?: number; offset?: number }): Promise<Notification[]> {
     const sb = getServiceClient()
+    const limit = options?.limit ?? 100
+    const offset = options?.offset ?? 0
     const { data, error } = await sb.from(TABLE).select('*')
       .eq('recipient_id', recipientId)
       .order('sent_at', { ascending: false })
+      .range(offset, offset + limit - 1)
     if (error) throw error
     return (data ?? []).map(notificationFromDb)
   },

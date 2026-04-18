@@ -59,11 +59,12 @@ export class CheckoutService {
           .in('status', ['waiting', 'offered'])
 
         if (!existingWaitlist || existingWaitlist === 0) {
+          // Use Date.now() for position to ensure unique ordering across parallel requests
           await db.from('waitlist_entries').insert({
             activity_id: params.activityId,
             parent_id: parent.id,
             child_info: { firstName: params.childFirstName, lastName: params.childLastName, birthYear: params.childBirthYear },
-            position: 1,
+            position: Date.now(),
             priority: 'normal',
             status: 'waiting',
           })
@@ -257,13 +258,11 @@ export class CheckoutService {
           .eq('activity_id', params.activityId).eq('parent_id', parent.id)
           .in('status', ['waiting', 'offered'])
         if (!existingWl || existingWl === 0) {
-          const { count: wlCount } = await db.from('waitlist_entries')
-            .select('*', { count: 'exact', head: true })
-            .eq('activity_id', params.activityId).in('status', ['waiting', 'offered'])
+          // Use Date.now() for position to avoid race condition with parallel requests
           await db.from('waitlist_entries').insert({
             activity_id: params.activityId, parent_id: parent.id,
             child_info: { firstName: params.childFirstName, lastName: params.childLastName, birthYear: params.childBirthYear },
-            position: (wlCount ?? 0) + 1, priority: 'normal', status: 'waiting',
+            position: Date.now(), priority: 'normal', status: 'waiting',
           })
           // Notify provider
           await db.from('notifications').insert({
@@ -350,21 +349,18 @@ export class CheckoutService {
           console.log(`[Checkout] Block ${activeBlock.id} fixed slots full (${currentCount}/${fixedSlots}). Booking ${booking.id} needs manual enrollment (makeup slot).`)
         } else {
           // Block completely full — add to waitlist
-          const { count: existingWaitlist } = await db.from('waitlist_entries')
-            .select('*', { count: 'exact', head: true })
-            .eq('activity_id', params.activityId)
-            .in('status', ['waiting', 'offered'])
-          const nextPosition = (existingWaitlist ?? 0) + 1
+          // Use Date.now() for position to avoid race condition with parallel requests
+          const waitlistPosition = Date.now()
 
           await db.from('waitlist_entries').insert({
             activity_id: params.activityId,
             parent_id: parent.id,
             child_info: { firstName: params.childFirstName, lastName: params.childLastName, birthYear: params.childBirthYear },
-            position: nextPosition,
+            position: waitlistPosition,
             priority: 'normal',
             status: 'waiting',
           })
-          console.log(`[Checkout] Block ${activeBlock.id} voll (${currentCount}/${activeBlock.capacity}). ${params.childFirstName} auf Warteliste (Position ${nextPosition}).`)
+          console.log(`[Checkout] Block ${activeBlock.id} voll (${currentCount}/${activeBlock.capacity}). ${params.childFirstName} auf Warteliste (Position ${waitlistPosition}).`)
 
           // Notify provider: block is full
           await db.from('notifications').insert({
