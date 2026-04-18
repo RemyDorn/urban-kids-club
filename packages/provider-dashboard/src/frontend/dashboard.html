@@ -60,7 +60,10 @@
     .cal-day-col { position: relative; border-left: 1px solid #f3f4f6; }
     .cal-today { background: #FFF9F5; }
     .cal-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 50; display: flex; align-items: center; justify-content: center; }
-    .cal-modal { background: white; border-radius: 16px; padding: 24px; width: 480px; max-height: 80vh; overflow-y: auto; box-shadow: 0 25px 50px rgba(0,0,0,0.25); }
+    .cal-modal { background: white; border-radius: 16px; padding: 24px; width: 480px; max-height: 80vh; overflow-y: auto; overflow-x: hidden; box-shadow: 0 25px 50px rgba(0,0,0,0.25); scrollbar-width: thin; scrollbar-color: #d1d5db transparent; }
+    .cal-modal::-webkit-scrollbar { width: 6px; }
+    .cal-modal::-webkit-scrollbar-track { background: transparent; border-radius: 0 16px 16px 0; }
+    .cal-modal::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
     /* Toggle Switch */
     .toggle { position: relative; width: 44px; height: 24px; cursor: pointer; }
     .toggle input { opacity: 0; width: 0; height: 0; }
@@ -2537,15 +2540,15 @@
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Alter (ab – bis)</label>
                 <div class="flex items-center gap-2">
-                  <select name="ageMin" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
-                    <option value="0" ${a.ageRange.min == 0 ? 'selected' : ''}>0 (Geburt)</option>
-                    ${[3,6,9].map(m => `<option value="${m/12}" ${a.ageRange.min == m/12 ? 'selected' : ''}>${m} Monate</option>`).join('')}
-                    ${Array.from({length:13},(_, i) => i+1).map(y => `<option value="${y}" ${a.ageRange.min == y ? 'selected' : ''}>${y} ${y===1?'Jahr':'Jahre'}</option>`).join('')}
+                  <select name="ageMin" class="flex-1 min-w-0 border border-gray-200 rounded-lg px-2 py-2 text-sm">
+                    <option value="0" ${a.ageRange.min == 0 ? 'selected' : ''}>0 J.</option>
+                    ${[3,6,9].map(m => `<option value="${m/12}" ${a.ageRange.min == m/12 ? 'selected' : ''}>${m} Mon.</option>`).join('')}
+                    ${Array.from({length:15},(_, i) => i+1).map(y => `<option value="${y}" ${a.ageRange.min == y ? 'selected' : ''}>${y} J.</option>`).join('')}
                   </select>
-                  <span class="text-gray-400">–</span>
-                  <select name="ageMax" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
-                    ${[6,9].map(m => `<option value="${m/12}" ${a.ageRange.max == m/12 ? 'selected' : ''}>${m} Monate</option>`).join('')}
-                    ${Array.from({length:13},(_, i) => i+1).map(y => `<option value="${y}" ${a.ageRange.max == y ? 'selected' : ''}>${y} ${y===1?'Jahr':'Jahre'}</option>`).join('')}
+                  <span class="text-gray-400 flex-shrink-0">–</span>
+                  <select name="ageMax" class="flex-1 min-w-0 border border-gray-200 rounded-lg px-2 py-2 text-sm">
+                    ${[6,9].map(m => `<option value="${m/12}" ${a.ageRange.max == m/12 ? 'selected' : ''}>${m} Mon.</option>`).join('')}
+                    ${Array.from({length:18},(_, i) => i+1).map(y => `<option value="${y}" ${a.ageRange.max == y ? 'selected' : ''}>${y} J.</option>`).join('')}
                   </select>
                 </div>
               </div>
