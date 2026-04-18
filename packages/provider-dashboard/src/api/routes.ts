@@ -1130,6 +1130,14 @@ export function registerRoutes(router: Router) {
     res.json({ data: trial })
   })
 
+  router.post('/api/trials/:id/no-show', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    const trial = await TrialService.markNoShow(req.params.id)
+    if (!trial) return res.error(400, 'Probestunde konnte nicht als No-Show markiert werden')
+    res.json({ data: trial })
+  })
+
   router.post('/api/trials/:id/convert', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return

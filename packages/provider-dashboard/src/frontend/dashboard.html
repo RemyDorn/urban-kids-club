@@ -43,6 +43,8 @@
   </script>
   <style>
     body { font-family: 'Inter', sans-serif; background: #FFF9F5; }
+    /* WCAG AA contrast fix: gray-400 (#9ca3af) → gray-500 (#6b7280) for readability */
+    .text-gray-400 { color: #6b7280 !important; }
     h1, h2, h3, .page-title { font-family: 'Barlow Condensed', sans-serif; text-transform: uppercase; letter-spacing: 0.05em; }
     .fade-in { animation: fadeIn 0.3s ease-in; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
@@ -865,6 +867,16 @@
       closeSidebar()
     })
 
+    // Client-side table filter
+    function filterTable(query, tableId) {
+      const q = query.toLowerCase()
+      const container = document.getElementById(tableId)
+      if (!container) return
+      container.querySelectorAll('tbody tr').forEach(tr => {
+        tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none'
+      })
+    }
+
     // Toast notification system
     function showToast(message, type = 'info') {
       const existing = document.querySelector('.toast')
@@ -882,6 +894,8 @@
       let modal = document.getElementById('confirmModal')
       if (!modal) { modal = document.createElement('div'); modal.id = 'confirmModal'; document.body.appendChild(modal) }
       modal.className = 'cal-modal-backdrop'
+      modal.setAttribute('role', 'dialog')
+      modal.setAttribute('aria-modal', 'true')
       modal.onclick = (e) => { if (e.target === modal) modal.className = 'hidden' }
       modal.innerHTML = `
         <div class="cal-modal fade-in" style="max-width:380px">
@@ -892,6 +906,7 @@
           </div>
         </div>`
       document.getElementById('confirmBtn').onclick = () => { modal.className = 'hidden'; onConfirm() }
+      document.getElementById('confirmBtn').focus()
     }
     // Close sidebar on resize to desktop
     window.addEventListener('resize', () => { if (window.innerWidth >= 768) closeSidebar() })
@@ -921,7 +936,7 @@
 
     // --- Calendar (Hauptansicht) ---
     let calWeekStart = getMonday(new Date())
-    let calView = 'week' // 'day', 'week', 'month'
+    let calView = window.innerWidth < 768 ? 'day' : 'week' // Mobile: Tag-Ansicht als Default
 
     function getMonday(d) {
       const date = new Date(d)
@@ -2403,13 +2418,21 @@
               </div>
             </div>
 
-            <!-- Raum -->
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Raum (optional)</label>
-              <select name="roomId" id="actRoomSelect" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
-                <option value="">Kein Raum zugewiesen</option>
-              </select>
-              <div id="roomConflictMsg" class="text-xs text-red-500 mt-1 hidden"></div>
+            <!-- Raum + Kursleiter -->
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Raum (optional)</label>
+                <select name="roomId" id="actRoomSelect" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                  <option value="">Kein Raum zugewiesen</option>
+                </select>
+                <div id="roomConflictMsg" class="text-xs text-red-500 mt-1 hidden"></div>
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Kursleiter (optional)</label>
+                <select name="instructorId" id="actInstructorSelect" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                  <option value="">Kein Kursleiter zugewiesen</option>
+                </select>
+              </div>
             </div>
 
             <!-- Zeitplan (Multi-Tag) -->
@@ -2644,6 +2667,19 @@
           sel.appendChild(opt)
         })
       }).catch(function() {})
+      // Load team members into the instructor selector
+      api('/providers/' + currentProvider.id + '/team').then(function(r) {
+        const sel = document.getElementById('actInstructorSelect')
+        if (!sel) return
+        const members = r.data || []
+        members.forEach(function(m) {
+          const opt = document.createElement('option')
+          opt.value = m.id
+          opt.textContent = m.name + ' (' + (m.role || 'Mitarbeiter') + ')'
+          if (a && (a.instructorId === m.id)) opt.selected = true
+          sel.appendChild(opt)
+        })
+      }).catch(function() {})
     }
 
     let slotCount = 1
@@ -2775,6 +2811,10 @@
           }
         } catch(e) {}
       }
+
+      // Instructor assignment
+      const instructorId = f.get('instructorId') || document.getElementById('actInstructorSelect')?.value || null
+      if (instructorId) body.instructorId = instructorId
 
       // Room assignment + conflict check
       const roomId = f.get('roomId') || document.getElementById('actRoomSelect')?.value || null
@@ -3050,7 +3090,10 @@
           ${segmentCard('Interessenten', segments.prospects, 'bg-brand-100')}
           ${segmentCard('Neu (Monat)', segments.newThisMonth, 'bg-amber-50')}
         </div>
-        <div class="bg-white rounded-xl border border-brand-200 overflow-hidden">
+        <div class="mb-4">
+          <input type="text" placeholder="Kunden suchen..." class="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full md:w-64 focus:ring-2 focus:ring-brand-500" oninput="filterTable(this.value, 'customerTable')">
+        </div>
+        <div class="bg-white rounded-xl border border-brand-200 overflow-hidden" id="customerTable">
           <table class="w-full">
             <thead class="bg-brand-100 text-xs text-brand-700 uppercase tracking-wider">
               <tr>
@@ -3270,7 +3313,7 @@
       navigate('trials')
     }
     async function noShowTrial(id) {
-      await api('/trials/' + id + '/complete', 'POST') // mark as no-show via different endpoint would be ideal
+      await api('/trials/' + id + '/no-show', 'POST')
       navigate('trials')
     }
     async function convertTrial(id, pricingOptionId) {
@@ -3346,7 +3389,10 @@
         ` : ''}
 
         <!-- Invoices Table -->
-        <div class="bg-white rounded-xl border border-brand-200 overflow-hidden">
+        <div class="mb-4">
+          <input type="text" placeholder="Rechnungen suchen..." class="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full md:w-64 focus:ring-2 focus:ring-brand-500" oninput="filterTable(this.value, 'invoiceTable')">
+        </div>
+        <div class="bg-white rounded-xl border border-brand-200 overflow-hidden" id="invoiceTable">
           <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
             <span class="font-semibold text-gray-900">${invoices.data.length} Rechnungen</span>
             <div class="flex gap-2">
@@ -3488,14 +3534,17 @@
       const activities = actRes.data.filter(a => a.status === 'published')
 
       document.getElementById('content').innerHTML = `
-        <div class="flex items-center justify-between mb-6">
-          <span class="text-sm text-gray-500">${members.length} Teammitglieder</span>
-          <button onclick="showTeamForm()" class="bg-brand-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-brand-600 flex items-center gap-2">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-            Mitglied hinzufügen
-          </button>
+        <div class="flex flex-wrap items-center gap-2 justify-between mb-4">
+          <input type="text" placeholder="Team suchen..." class="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full md:w-64 focus:ring-2 focus:ring-brand-500" oninput="document.querySelectorAll('#teamList > div').forEach(c => c.style.display = c.textContent.toLowerCase().includes(this.value.toLowerCase()) ? '' : 'none')">
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-gray-500">${members.length} Mitglieder</span>
+            <button onclick="showTeamForm()" class="bg-brand-500 text-white px-3 py-2 rounded-lg text-xs md:text-sm font-medium hover:bg-brand-600 flex items-center gap-1.5">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+              Hinzufügen
+            </button>
+          </div>
         </div>
-        <div class="space-y-4">
+        <div class="space-y-4" id="teamList">
           ${members.length === 0 ? '<div class="p-8 text-center text-gray-400"><div class="text-3xl mb-2">👤</div>Noch keine Teammitglieder. Füge dein erstes Teammitglied hinzu.</div>' : ''}
           ${members.map(m => {
             const assignedCourses = activities.filter(a => a.instructorId === m.id)
