@@ -57,11 +57,26 @@ export class Router {
   delete(path: string, handler: RouteHandler) { this.addRoute('DELETE', path, handler) }
 
   async handle(req: IncomingMessage, res: ServerResponse) {
-    // CORS Headers – In Produktion auf eigene Domain einschränken
-    const allowedOrigin = process.env.CORS_ORIGIN ?? '*'
+    // CORS Headers – Widget/public endpoints allow any origin, authenticated endpoints restrict
+    const requestPath = (req.url ?? '/').split('?')[0]
+    const isPublicEndpoint = requestPath.startsWith('/api/widget/') ||
+      requestPath.startsWith('/api/public/') ||
+      requestPath.startsWith('/api/checkout/') ||
+      requestPath.startsWith('/api/providers/by-slug/') ||
+      requestPath === '/api/config' ||
+      requestPath === '/api/health'
+    const corsOrigin = process.env.CORS_ORIGIN
+    const allowedOrigin = isPublicEndpoint ? '*' : (corsOrigin || '*')
     res.setHeader('Access-Control-Allow-Origin', allowedOrigin)
+    if (allowedOrigin !== '*') res.setHeader('Vary', 'Origin')
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+
+    // Security Headers
+    res.setHeader('X-Content-Type-Options', 'nosniff')
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN')
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
 
     if (req.method === 'OPTIONS') {
       res.writeHead(204)

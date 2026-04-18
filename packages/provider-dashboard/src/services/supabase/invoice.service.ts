@@ -128,6 +128,11 @@ export const SupabaseInvoiceService = {
           }
         }
         const origin = process.env.APP_PUBLIC_URL || 'https://dev.urbankids.club'
+        // Generate HMAC view token for secure invoice link
+        const { createHmac } = await import('node:crypto')
+        const viewSecret = process.env.INVOICE_VIEW_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+        const viewToken = viewSecret ? createHmac('sha256', viewSecret).update(id).digest('hex').slice(0, 32) : ''
+        const invoiceLink = origin + '/api/invoices/' + id + '/view' + (viewToken ? '?token=' + viewToken : '')
         await EmailService.sendInvoice(parent.email, {
           parentName: parent.name,
           invoiceNumber: finalNumber,
@@ -136,7 +141,7 @@ export const SupabaseInvoiceService = {
           providerName: provider?.company_name || '',
           courseName,
           childName,
-          invoiceLink: origin + '/api/invoices/' + id + '/view',
+          invoiceLink,
         })
         console.log(`[Invoice] Email sent to ${parent.email} for invoice ${finalNumber}`)
       }

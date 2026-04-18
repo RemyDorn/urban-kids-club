@@ -252,7 +252,7 @@ async function renderInvoices() {
         '<span style="font-size:18px;font-weight:700">' + Number(inv.total||0).toFixed(2).replace('.',',') + ' €</span>' +
         '<span class="badge ' + (statusBadge[inv.status]||'badge-gray') + '">' + (statusLabels[inv.status]||inv.status) + '</span>' +
         '</div></div>' +
-        (inv.status === 'sent' ? '<a href="/api/invoices/' + inv.id + '/view" target="_blank" style="display:inline-block;margin-top:8px;font-size:13px;color:var(--primary);font-weight:600">Rechnung ansehen →</a>' : '') +
+        (inv.status === 'sent' ? '<a href="/api/invoices/' + inv.id + '/view?token=' + encodeURIComponent(sessionToken || '') + '" target="_blank" style="display:inline-block;margin-top:8px;font-size:13px;color:var(--primary);font-weight:600">Rechnung ansehen →</a>' : '') +
         '</div>';
     }).join('');
   } catch(e) { el.innerHTML = '<div class="empty"><div class="icon">⚠️</div>Fehler beim Laden.</div>'; }

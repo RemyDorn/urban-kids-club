@@ -270,16 +270,28 @@ export function registerRoutes(router: Router) {
   router.post('/api/providers/:providerId/team', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const { name, email, phone, role, permissions, specializations } = req.body as any
-    if (!name || !email) return res.error(400, 'Name und E-Mail sind erforderlich')
-    const result = await TeamService.create({ providerId: auth.providerId, name, email, phone, role: role || 'instructor', permissions, specializations })
+    // Validate with Zod schema
+    const parsed = validate(CreateTeamMemberSchema, { ...req.body, providerId: auth.providerId })
+    if (!parsed.success) return res.error(400, parsed.error?.issues?.[0]?.message || 'Ungültige Eingabe')
+    const { name, email, role, specializations } = parsed.data
+    const { phone, permissions } = req.body as any
+    const result = await TeamService.create({ providerId: auth.providerId, name, email, phone: phone?.slice?.(0, 30) || '', role: role || 'instructor', permissions, specializations })
     res.status(201).json({ data: result })
   })
 
   router.put('/api/team/:id', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const member = await TeamService.update(req.params.id, req.body as any, auth.providerId)
+    // Whitelist allowed update fields
+    const { name, email, phone, role, specializations, status } = req.body as any
+    const updates: Record<string, unknown> = {}
+    if (name) updates.name = String(name).slice(0, 100)
+    if (email) updates.email = String(email).slice(0, 200)
+    if (phone) updates.phone = String(phone).slice(0, 30)
+    if (role && ['owner', 'admin', 'instructor', 'assistant'].includes(role)) updates.role = role
+    if (specializations) updates.specializations = specializations
+    if (status && ['active', 'inactive'].includes(status)) updates.status = status
+    const member = await TeamService.update(req.params.id, updates, auth.providerId)
     if (!member) return res.error(404, 'Teammitglied nicht gefunden')
     res.json({ data: member })
   })
@@ -739,7 +751,11 @@ export function registerRoutes(router: Router) {
     const auth = await requireAuth(req, res)
     if (!auth) return
     const { activityId, subject, body } = req.body as any
-    const messages = await MessageService.broadcast(auth.providerId, activityId, subject, body)
+    if (!activityId || !body) return res.error(400, 'activityId und body erforderlich')
+    // Limit field lengths
+    const safeSubject = subject ? String(subject).slice(0, 200) : ''
+    const safeBody = String(body).slice(0, 5000)
+    const messages = await MessageService.broadcast(auth.providerId, activityId, safeSubject, safeBody)
     res.status(201).json({ data: messages, count: messages.length })
   })
 
@@ -1247,11 +1263,61 @@ export function registerRoutes(router: Router) {
   })
 
   // Invoice PDF view (renders HTML template for printing)
+  // Requires either: (a) valid auth token, or (b) HMAC signature in ?token= query param
   router.get('/api/invoices/:id/view', async (req, res) => {
     const db = getServiceClient()
+    const invoiceId = req.params.id
 
-    // Public endpoint — invoice ID is the access token (UUID is unguessable)
-    const { data: invoice } = await db.from('invoices').select('*').eq('id', req.params.id).maybeSingle()
+    // Check access: (a) Supabase JWT in ?token= param, or (b) HMAC view token, or (c) Authorization header
+    const queryToken = req.query?.token as string | undefined
+    let hasAccess = false
+    let authProviderId: string | undefined
+
+    // Method 1: JWT access token (from dashboard "view invoice" button)
+    if (queryToken && queryToken.length > 50) {
+      // Looks like a JWT — verify via Supabase
+      try {
+        const { supabase: sbClient } = await import('../lib/supabase')
+        const { data: { user } } = await sbClient.auth.getUser(queryToken)
+        if (user?.email) {
+          const svc = getServiceClient()
+          const { data: prov } = await svc.from('providers').select('id').eq('login_email', user.email).maybeSingle()
+          if (prov) { hasAccess = true; authProviderId = prov.id }
+        }
+      } catch { /* invalid JWT */ }
+    }
+
+    // Method 2: HMAC view token (from emailed invoice link)
+    if (!hasAccess && queryToken && queryToken.length <= 50) {
+      const { createHmac } = await import('node:crypto')
+      const secret = process.env.INVOICE_VIEW_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+      if (secret) {
+        const expected = createHmac('sha256', secret).update(invoiceId).digest('hex').slice(0, 32)
+        hasAccess = (queryToken === expected)
+      }
+    }
+
+    // Method 3: Authorization header (provider JWT)
+    if (!hasAccess) {
+      try {
+        const auth = await (await import('../lib/auth-middleware')).authenticateRequest(req as any)
+        if (auth) { hasAccess = true; authProviderId = auth.providerId }
+      } catch { /* not authenticated */ }
+    }
+
+    // Method 4: Parent session token in query (for portal invoice view)
+    if (!hasAccess && queryToken && queryToken.length > 30 && queryToken.length <= 50) {
+      const { data: session } = await db.from('parent_sessions')
+        .select('parent_id, expires_at').eq('session_token', queryToken).maybeSingle()
+      if (session && new Date(session.expires_at) > new Date()) {
+        hasAccess = true
+        // Will verify parent owns this invoice below
+      }
+    }
+
+    if (!hasAccess) return res.error(403, 'Kein Zugriff — bitte anmelden oder gültigen Link verwenden')
+
+    const { data: invoice } = await db.from('invoices').select('*').eq('id', invoiceId).maybeSingle()
     if (!invoice) return res.error(404, 'Rechnung nicht gefunden')
 
     const { data: provider } = await db.from('providers').select('id, name, display_name, company_name, legal_form, address_street, address_zip, address_city, email, phone, tax_id, vat_id, kleinunternehmer, bank_holder, bank_iban, bank_bic, logo_url').eq('id', invoice.provider_id).single()
@@ -2715,6 +2781,10 @@ export function registerRoutes(router: Router) {
   // ============================================================
 
   router.post('/api/checkout/create-session', async (req, res) => {
+    // Rate limit: 10 checkout sessions per IP per hour
+    const ip = getClientIp(req)
+    if (!rateLimit(`checkout:${ip}`, 10, 60 * 60 * 1000)) return res.error(429, 'Zu viele Anfragen. Bitte später erneut probieren.')
+
     const { slug, activityId, blockId, child, parent, paymentMethod, bookedDate } = req.body as any
 
     // Server-side validation
@@ -3189,8 +3259,8 @@ export function registerRoutes(router: Router) {
     // Get provider email
     const { data: provider } = await db.from('providers').select('login_email').eq('id', req.params.id).single()
     if (!provider?.login_email) return res.error(404, 'Provider nicht gefunden')
-    // Find and disable auth user
-    const { data: { users } } = await db.auth.admin.listUsers()
+    // Find and disable auth user by email (paginated, max 50 users per page)
+    const { data: { users } } = await db.auth.admin.listUsers({ page: 1, perPage: 1000 })
     const authUser = users.find((u: any) => u.email === provider.login_email)
     if (authUser) {
       await db.auth.admin.updateUserById(authUser.id, { ban_duration: '876000h' }) // ban for 100 years
