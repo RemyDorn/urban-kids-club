@@ -66,6 +66,13 @@
     .toggle .slider:before { content: ''; position: absolute; height: 18px; width: 18px; left: 3px; bottom: 3px; background: white; border-radius: 50%; transition: 0.2s; }
     .toggle input:checked + .slider { background: #B5533A; }
     .toggle input:checked + .slider:before { transform: translateX(20px); }
+    /* Toast notification */
+    .toast { position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%); padding: 0.75rem 1.5rem; border-radius: 12px; font-size: 0.875rem; font-weight: 500; z-index: 100; animation: toastIn 0.3s ease, toastOut 0.3s ease 2.7s forwards; box-shadow: 0 8px 25px rgba(0,0,0,0.15); }
+    .toast-success { background: #059669; color: white; }
+    .toast-error { background: #dc2626; color: white; }
+    .toast-info { background: #3C2124; color: white; }
+    @keyframes toastIn { from { opacity: 0; transform: translateX(-50%) translateY(20px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+    @keyframes toastOut { from { opacity: 1; } to { opacity: 0; } }
     /* Table responsive wrapper */
     .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
     .table-wrap table { min-width: 640px; }
@@ -113,8 +120,7 @@
       #content .grid[class*="grid-cols-7"]:not(#monthGrid):not(.border-b) { grid-template-columns: repeat(2, 1fr) !important; }
       #content .grid[class*="grid-cols-8"]:not(.border-b) { grid-template-columns: repeat(2, 1fr) !important; }
 
-      /* Form grids smaller */
-      .slot-row { grid-template-columns: repeat(2, 1fr) !important; }
+      /* Form grids: handled by .cal-modal .slot-row rule below */
 
       /* Tab bars: horizontal scroll with hidden scrollbar */
       #content .flex.border-b,
@@ -152,6 +158,8 @@
 
       /* Page title */
       #pageTitle { font-size: 1rem; }
+      /* Hover-only actions: always visible on mobile (no hover on touch) */
+      .opacity-0.group-hover\:opacity-100 { opacity: 1 !important; }
       /* Login/Registration responsive */
       #loginScreen .grid[class*="grid-cols-3"] { grid-template-columns: 1fr !important; }
       #loginScreen .grid[class*="grid-cols-2"] { grid-template-columns: 1fr !important; }
@@ -843,8 +851,30 @@
       if (btn) btn.setAttribute('aria-expanded', 'false')
       document.body.style.overflow = ''
     }
-    // Close sidebar on Escape key
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSidebar() })
+    // Close sidebar + modals on Escape key
+    document.addEventListener('keydown', e => {
+      if (e.key !== 'Escape') return
+      // Close any open modal first
+      const calModal = document.getElementById('calModal')
+      if (calModal && !calModal.classList.contains('hidden')) { calModal.className = 'hidden'; return }
+      const actModal = document.getElementById('activityModal')
+      if (actModal && !actModal.classList.contains('hidden')) { actModal.className = 'hidden'; return }
+      // Close fixed inset-0 modals
+      document.querySelectorAll('.fixed.inset-0.z-50').forEach(m => { m.remove() })
+      // Close sidebar
+      closeSidebar()
+    })
+
+    // Toast notification system
+    function showToast(message, type = 'info') {
+      const existing = document.querySelector('.toast')
+      if (existing) existing.remove()
+      const toast = document.createElement('div')
+      toast.className = 'toast toast-' + type
+      toast.textContent = message
+      document.body.appendChild(toast)
+      setTimeout(() => toast.remove(), 3200)
+    }
     // Close sidebar on resize to desktop
     window.addEventListener('resize', () => { if (window.innerWidth >= 768) closeSidebar() })
 
@@ -2548,7 +2578,7 @@
                     const img = (a.images || [])[i]
                     return `<div class="relative group">
                       <div class="w-24 h-24 rounded-lg border-2 border-dashed ${img ? 'border-brand-300 bg-brand-50' : 'border-gray-200 bg-gray-50'} flex items-center justify-center overflow-hidden cursor-pointer hover:border-brand-400" onclick="document.getElementById('imgInput_${i}').click()">
-                        ${img ? `<img src="${img}" class="w-full h-full object-cover" id="imgPrev_${i}">` : `<div class="text-center"><div class="text-gray-400 text-xl">+</div><div class="text-gray-300 text-xs">${i === 0 ? '800x600' : '800x600'}</div></div>`}
+                        ${img ? `<img src="${img}" alt="Kursbild ${i+1}" class="w-full h-full object-cover" id="imgPrev_${i}">` : `<div class="text-center"><div class="text-gray-400 text-xl">+</div><div class="text-gray-300 text-xs">${i === 0 ? '800x600' : '800x600'}</div></div>`}
                       </div>
                       ${img ? `<button type="button" onclick="removeImage(${i})" class="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100">x</button>` : ''}
                       <input type="file" id="imgInput_${i}" accept="image/*" class="hidden" onchange="handleImageUpload(${i}, this)">
@@ -2876,6 +2906,7 @@
               </tr>
             </thead>
             <tbody class="divide-y divide-gray-100">
+              ${bookings.length === 0 ? '<tr><td colspan="7" class="px-6 py-12 text-center text-gray-400"><div class="text-3xl mb-2">📋</div>Noch keine Buchungen vorhanden.</td></tr>' : ''}
               ${bookings.map(b => {
                 const act = actMap[b.activityId]
                 return `
@@ -3012,6 +3043,7 @@
               </tr>
             </thead>
             <tbody class="divide-y divide-gray-100">
+              ${customers.length === 0 ? '<tr><td colspan="6" class="px-6 py-12 text-center text-gray-400"><div class="text-3xl mb-2">👥</div>Noch keine Kunden. Kunden erscheinen hier nach der ersten Buchung.</td></tr>' : ''}
               ${customers.map(c => {
                 const lp = loyaltyProgress(c.bookingCount, c.totalSpent)
                 return `
@@ -3181,7 +3213,8 @@
               </tr>
             </thead>
             <tbody class="divide-y divide-gray-100">
-              ${trials.data.map(t => {
+              ${(trials.data || []).length === 0 ? '<tr><td colspan="5" class="px-6 py-12 text-center text-gray-400"><div class="text-3xl mb-2">🎯</div>Noch keine Probestunden. Erstelle eine über die Kurse-Seite.</td></tr>' : ''}
+              ${(trials.data || []).map(t => {
                 const act = actMap[t.activityId]
                 return `
                 <tr class="hover:bg-gray-50">
@@ -3442,6 +3475,7 @@
           </button>
         </div>
         <div class="space-y-4">
+          ${members.length === 0 ? '<div class="p-8 text-center text-gray-400"><div class="text-3xl mb-2">👤</div>Noch keine Teammitglieder. Füge dein erstes Teammitglied hinzu.</div>' : ''}
           ${members.map(m => {
             const assignedCourses = activities.filter(a => a.instructorId === m.id)
             const docs = m.documents || []
@@ -4343,6 +4377,7 @@
       const canCancelBlock = (block.status === 'active' || block.status === 'upcoming') && !blockIsLocked
 
       modal.className = 'fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4'
+      modal.onclick = (e) => { if (e.target === modal) modal.className = 'hidden' }
       modal.innerHTML = `
         <div class="bg-white rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto shadow-2xl">
           <div class="p-6 border-b border-gray-100 flex justify-between items-start">
@@ -4531,6 +4566,7 @@
       window._blockActData = actData
 
       modal.className = 'fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4'
+      modal.onclick = (e) => { if (e.target === modal) modal.className = 'hidden' }
       modal.innerHTML = `
         <div class="bg-white rounded-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto shadow-2xl p-6">
           <div class="flex justify-between items-center mb-6">
@@ -4884,6 +4920,7 @@
     async function showManualCreditForm() {
       const modal = document.getElementById('manual-credit-modal')
       modal.className = 'fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4'
+      modal.onclick = (e) => { if (e.target === modal) modal.className = 'hidden' }
       modal.innerHTML = `
         <div class="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl">
           <div class="flex justify-between items-center mb-4">
@@ -5494,7 +5531,7 @@
         if (hidden) hidden.value = dataUrl
         const container = input.closest('.relative')
         const imgArea = container.querySelector('.w-24')
-        imgArea.innerHTML = `<img src="${dataUrl}" class="w-full h-full object-cover">`
+        imgArea.innerHTML = `<img src="${dataUrl}" alt="Bild" class="w-full h-full object-cover">`
         imgArea.className = imgArea.className.replace('border-gray-200 bg-gray-50', 'border-brand-300 bg-brand-50')
       })
     }
@@ -5527,14 +5564,14 @@
       compressImage(file, maxPx || 800, 0.8, (dataUrl) => {
         if (key === 'logo') {
           document.getElementById('sLogo').value = dataUrl
-          input.closest('div').querySelector('.w-20').innerHTML = `<img src="${dataUrl}" class="w-full h-full object-contain">`
+          input.closest('div').querySelector('.w-20').innerHTML = `<img src="${dataUrl}" alt="Bild" class="w-full h-full object-contain">`
         } else if (key === 'cover') {
           document.getElementById('sCover').value = dataUrl
-          input.closest('div').querySelector('.h-32').innerHTML = `<img src="${dataUrl}" class="w-full h-full object-cover">`
+          input.closest('div').querySelector('.h-32').innerHTML = `<img src="${dataUrl}" alt="Bild" class="w-full h-full object-cover">`
         } else if (key.startsWith('gallery_')) {
           const idx = parseInt(key.split('_')[1])
           document.getElementById('sGallery' + idx).value = dataUrl
-          input.closest('.relative').querySelector('.w-24').innerHTML = `<img src="${dataUrl}" class="w-full h-full object-cover">`
+          input.closest('.relative').querySelector('.w-24').innerHTML = `<img src="${dataUrl}" alt="Bild" class="w-full h-full object-cover">`
         }
       })
     }
@@ -6245,7 +6282,7 @@
                 <label class="block text-sm font-medium text-gray-700 mb-2">Logo</label>
                 <div class="flex items-center gap-4">
                   <div class="w-20 h-20 rounded-xl border-2 border-dashed ${s.logo ? 'border-brand-300' : 'border-gray-200'} flex items-center justify-center overflow-hidden cursor-pointer hover:border-brand-400" onclick="document.getElementById('logoUpload').click()">
-                    ${s.logo ? `<img src="${s.logo}" class="w-full h-full object-contain">` : '<span class="text-gray-400 text-2xl">+</span>'}
+                    ${s.logo ? `<img src="${s.logo}" alt="Firmenlogo" class="w-full h-full object-contain">` : '<span class="text-gray-400 text-2xl">+</span>'}
                   </div>
                   <input type="file" id="logoUpload" accept="image/*" class="hidden" onchange="uploadProviderImage('logo', this, 200)">
                   <div class="text-xs text-gray-400 space-y-0.5">
@@ -6260,7 +6297,7 @@
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-2">Titelbild / Header</label>
                 <div class="w-full h-32 rounded-xl border-2 border-dashed ${s.cover ? 'border-brand-300' : 'border-gray-200'} flex items-center justify-center overflow-hidden cursor-pointer hover:border-brand-400" onclick="document.getElementById('coverUpload').click()">
-                  ${s.cover ? `<img src="${s.cover}" class="w-full h-full object-cover">` : '<div class="text-gray-400 text-center"><div class="text-2xl">+</div><div class="text-xs mt-1">1200 x 400 px empfohlen</div></div>'}
+                  ${s.cover ? `<img src="${s.cover}" alt="Titelbild" class="w-full h-full object-cover">` : '<div class="text-gray-400 text-center"><div class="text-2xl">+</div><div class="text-xs mt-1">1200 x 400 px empfohlen</div></div>'}
                 </div>
                 <input type="file" id="coverUpload" accept="image/*" class="hidden" onchange="uploadProviderImage('cover', this, 1200)">
                 <input type="hidden" id="sCover" value="${s.cover || ''}">
@@ -6274,7 +6311,7 @@
                     const img = (s.gallery || [])[i]
                     return `<div class="relative group">
                       <div class="w-24 h-24 rounded-lg border-2 border-dashed ${img ? 'border-brand-300' : 'border-gray-200'} flex items-center justify-center overflow-hidden cursor-pointer hover:border-brand-400" onclick="document.getElementById('galleryUpload_${i}').click()">
-                        ${img ? `<img src="${img}" class="w-full h-full object-cover">` : '<span class="text-gray-400 text-xl">+</span>'}
+                        ${img ? `<img src="${img}" alt="Galerie" class="w-full h-full object-cover">` : '<span class="text-gray-400 text-xl">+</span>'}
                       </div>
                       ${img ? `<button type="button" onclick="removeProviderImage('gallery', ${i})" class="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100">x</button>` : ''}
                       <input type="file" id="galleryUpload_${i}" accept="image/*" class="hidden" onchange="uploadProviderImage('gallery_${i}', this, 800)">
