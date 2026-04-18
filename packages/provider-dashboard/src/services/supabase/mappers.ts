@@ -59,6 +59,7 @@ export function providerFromDb(r: Row): Provider {
     categories: r.categories ?? [],
     status: r.status ?? 'onboarding',
     subscription: r.subscription ?? 'free',
+    platformEnabled: r.platform_enabled ?? false,
     createdAt: toDate(r.created_at),
     updatedAt: toDate(r.updated_at),
   }

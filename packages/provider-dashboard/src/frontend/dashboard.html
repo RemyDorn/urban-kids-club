@@ -1431,8 +1431,8 @@
             <div class="bg-gray-50 border border-gray-200 rounded-lg p-3 text-center">
               <div class="text-sm text-gray-500">Dieser Termin hat bereits stattgefunden.</div>
             </div>
-            ` : occ && (occ.capacity - dateBooked) > 0 ? `
-            <!-- Last-Minute Kids Club Freigabe -->
+            ` : occ && (occ.capacity - dateBooked) > 0 && currentProvider.platformEnabled ? `
+            <!-- Last-Minute Kids Club Freigabe (nur wenn Plattform aktiviert) -->
             <div class="border-2 border-brand-200 rounded-lg p-4 bg-brand-50/30">
               <div class="flex items-center gap-2 mb-2">
                 <div class="w-5 h-5 bg-brand-500 rounded text-white flex items-center justify-center text-xs font-bold">U</div>
@@ -2579,7 +2579,8 @@
               </div>
             </div>
 
-            <!-- Kids Club Plattform -->
+            <!-- Kids Club Plattform (nur sichtbar wenn Provider platform_enabled hat) -->
+            ${currentProvider.platformEnabled ? `
             <fieldset class="border-2 border-brand-200 rounded-lg p-4 bg-brand-50/30">
               <legend class="text-sm font-medium text-brand-700 px-2 flex items-center gap-2">
                 <div class="w-5 h-5 bg-brand-500 rounded text-white flex items-center justify-center text-xs font-bold">U</div>
@@ -2593,7 +2594,6 @@
                     <div class="text-xs text-gray-500">Eltern können diesen Kurs auf urbankids.club finden und buchen</div>
                   </div>
                 </label>
-
                 <div id="platformFields" class="${pl.enabled ? '' : 'hidden'} mt-3 space-y-3 pl-7">
                   <div class="grid grid-cols-2 gap-4">
                     <div>
@@ -2602,22 +2602,15 @@
                         <input name="platformCapacity" type="number" min="0" max="100" value="${pl.platformCapacity}" class="w-20 border border-gray-200 rounded-lg px-3 py-2 text-sm">
                         <span class="text-xs text-gray-500">von ${a.capacity} gesamt</span>
                       </div>
-                      <div class="text-xs text-gray-400 mt-1">0 = alle Plätze, Plattform füllt nur was übrig bleibt</div>
                     </div>
                     <div>
                       <label class="block text-xs text-gray-600 mb-1">Priorität</label>
                       <select name="platformPriority" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
                         <option value="provider_first" ${(pl.priorityMode || 'provider_first') === 'provider_first' ? 'selected' : ''}>Eigene Buchungen zuerst</option>
-                        <option value="equal" ${pl.priorityMode === 'equal' ? 'selected' : ''}>Gleichberechtigt (first come)</option>
-                        <option value="platform_first" ${pl.priorityMode === 'platform_first' ? 'selected' : ''}>Plattform-Plätze reserviert</option>
+                        <option value="equal" ${pl.priorityMode === 'equal' ? 'selected' : ''}>Gleichberechtigt</option>
                       </select>
-                      <div class="text-xs text-gray-400 mt-1">"Eigene zuerst": Plattform bekommt nur was du nicht selbst füllst</div>
                     </div>
                   </div>
-                  <label class="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" name="platformFeatured" ${pl.featured ? 'checked' : ''} class="rounded border-gray-300">
-                    <span class="text-sm text-gray-700">Als Featured hervorheben</span>
-                  </label>
                   <label class="flex items-center gap-2 cursor-pointer">
                     <input type="checkbox" name="platformTrial" ${pl.trialAvailable ? 'checked' : ''} class="rounded border-gray-300">
                     <span class="text-sm text-gray-700">Probestunde über Plattform buchbar</span>
@@ -2625,6 +2618,7 @@
                 </div>
               </div>
             </fieldset>
+            ` : ''}
 
             <!-- Farbe & Bilder -->
             <div class="grid grid-cols-2 gap-4">
@@ -5191,12 +5185,13 @@
           icon: '📅',
           code: `<iframe src="${baseUrl}/embed/${slug}/calendar" width="100%" height="600" frameborder="0" style="border:none;border-radius:12px;" loading="lazy"></iframe>`,
         },
-        {
+        // Buchungsbutton nur wenn Plattform aktiviert
+        ...(currentProvider.platformEnabled ? [{
           name: 'Buchungsbutton',
           desc: 'Ein kompakter Button, der direkt zur Buchungsseite auf Kids Club führt.',
           icon: '🔘',
           code: `<a href="${baseUrl}/p/${slug}" target="_blank" style="display:inline-block;padding:12px 24px;background:#B5533A;color:white;border-radius:8px;font-family:sans-serif;font-weight:600;text-decoration:none;">Jetzt Kurs buchen</a>`,
-        },
+        }] : []),
         {
           name: 'Kursliste',
           desc: 'Zeigt alle aktiven Kurse mit Preis, Alter und verfügbaren Plätzen.',
@@ -6455,6 +6450,30 @@
           </div>
 
           <button onclick="saveCompanySettings()" class="bg-brand-500 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-brand-600">Unternehmensdaten speichern</button>
+
+          <!-- Kids Club Plattform Info -->
+          <div class="bg-white rounded-xl border border-brand-200 p-6 mt-6">
+            <div class="flex items-center gap-3 mb-3">
+              <div class="w-8 h-8 bg-brand-500 rounded-lg text-white flex items-center justify-center text-sm font-bold">U</div>
+              <h3 class="font-semibold text-gray-900">Kids Club Plattform</h3>
+            </div>
+            ${currentProvider.platformEnabled ? `
+              <div class="flex items-center gap-2 mb-2">
+                <span class="w-2 h-2 rounded-full bg-green-500"></span>
+                <span class="text-sm text-green-700 font-medium">Verbunden</span>
+              </div>
+              <p class="text-sm text-gray-500">Deine Kurse werden auf der Urban Kids Club Plattform angezeigt. Du kannst die Plattform-Einstellungen in jedem Kurs einzeln steuern.</p>
+            ` : `
+              <div class="flex items-center gap-2 mb-2">
+                <span class="w-2 h-2 rounded-full bg-gray-400"></span>
+                <span class="text-sm text-gray-500 font-medium">Nicht verbunden</span>
+              </div>
+              <p class="text-sm text-gray-500 mb-3">Die Urban Kids Club Plattform ist derzeit nicht aktiv. Sobald die Plattform startet, informieren wir dich per E-Mail und du kannst deine Kurse dort freischalten.</p>
+              <div class="bg-brand-50 rounded-lg p-3 text-xs text-brand-700">
+                Interesse? Schreib uns an <strong>support@urbankids.club</strong> — wir melden uns, sobald es losgeht.
+              </div>
+            `}
+          </div>
         </div>
       `
     }

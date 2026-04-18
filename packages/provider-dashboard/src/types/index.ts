@@ -48,6 +48,7 @@ export interface Provider {
   categories: string[]
   status: ProviderStatus
   subscription: SubscriptionPlan
+  platformEnabled: boolean
   createdAt: Date
   updatedAt: Date
 }
