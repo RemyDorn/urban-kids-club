@@ -164,7 +164,7 @@ export const CreateTeamMemberSchema = z.object({
   providerId: z.string().min(1),
   name: z.string().min(1, 'Name erforderlich').max(100),
   email: z.string().email('Ungültige E-Mail'),
-  role: z.enum(['owner', 'admin', 'instructor', 'assistant']),
+  role: z.enum(['owner', 'admin', 'manager', 'instructor', 'receptionist', 'assistant']),
   specializations: z.array(z.string()).optional(),
   avatar: z.string().optional(),
 })

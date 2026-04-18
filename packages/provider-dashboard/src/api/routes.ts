@@ -272,7 +272,7 @@ export function registerRoutes(router: Router) {
     if (!auth) return
     // Validate with Zod schema
     const parsed = validate(CreateTeamMemberSchema, { ...req.body, providerId: auth.providerId })
-    if (!parsed.success) return res.error(400, parsed.error?.issues?.[0]?.message || 'Ungültige Eingabe')
+    if ('error' in parsed) return res.error(400, parsed.error)
     const { name, email, role, specializations } = parsed.data
     const { phone, permissions } = req.body as any
     const result = await TeamService.create({ providerId: auth.providerId, name, email, phone: phone?.slice?.(0, 30) || '', role: role || 'instructor', permissions, specializations })
