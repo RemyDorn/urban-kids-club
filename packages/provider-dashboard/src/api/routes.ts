@@ -2180,6 +2180,9 @@ export function registerRoutes(router: Router) {
   router.post('/api/auth/login', async (req, res) => {
     const { email, password } = req.body as { email: string; password: string }
     if (!email || !password) return res.error(400, 'E-Mail und Passwort erforderlich')
+    // Rate limit: 10 login attempts per IP per 15 minutes
+    const ip = getClientIp(req)
+    if (!rateLimit(`auth-login:${ip}`, 10, 15 * 60 * 1000)) return res.error(429, 'Zu viele Anmeldeversuche. Bitte warten.')
     const { loginProvider } = await import('../lib/auth')
     const result = await loginProvider(email, password)
     if ('error' in result) return res.error(401, result.error)
@@ -3217,6 +3220,8 @@ export function registerRoutes(router: Router) {
     if (!email || !password || !displayName || !companyName || !contactName) {
       return res.error(400, 'Pflichtfelder: E-Mail, Passwort, Anzeigename, Firmenname, Kontaktperson')
     }
+    if (password.length < 8) return res.error(400, 'Passwort muss mindestens 8 Zeichen lang sein')
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.error(400, 'Ungültige E-Mail-Adresse')
 
     const db = getServiceClient()
 
