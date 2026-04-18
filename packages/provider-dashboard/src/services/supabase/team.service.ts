@@ -174,7 +174,7 @@ export const SupabaseTeamService = {
           </div>
         `,
       })
-    } catch (e) { console.error('[Team] Invite email failed:', e) }
+    } catch (e) { console.error('[Team] Invite email failed:', e); throw new Error('Einladungs-E-Mail konnte nicht gesendet werden') }
 
     return { token }
   },

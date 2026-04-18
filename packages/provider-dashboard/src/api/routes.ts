@@ -2299,7 +2299,18 @@ export function registerRoutes(router: Router) {
       user_metadata: { provider_id: provider.id }
     })
 
-    // 5. Create lead entry for admin pipeline tracking
+    // 5. Auto-add owner as team member
+    await db.from('team_members').insert({
+      provider_id: provider.id,
+      name: contactName,
+      email: email,
+      phone: phone || '',
+      role: 'owner',
+      active: true,
+      user_id: authData.user.id,
+    }).then(() => {}).catch((e: any) => console.error('[Register] Team member auto-create failed:', e))
+
+    // 6. Create lead entry for admin pipeline tracking
     await db.from('provider_leads').insert({
       company_name: companyName,
       contact_name: contactName,
@@ -3336,6 +3347,16 @@ export function registerRoutes(router: Router) {
       await db.auth.admin.deleteUser(authData.user.id)
       return res.error(500, provError.message)
     }
+    // Auto-add owner as team member
+    await db.from('team_members').insert({
+      provider_id: provider.id,
+      name: contactName,
+      email: email,
+      phone: phone || '',
+      role: 'owner',
+      active: true,
+      user_id: authData.user.id,
+    }).catch(() => {})
     res.json({ data: provider })
   })
 
