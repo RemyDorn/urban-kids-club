@@ -405,8 +405,9 @@ export function registerRoutes(router: Router) {
           let num = 1
           while (d <= endD && num <= packageSize) {
             const [sh, sm] = slot.startTime.split(':').map(Number)
-            const endH = sh + Math.floor(duration / 60)
-            const endM = sm + (duration % 60)
+            const totalEndMin = sh * 60 + sm + duration
+            const endH = Math.floor(totalEndMin / 60)
+            const endM = totalEndMin % 60
             sessions.push({
               block_id: block.id,
               session_number: num,
@@ -494,7 +495,11 @@ export function registerRoutes(router: Router) {
   router.get('/api/parents/:parentId/bookings', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const bookings = await BookingService.listByParent(req.params.parentId)
+    // Verify parent belongs to this provider (has bookings with provider's activities)
+    const allBookings = await BookingService.listByParent(req.params.parentId)
+    const providerActivities = await ActivityService.listByProvider(auth.providerId)
+    const providerActivityIds = new Set(providerActivities.map(a => a.id))
+    const bookings = allBookings.filter(b => providerActivityIds.has(b.activityId))
     res.json({ data: bookings })
   })
 
@@ -2460,7 +2465,11 @@ export function registerRoutes(router: Router) {
     const auth = await requireAuth(req, res)
     if (!auth) return
     const enrollments = await CourseBlockService.getEnrollmentsByChild(req.params.id)
-    res.json({ data: enrollments, count: enrollments.length })
+    // Filter to only enrollments in this provider's activities
+    const providerActivities = await ActivityService.listByProvider(auth.providerId)
+    const providerActivityIds = new Set(providerActivities.map(a => a.id))
+    const filtered = enrollments.filter((e: any) => providerActivityIds.has(e.activityId))
+    res.json({ data: filtered, count: filtered.length })
   })
 
   // --- Session Attendance ---
@@ -2497,7 +2506,11 @@ export function registerRoutes(router: Router) {
     if (!auth) return
     const status = req.query.status as any
     const credits = await SessionCreditService.getCreditsByChild(req.params.id, status)
-    res.json({ data: credits, count: credits.length })
+    // Filter to only credits from this provider's blocks
+    const providerActivities = await ActivityService.listByProvider(auth.providerId)
+    const providerActivityIds = new Set(providerActivities.map(a => a.id))
+    const filtered = credits.filter((c: any) => providerActivityIds.has(c.activityId))
+    res.json({ data: filtered, count: filtered.length })
   })
 
   router.get('/api/parents/:id/credits', async (req, res) => {
@@ -2579,7 +2592,11 @@ export function registerRoutes(router: Router) {
     const auth = await requireAuth(req, res)
     if (!auth) return
     const makeups = await MakeupBookingService.getMakeupsByChild(req.params.id)
-    res.json({ data: makeups, count: makeups.length })
+    // Filter to only makeups from this provider's activities
+    const providerActivities = await ActivityService.listByProvider(auth.providerId)
+    const providerActivityIds = new Set(providerActivities.map(a => a.id))
+    const filtered = makeups.filter((m: any) => providerActivityIds.has(m.activityId))
+    res.json({ data: filtered, count: filtered.length })
   })
 
   router.get('/api/parents/:id/makeup-bookings', async (req, res) => {
@@ -3340,10 +3357,19 @@ export function registerRoutes(router: Router) {
     if (auth.providerId !== req.params.id) return res.error(403, 'Zugriff verweigert')
     const { clientId, secret } = req.body as any
     if (!clientId || !secret) return res.error(400, 'Client ID und Secret erforderlich')
+    // Encrypt PayPal secret before storage
+    const { createCipheriv, createDecipheriv, randomBytes: rndBytes } = await import('node:crypto')
+    const encKey = process.env.ENCRYPTION_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+    let encryptedSecret = secret
+    if (encKey && encKey.length >= 32) {
+      const iv = rndBytes(16)
+      const cipher = createCipheriv('aes-256-cbc', Buffer.from(encKey.slice(0, 32)), iv)
+      encryptedSecret = 'enc:' + iv.toString('hex') + ':' + cipher.update(secret, 'utf8', 'hex') + cipher.final('hex')
+    }
     const db = getServiceClient()
     const { error } = await db.from('providers').update({
       paypal_client_id: clientId,
-      paypal_secret: secret,
+      paypal_secret: encryptedSecret,
       paypal_connected: true,
       updated_at: new Date().toISOString()
     }).eq('id', auth.providerId)

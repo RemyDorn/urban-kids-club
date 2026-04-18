@@ -2107,8 +2107,9 @@
         const oldEnd = data.endTime.split(':')
         const durationMin = (parseInt(oldEnd[0]) * 60 + parseInt(oldEnd[1])) - (parseInt(oldStart[0]) * 60 + parseInt(oldStart[1]))
         const newStartTime = String(targetHour).padStart(2, '0') + ':00'
-        const endHour = targetHour + Math.floor(durationMin / 60)
-        const endMin = durationMin % 60
+        const totalEndMin = targetHour * 60 + durationMin
+        const endHour = Math.floor(totalEndMin / 60)
+        const endMin = totalEndMin % 60
         const newEndTime = String(endHour).padStart(2, '0') + ':' + String(endMin).padStart(2, '0')
 
         // Get the new day code
