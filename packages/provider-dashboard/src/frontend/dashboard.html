@@ -792,7 +792,7 @@
         const startPage = urlParams.get('page') || 'dashboard'
         if (urlParams.get('tab')) settingsTab = urlParams.get('tab')
         if (urlParams.get('stripe') === 'connected') {
-          setTimeout(function() { alert('Stripe wurde erfolgreich verbunden!') }, 500)
+          setTimeout(function() { showToast('Stripe erfolgreich verbunden!', 'success') }, 500)
         }
         navigate(startPage)
         // Clean URL params
@@ -874,6 +874,24 @@
       toast.textContent = message
       document.body.appendChild(toast)
       setTimeout(() => toast.remove(), 3200)
+    }
+
+    // Custom confirm dialog (replaces browser confirm())
+    function showConfirm(message, onConfirm, options = {}) {
+      const { confirmText = 'Bestätigen', cancelText = 'Abbrechen', danger = false } = options
+      let modal = document.getElementById('confirmModal')
+      if (!modal) { modal = document.createElement('div'); modal.id = 'confirmModal'; document.body.appendChild(modal) }
+      modal.className = 'cal-modal-backdrop'
+      modal.onclick = (e) => { if (e.target === modal) modal.className = 'hidden' }
+      modal.innerHTML = `
+        <div class="cal-modal fade-in" style="max-width:380px">
+          <p class="text-sm text-gray-700 mb-6 whitespace-pre-line">${escapeHtml(message)}</p>
+          <div class="flex gap-3">
+            <button onclick="document.getElementById('confirmModal').className='hidden'" class="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200">${escapeHtml(cancelText)}</button>
+            <button id="confirmBtn" class="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium text-white ${danger ? 'bg-red-500 hover:bg-red-600' : 'bg-brand-500 hover:bg-brand-600'}">${escapeHtml(confirmText)}</button>
+          </div>
+        </div>`
+      document.getElementById('confirmBtn').onclick = () => { modal.className = 'hidden'; onConfirm() }
     }
     // Close sidebar on resize to desktop
     window.addEventListener('resize', () => { if (window.innerWidth >= 768) closeSidebar() })
@@ -1634,25 +1652,25 @@
       try {
         var actRes = await api('/providers/' + currentProvider.id + '/activities')
         var activity = (actRes.data || []).find(function(a) { return a.id === activityId })
-        if (!activity) { alert('Kurs nicht gefunden'); return }
+        if (!activity) { showToast('Kurs nicht gefunden', 'error'); return }
         var occRes = await api('/providers/' + currentProvider.id + '/reports/occupancy')
         var occ = (occRes.data || []).find(function(o) { return o.activityId === activityId })
         var today = fmtDate(new Date())
         var ev = { date: today, startTime: activity.schedule?.slots?.[0]?.startTime || '', endTime: activity.schedule?.slots?.[0]?.endTime || '' }
         showEventDetail(ev, activity, occ || { booked: 0, capacity: activity.capacity, occupancy: 0 })
-      } catch(e) { alert('Fehler: ' + (e.message || 'Unbekannt')) }
+      } catch(e) { showToast('Fehler: ' + (e.message || 'Unbekannt'), 'error') }
     }
 
     async function acceptWaitlistEntry(waitlistId, activityId) {
       try {
         await api('/waitlist/' + waitlistId + '/offer', 'POST')
-        alert('Kunde wurde benachrichtigt! Status: Ausstehend.')
+        showToast('Kunde wurde benachrichtigt!', 'success')
         // Refresh the current view
         if (currentPage === 'dashboard') navigate('dashboard')
         else if (currentPage === 'customers') navigate('customers')
         else if (currentPage === 'bookings') navigate('bookings')
       } catch (err) {
-        alert('Fehler: ' + (err.message || 'Unbekannt'))
+        showToast('Fehler: ' + (err.message || 'Unbekannt'), 'error')
       }
     }
 
@@ -1800,7 +1818,7 @@
       try {
         await api('/parents/' + parentId + '/messages', 'POST', { content })
         loadParentMessages(parentId)
-      } catch(e) { alert('Fehler beim Senden.') }
+      } catch(e) { showToast('Fehler beim Senden', 'error') }
     }
 
     async function releaseToKidsClub(activityId, spots) {
@@ -1809,7 +1827,7 @@
       await api('/activities/' + activityId, 'PUT', {
         platformListing: { enabled: true, platformCapacity: spots, featured: false, trialAvailable: true }
       })
-      alert(spots + ' Plätze wurden für Kids Club freigegeben!')
+      showToast(spots + ' Plätze für Kids Club freigegeben!', 'success')
       if (currentPage === 'dashboard') navigate('dashboard')
     }
 
@@ -2287,13 +2305,13 @@
     async function sendInvitations(activityId) {
       const checked = document.querySelectorAll('.invite-cb:checked')
       const parentIds = Array.from(checked).map(c => c.value)
-      if (!parentIds.length) { alert('Bitte mindestens einen Elternteil auswählen.'); return }
+      if (!parentIds.length) { showToast('Bitte mindestens einen Elternteil auswählen', 'error'); return }
       const couponCode = document.getElementById('inviteCoupon')?.value?.trim() || undefined
       try {
         const r = await api('/activities/' + activityId + '/invite', 'POST', { parentIds, couponCode })
-        alert(r.data.sent + ' Einladungen gesendet!')
+        showToast(r.data.sent + ' Einladungen gesendet!', 'success')
         document.getElementById('activityModal').className = 'hidden'
-      } catch(e) { alert('Fehler beim Senden.') }
+      } catch(e) { showToast('Fehler beim Senden', 'error') }
     }
 
     async function publishActivity(id) {
@@ -2307,9 +2325,10 @@
     }
 
     async function archiveActivity(id) {
-      if (!confirm('Kurs wirklich archivieren?')) return
-      await api(`/activities/${id}/archive`, 'POST')
-      navigate('activities')
+      showConfirm('Kurs wirklich archivieren?', async () => {
+        await api(`/activities/${id}/archive`, 'POST')
+        navigate('activities')
+      }, { danger: true })
     }
 
     // Activity Create/Edit Form
@@ -2744,14 +2763,14 @@
       }
 
       if (!body.paymentOnline && !body.paymentOnsite) {
-        alert('Mindestens eine Zahlungsoption muss aktiv sein.')
+        showToast('Mindestens eine Zahlungsoption muss aktiv sein', 'error')
         return
       }
       if (body.paymentOnline) {
         try {
           const cfg = await api(`/providers/${currentProvider.id}/payment-config`)
           if (!cfg.data?.stripe_connected && !cfg.data?.paypal_connected) {
-            alert('Bitte erst Stripe oder PayPal in den Einstellungen verbinden, um Online-Zahlung zu aktivieren.')
+            showToast('Bitte erst Stripe/PayPal verbinden', 'error')
             return
           }
         } catch(e) {}
@@ -2767,7 +2786,7 @@
               excludeActivityId: editId || undefined
             })
             if (conflict.data?.conflict) {
-              alert('Raumkonflikt: "' + conflict.data.conflictingActivity.title + '" belegt den Raum ' + slot.day + ' ' + conflict.data.conflictingActivity.startTime + '–' + conflict.data.conflictingActivity.endTime)
+              showToast('Raumkonflikt: "' + conflict.data.conflictingActivity.title + '" belegt den Raum', 'error')
               return
             }
           } catch(e) {}
@@ -2947,10 +2966,11 @@
       await api(`/bookings/${id}/pay`, 'POST', { amount })
       navigate('bookings')
     }
-    async function cancelBooking(id) {
-      if (!confirm('Buchung wirklich stornieren?')) return
-      await api(`/bookings/${id}/cancel`, 'POST')
-      navigate('bookings')
+    function cancelBooking(id) {
+      showConfirm('Buchung wirklich stornieren?', async () => {
+        await api(`/bookings/${id}/cancel`, 'POST')
+        navigate('bookings')
+      }, { danger: true })
     }
 
     // --- Loyalty (pro Provider konfigurierbar) ---
@@ -3255,8 +3275,8 @@
     }
     async function convertTrial(id, pricingOptionId) {
       const result = await api('/trials/' + id + '/convert', 'POST', { pricingOptionId })
-      if (result.error) { alert('Fehler: ' + result.error); return }
-      alert('Probestunde erfolgreich zur Buchung konvertiert!')
+      if (result.error) { showToast('Fehler: ' + result.error, 'error'); return }
+      showToast('Probestunde zur Buchung konvertiert!', 'success')
       navigate('trials')
     }
 
@@ -3407,7 +3427,7 @@
       const s = getProviderSettings()
       const vatRate = s.kleinunternehmer ? 0 : (parseFloat(s.vatRate || '19') / 100)
       const result = await api('/invoices/from-booking/' + bookingId, 'POST', { vatRate })
-      if (result.error) { alert('Fehler: ' + result.error); return }
+      if (result.error) { showToast('Fehler: ' + result.error, 'error'); return }
       navigate('invoices')
     }
 
@@ -3425,13 +3445,13 @@
         await api('/invoices/from-booking/' + b.id, 'POST', { vatRate })
         created++
       }
-      alert(created + ' Rechnungen erstellt!')
+      showToast(created + ' Rechnungen erstellt!', 'success')
       navigate('invoices')
     }
 
     function viewInvoicePdf(id) {
       const token = currentSession?.access_token
-      if (!token) { alert('Nicht angemeldet'); return }
+      if (!token) { showToast('Nicht angemeldet', 'error'); return }
       window.open(API + '/invoices/' + id + '/view?token=' + encodeURIComponent(token), '_blank')
     }
 
@@ -3445,10 +3465,11 @@
       navigate('invoices')
     }
 
-    async function cancelInvoice(id) {
-      if (!confirm('Rechnung wirklich stornieren?')) return
-      await api('/invoices/' + id + '/cancel', 'POST')
-      navigate('invoices')
+    function cancelInvoice(id) {
+      showConfirm('Rechnung wirklich stornieren?', async () => {
+        await api('/invoices/' + id + '/cancel', 'POST')
+        navigate('invoices')
+      }, { danger: true })
     }
 
     // --- Team ---
@@ -3679,14 +3700,14 @@
     async function saveDoc(e, memberId) {
       e.preventDefault()
       // In Produktion: API call. Hier localStorage-basiert als Demo.
-      alert('Dokument gespeichert! (In Produktion: wird in der Datenbank gespeichert)')
+      showToast('Dokument gespeichert!', 'success')
       document.getElementById('teamModal').className = 'hidden'
       navigate('team')
     }
 
     async function saveAbsence(e, memberId) {
       e.preventDefault()
-      alert('Abwesenheit eingetragen! (In Produktion: wird in der Datenbank gespeichert)')
+      showToast('Abwesenheit eingetragen!', 'success')
       document.getElementById('teamModal').className = 'hidden'
       navigate('team')
     }
@@ -3699,16 +3720,17 @@
     async function inviteTeamMember(id) {
       try {
         await api('/team/' + id + '/invite', 'POST')
-        alert('Einladung wurde per E-Mail gesendet!')
-      } catch(e) { alert('Fehler beim Senden der Einladung.') }
+        showToast('Einladung gesendet!', 'success')
+      } catch(e) { showToast('Fehler beim Senden der Einladung', 'error') }
     }
 
-    async function deleteTeamMember(id, name) {
-      if (!confirm('Teammitglied "' + name + '" wirklich entfernen?')) return
-      try {
-        await api('/team/' + id, 'DELETE')
-        navigate('team')
-      } catch(e) { alert('Fehler beim Entfernen.') }
+    function deleteTeamMember(id, name) {
+      showConfirm('Teammitglied "' + name + '" wirklich entfernen?', async () => {
+        try {
+          await api('/team/' + id, 'DELETE')
+          navigate('team')
+        } catch(e) { showToast('Fehler beim Entfernen', 'error') }
+      }, { danger: true })
     }
 
     // --- Holidays ---
@@ -4131,8 +4153,8 @@
       const fileInput = document.getElementById('docFileInput')
       const file = fileInput?.files?.[0]
 
-      if (!file) { alert('Bitte eine Datei auswählen'); return }
-      if (file.size > 10 * 1024 * 1024) { alert('Datei zu groß (max. 10 MB)'); return }
+      if (!file) { showToast('Bitte eine Datei auswählen', 'error'); return }
+      if (file.size > 10 * 1024 * 1024) { showToast('Datei zu groß (max. 10 MB)', 'error'); return }
 
       const reader = new FileReader()
       reader.onload = (ev) => {
@@ -4162,10 +4184,11 @@
     }
 
     function deleteDocument(id) {
-      if (!confirm('Dokument wirklich löschen?')) return
-      const docs = getStoredDocs().filter(d => d.id !== id)
-      saveStoredDocs(docs)
-      navigate('documents')
+      showConfirm('Dokument wirklich löschen?', () => {
+        const docs = getStoredDocs().filter(d => d.id !== id)
+        saveStoredDocs(docs)
+        navigate('documents')
+      }, { danger: true })
     }
 
     // --- Kursblöcke & Guthaben ---
@@ -4477,7 +4500,7 @@
       try {
         const bRes = await api(`/course-blocks/${sourceBlockId}`)
         const block = bRes.data || bRes
-        if (!block) { alert('Block nicht gefunden'); return }
+        if (!block) { showToast('Block nicht gefunden', 'error'); return }
 
         // Calculate new start date: 1 week after source block ends
         const endDate = new Date(block.endDate + 'T00:00:00Z')
@@ -4519,17 +4542,17 @@
           const wlRes = await api(`/activities/${block.activityId}/waitlist`)
           const waitlist = (wlRes.data || wlRes) || []
           if (waitlist.length > 0) {
-            alert(`Folge-Block erstellt! ${waitlist.length} Wartelisten-Einträge vorhanden.\n\nDie Eltern werden beim nächsten Buchungsversuch automatisch berücksichtigt.`)
+            showToast(`Folge-Block erstellt! ${waitlist.length} Wartelisten-Einträge vorhanden.`, 'success')
           } else {
-            alert('Folge-Block erfolgreich erstellt!')
+            showToast('Folge-Block erstellt!', 'success')
           }
         } catch (e) {
-          alert('Folge-Block erstellt!')
+          showToast('Folge-Block erstellt!', 'success')
         }
 
         renderCourseBlocks()
       } catch (err) {
-        alert('Fehler beim Erstellen: ' + err.message)
+        showToast('Fehler: ' + err.message, 'error')
       }
     }
 
@@ -4669,7 +4692,7 @@
       }
 
       if (!body.activityId || !body.seasonLabel || !body.startDate) {
-        alert('Bitte Kurs, Block-Label und Startdatum ausfüllen.')
+        showToast('Bitte Kurs, Block-Label und Startdatum ausfüllen', 'error')
         return
       }
 
@@ -4679,18 +4702,18 @@
         const blockStart = new Date(body.startDate)
         const courseEnd = new Date(actInfo.courseEndDate)
         if (blockStart >= courseEnd) {
-          alert('Fehler: Das Block-Startdatum liegt nach dem Kurs-Enddatum (' + fmtDateDE(actInfo.courseEndDate) + ').\n\nBitte passe das Startdatum oder das Kurs-Enddatum an.')
+          showToast('Block-Start liegt nach Kurs-Ende (' + fmtDateDE(actInfo.courseEndDate) + ')', 'error')
           return
         }
         // Calculate how many weekly sessions fit between start and course end
         const weeksAvailable = Math.floor((courseEnd - blockStart) / (7 * 24 * 60 * 60 * 1000)) + 1
         if (body.totalSessions > weeksAvailable) {
-          alert('Achtung: Der Kurs endet am ' + fmtDateDE(actInfo.courseEndDate) + '.\n\nAb dem ' + fmtDateDE(body.startDate) + ' passen nur ' + weeksAvailable + ' Termine in den Zeitraum, aber der Block hat ' + body.totalSessions + ' Termine.\n\nBitte reduziere die Termine auf max. ' + weeksAvailable + ' oder verlängere das Kurs-Enddatum.')
+          showToast('Nur ' + weeksAvailable + ' von ' + body.totalSessions + ' Terminen passen bis Kurs-Ende', 'error')
           return
         }
       }
       if (actInfo?.courseStartDate && body.startDate < actInfo.courseStartDate) {
-        alert('Fehler: Das Block-Startdatum (' + fmtDateDE(body.startDate) + ') liegt vor dem Kurs-Startdatum (' + fmtDateDE(actInfo.courseStartDate) + ').')
+        showToast('Block-Start liegt vor Kurs-Start (' + fmtDateDE(actInfo.courseStartDate) + ')', 'error')
         return
       }
 
@@ -4699,7 +4722,7 @@
         document.getElementById('create-block-modal').className = 'hidden'
         renderCourseBlocks()
       } catch (err) {
-        alert('Fehler: ' + (err.message || 'Block konnte nicht erstellt werden'))
+        showToast(err.message || 'Block konnte nicht erstellt werden', 'error')
       }
     }
 
@@ -4711,7 +4734,7 @@
         try {
           await api(`/sessions/${sessionId}/cancel`, 'POST', { reason: 'Zusätzlicher Termin entfernt', compensation: 'none', cancelledBy: 'provider' })
           showBlockDetail(blockId)
-        } catch (err) { alert('Fehler: ' + err.message) }
+        } catch (err) { showToast('Fehler: ' + err.message, 'error') }
         return
       }
 
@@ -4749,12 +4772,11 @@
       try {
         await api(`/sessions/${sessionId}/cancel`, 'POST', { reason, compensation, cancelledBy: 'provider' })
         showBlockDetail(blockId)
-      } catch (err) { alert('Fehler: ' + err.message) }
+      } catch (err) { showToast('Fehler: ' + err.message, 'error') }
     }
 
-    async function cancelBlock(blockId) {
-      if (!confirm('Block wirklich abbrechen? Alle zukünftigen Termine werden storniert.')) return
-      try {
+    function cancelBlock(blockId) {
+      showConfirm('Block wirklich abbrechen? Alle zukünftigen Termine werden storniert.', async () => { try {
         // Try PATCH first, fallback to POST
         let res = await fetch(API + `/course-blocks/${blockId}`, {
           method: 'PATCH',
@@ -4777,12 +4799,12 @@
         }
         if (!res.ok) {
           const err = await res.json().catch(() => ({}))
-          alert('Fehler: ' + (err.error || 'Block konnte nicht storniert werden'))
+          showToast(err.error || 'Block konnte nicht storniert werden', 'error')
           return
         }
         document.getElementById('block-detail-modal').className = 'hidden'
         renderCourseBlocks()
-      } catch (err) { alert('Fehler: ' + err.message) }
+      } catch (err) { showToast('Fehler: ' + err.message, 'error') } }, { danger: true })
     }
 
     async function rescheduleSession(sessionId, blockId) {
@@ -4800,7 +4822,7 @@
 
     async function executeReschedule(sessionId, blockId) {
       const input = document.getElementById('reschedule-date-' + sessionId)
-      if (!input || !input.value) { alert('Bitte ein Datum auswählen.'); return }
+      if (!input || !input.value) { showToast('Bitte ein Datum auswählen', 'error'); return }
       const newDate = input.value
       try {
         // Use inline fetch since there's no PATCH /sessions/:id route yet
@@ -4814,18 +4836,18 @@
         })
         if (!res.ok) {
           const err = await res.json().catch(() => ({}))
-          alert('Fehler: ' + (err.error || 'Termin konnte nicht verschoben werden'))
+          showToast(err.error || 'Termin konnte nicht verschoben werden', 'error')
           return
         }
         showBlockDetail(blockId)
-      } catch (err) { alert('Fehler: ' + err.message) }
+      } catch (err) { showToast('Fehler: ' + err.message, 'error') }
     }
 
     async function extendBlock(blockId) {
       try {
         await api(`/course-blocks/${blockId}/extend`, 'POST', { additionalSessions: 1 })
         showBlockDetail(blockId)
-      } catch (err) { alert('Fehler: ' + err.message) }
+      } catch (err) { showToast('Fehler: ' + err.message, 'error') }
     }
 
     async function runBlockCronjobs() {
@@ -4835,7 +4857,7 @@
           api('/admin/credits/expire', 'POST'),
         ])
         renderCourseBlocks()
-      } catch (err) { alert('Fehler: ' + err.message) }
+      } catch (err) { showToast('Fehler: ' + err.message, 'error') }
     }
 
     // --- Guthaben Tab ---
@@ -4950,7 +4972,7 @@
         document.getElementById('manual-credit-modal').className = 'hidden'
         window._cbTab = 'credits'
         renderCourseBlocks()
-      } catch (err) { alert('Fehler: ' + err.message) }
+      } catch (err) { showToast('Fehler: ' + err.message, 'error') }
     }
 
     // --- Anwesenheit Tab ---
@@ -5220,9 +5242,9 @@
           a.download = `${type}_${fmtDate(new Date())}.csv`
           a.click()
         } else {
-          alert('Export konnte nicht erstellt werden.')
+          showToast('Export konnte nicht erstellt werden', 'error')
         }
-      } catch(e) { alert('Export fehlgeschlagen: ' + (e.message || '')) }
+      } catch(e) { showToast('Export fehlgeschlagen: ' + (e.message || ''), 'error') }
     }
 
     async function saveWidgetBranding() {
@@ -5239,8 +5261,8 @@
         currentProvider.widget_font = document.getElementById('wFont').value
         currentProvider.widget_border_radius = document.getElementById('wRadius').value
         currentProvider.widget_show_logo = document.getElementById('wShowLogo').checked
-        alert('Widget-Design gespeichert!')
-      } catch(e) { alert('Fehler beim Speichern.') }
+        showToast('Widget-Design gespeichert!', 'success')
+      } catch(e) { showToast('Fehler beim Speichern', 'error') }
     }
 
     // Live preview for branding
@@ -5524,8 +5546,8 @@
     function handleImageUpload(idx, input) {
       const file = input.files[0]
       if (!file) return
-      if (file.size > 5 * 1024 * 1024) { alert('Datei zu groß (max. 5 MB)'); return }
-      if (!file.type.startsWith('image/')) { alert('Nur Bilddateien erlaubt'); return }
+      if (file.size > 5 * 1024 * 1024) { showToast('Datei zu groß (max. 5 MB)', 'error'); return }
+      if (!file.type.startsWith('image/')) { showToast('Nur Bilddateien erlaubt', 'error'); return }
       compressImage(file, 800, 0.8, (dataUrl) => {
         const hidden = document.querySelector(`[name="imgData_${idx}"]`)
         if (hidden) hidden.value = dataUrl
@@ -5560,7 +5582,7 @@
     function uploadProviderImage(key, input, maxPx) {
       const file = input.files[0]
       if (!file) return
-      if (file.size > 5 * 1024 * 1024) { alert('Datei zu groß (max. 5 MB)'); return }
+      if (file.size > 5 * 1024 * 1024) { showToast('Datei zu groß (max. 5 MB)', 'error'); return }
       compressImage(file, maxPx || 800, 0.8, (dataUrl) => {
         if (key === 'logo') {
           document.getElementById('sLogo').value = dataUrl
@@ -5696,7 +5718,7 @@
         customScript: document.getElementById('customScript')?.value || '',
       }
       savePixelSettings(pixels)
-      alert('Tracking-Einstellungen gespeichert!')
+      showToast('Tracking gespeichert!', 'success')
     }
 
     // --- Settings ---
@@ -5816,8 +5838,8 @@
       }
       try {
         await api('/opening-hours', 'PUT', oh)
-        alert('Öffnungszeiten gespeichert!')
-      } catch(e) { alert('Fehler beim Speichern.') }
+        showToast('Öffnungszeiten gespeichert!', 'success')
+      } catch(e) { showToast('Fehler beim Speichern', 'error') }
     }
 
     // --- Räume-Verwaltung ---
@@ -5933,7 +5955,7 @@
         capacity: parseInt(document.getElementById('roomCapacity').value) || null,
         color: document.getElementById('roomColor').value,
       }
-      if (!data.name) { alert('Bitte einen Namen eingeben.'); return }
+      if (!data.name) { showToast('Bitte einen Namen eingeben', 'error'); return }
       try {
         if (id) {
           await api('/rooms/' + id, 'PUT', data)
@@ -5942,15 +5964,16 @@
         }
         document.getElementById('roomForm').classList.add('hidden')
         loadRooms()
-      } catch(e) { alert('Fehler: ' + (e.message || 'Speichern fehlgeschlagen')) }
+      } catch(e) { showToast('Fehler: ' + (e.message || 'Speichern fehlgeschlagen'), 'error') }
     }
 
-    async function deleteRoom(id, name) {
-      if (!confirm('Raum "' + name + '" wirklich löschen? Kurse werden dem Raum nicht mehr zugewiesen.')) return
-      try {
-        await api('/rooms/' + id, 'DELETE')
-        loadRooms()
-      } catch(e) { alert('Fehler beim Löschen.') }
+    function deleteRoom(id, name) {
+      showConfirm('Raum "' + name + '" wirklich löschen?', async () => {
+        try {
+          await api('/rooms/' + id, 'DELETE')
+          loadRooms()
+        } catch(e) { showToast('Fehler beim Löschen', 'error') }
+      }, { danger: true })
     }
 
     function renderCheckinTab() {
@@ -6188,8 +6211,8 @@
       try {
         const enabled = currentProvider.makeup_enabled || false
         await api('/providers/' + currentProvider.id, 'PUT', { makeup_enabled: enabled })
-        alert('Kursblock-Einstellungen gespeichert!')
-      } catch (err) { alert('Fehler: ' + err.message) }
+        showToast('Kursblock-Einstellungen gespeichert!', 'success')
+      } catch (err) { showToast('Fehler: ' + err.message, 'error') }
     }
 
     function renderCompanyTab(p, s) {
@@ -6686,7 +6709,7 @@
       s.gallery = [0,1,2,3,4].map(i => document.getElementById('sGallery' + i)?.value).filter(Boolean)
       s.brandColor = document.getElementById('sBrandColor')?.value
       saveProviderSettings(s)
-      alert('Unternehmensdaten gespeichert!')
+      showToast('Unternehmensdaten gespeichert!', 'success')
     }
 
     async function saveFinanceSettings() {
@@ -6721,7 +6744,7 @@
       } catch (e) {
         console.error('DB save failed:', e)
       }
-      alert('Finanzdaten gespeichert!')
+      showToast('Finanzdaten gespeichert!', 'success')
     }
 
     async function loadPaymentConfig() {
@@ -6748,7 +6771,7 @@
                   <div>Kreditkarten, Apple Pay, Google Pay und Klarna sind aktiviert.</div>
                   <div>Zahlungen gehen direkt auf dein Stripe-Konto.</div>
                 </div>
-                <button onclick="if(confirm('Stripe-Verbindung wirklich trennen?')) disconnectStripe()" class="mt-3 text-xs text-red-500 hover:text-red-700 underline">Verbindung trennen</button>
+                <button onclick="showConfirm('Stripe-Verbindung wirklich trennen?', () => disconnectStripe(), { danger: true })" class="mt-3 text-xs text-red-500 hover:text-red-700 underline">Verbindung trennen</button>
               </div>
             `
           } else {
@@ -6819,14 +6842,14 @@
     async function saveBookingRedirect() {
       const url = document.getElementById('bookingRedirectUrl')?.value?.trim() || ''
       if (url && !url.startsWith('https://') && !url.startsWith('http://')) {
-        alert('Bitte eine gültige URL eingeben (z.B. https://deine-seite.de/danke)')
+        showToast('Bitte eine gültige URL eingeben', 'error')
         return
       }
       try {
         await api(`/providers/${currentProvider.id}`, 'PUT', { booking_redirect_url: url || null })
         currentProvider.booking_redirect_url = url || null
-        alert('Weiterleitung gespeichert!')
-      } catch(e) { alert('Fehler: ' + (e.message || 'Speichern fehlgeschlagen')) }
+        showToast('Weiterleitung gespeichert!', 'success')
+      } catch(e) { showToast('Fehler: ' + (e.message || 'Speichern fehlgeschlagen'), 'error') }
     }
 
     async function manualCheckin(bookingId, activityId, btnEl) {
@@ -6849,7 +6872,7 @@
       } catch(e) {
         btnEl.disabled = false
         btnEl.textContent = 'Einchecken'
-        alert('Fehler: ' + (e.message || 'Check-in fehlgeschlagen'))
+        showToast(e.message || 'Check-in fehlgeschlagen', 'error')
       }
     }
 
@@ -6863,21 +6886,21 @@
         })
         currentProvider.checkin_before_minutes = before
         currentProvider.checkin_after_minutes = after
-        alert('Check-in Zeitfenster gespeichert!')
-      } catch(e) { alert('Fehler: ' + (e.message || 'Speichern fehlgeschlagen')) }
+        showToast('Check-in Zeitfenster gespeichert!', 'success')
+      } catch(e) { showToast('Fehler: ' + (e.message || 'Speichern fehlgeschlagen'), 'error') }
     }
 
     async function saveCheckinRedirect() {
       const url = document.getElementById('checkinRedirectUrl')?.value?.trim() || ''
       if (url && !url.startsWith('https://') && !url.startsWith('http://')) {
-        alert('Bitte eine gültige URL eingeben (z.B. https://deine-seite.de/willkommen)')
+        showToast('Bitte eine gültige URL eingeben', 'error')
         return
       }
       try {
         await api(`/providers/${currentProvider.id}`, 'PUT', { checkin_redirect_url: url || null })
         currentProvider.checkin_redirect_url = url || null
-        alert('Check-in Weiterleitung gespeichert!')
-      } catch(e) { alert('Fehler: ' + (e.message || 'Speichern fehlgeschlagen')) }
+        showToast('Check-in Weiterleitung gespeichert!', 'success')
+      } catch(e) { showToast('Fehler: ' + (e.message || 'Speichern fehlgeschlagen'), 'error') }
     }
 
     async function connectStripe() {
@@ -6885,23 +6908,23 @@
         const r = await api(`/providers/${currentProvider.id}/stripe-connect`, 'POST')
         if (r.url) window.location.href = r.url
         else if (r.data?.url) window.location.href = r.data.url
-      } catch(e) { alert('Stripe-Verbindung konnte nicht gestartet werden. Bitte versuche es später erneut.') }
+      } catch(e) { showToast('Stripe-Verbindung konnte nicht gestartet werden', 'error') }
     }
 
     async function disconnectStripe() {
       try {
         await api(`/providers/${currentProvider.id}`, 'PUT', { stripe_account_id: null, stripe_connected: false })
         loadPaymentConfig()
-        alert('Stripe-Verbindung getrennt.')
-      } catch(e) { alert('Fehler beim Trennen.') }
+        showToast('Stripe-Verbindung getrennt', 'success')
+      } catch(e) { showToast('Fehler beim Trennen', 'error') }
     }
 
     async function savePayPalConfig() {
       const clientId = document.getElementById('ppClientId').value.trim()
       const secret = document.getElementById('ppSecret').value.trim()
-      if (!clientId || !secret) { alert('Bitte Client ID und Secret eingeben.'); return }
+      if (!clientId || !secret) { showToast('Bitte Client ID und Secret eingeben', 'error'); return }
       await api(`/providers/${currentProvider.id}/paypal-config`, 'PUT', { clientId, secret })
-      alert('PayPal verbunden!')
+      showToast('PayPal verbunden!', 'success')
       loadPaymentConfig()
     }
 
@@ -6912,7 +6935,7 @@
         deadlineHours: document.getElementById('cancelDeadline').value,
         customText: document.getElementById('cancelText').value,
       })
-      alert('Stornierungsbedingungen gespeichert!')
+      showToast('Stornierungsbedingungen gespeichert!', 'success')
     }
 
     function saveLegalSettings() {
@@ -6923,7 +6946,7 @@
       s.privacyUrl = document.getElementById('sPrivacyUrl')?.value
       s.termsUrl = document.getElementById('sTermsUrl')?.value
       saveProviderSettings(s)
-      alert('Rechtliches gespeichert!')
+      showToast('Rechtliches gespeichert!', 'success')
     }
 
     function addTier() {
@@ -6944,10 +6967,12 @@
 
     function removeTier(idx) {
       const tiers = getLoyaltyTiers()
-      if (idx === 0 || !confirm('Stufe "' + tiers[idx].name + '" wirklich löschen?')) return
-      tiers.splice(idx, 1)
-      saveLoyaltyTiers(tiers)
-      settingsTab = 'loyalty'; renderSettings()
+      if (idx === 0) return
+      showConfirm('Stufe "' + tiers[idx].name + '" wirklich löschen?', () => {
+        tiers.splice(idx, 1)
+        saveLoyaltyTiers(tiers)
+        settingsTab = 'loyalty'; renderSettings()
+      }, { danger: true })
     }
 
     function saveLoyaltySettings() {
@@ -6969,7 +6994,7 @@
         tiers.push({ name, icon, minBookings, minSpent, color, discount, perks })
       })
       saveLoyaltyTiers(tiers)
-      alert('Treueprogramm gespeichert!')
+      showToast('Treueprogramm gespeichert!', 'success')
       settingsTab = 'loyalty'; renderSettings()
     }
 
