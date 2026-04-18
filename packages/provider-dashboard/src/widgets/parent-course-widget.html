@@ -517,6 +517,143 @@
     font-family: var(--font);
   }
 
+  /* === Checkout Stepper === */
+  .checkout-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+
+  .checkout-overlay.active {
+    display: flex;
+  }
+
+  .checkout-modal {
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    max-width: 500px;
+    width: 100%;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.2);
+  }
+
+  .checkout-progress {
+    display: flex;
+    gap: 4px;
+    padding: 0 20px;
+    margin-top: 16px;
+  }
+
+  .checkout-progress-step {
+    flex: 1;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--border);
+    transition: background 0.2s;
+  }
+
+  .checkout-progress-step.active {
+    background: var(--primary);
+  }
+
+  .checkout-body {
+    padding: 20px;
+  }
+
+  .checkout-section-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 12px;
+  }
+
+  .checkout-input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: var(--font);
+    color: var(--text);
+    background: var(--card-bg);
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .checkout-input:focus {
+    border-color: var(--primary);
+  }
+
+  .checkout-input-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  .checkout-input-row .checkout-input {
+    flex: 1;
+  }
+
+  .checkout-summary {
+    background: var(--bg);
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    color: var(--text);
+  }
+
+  .checkout-summary-price {
+    font-weight: 700;
+    margin-top: 6px;
+  }
+
+  .checkout-checkbox {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 10px;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--text);
+  }
+
+  .checkout-checkbox input {
+    margin-top: 2px;
+  }
+
+  .checkout-footer {
+    padding: 16px 20px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .btn-back {
+    padding: 8px 16px;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: transparent;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: var(--font);
+    transition: all 0.2s;
+  }
+
+  .btn-back:hover {
+    background: rgba(0,0,0,0.03);
+    color: var(--text);
+  }
+
   /* === Responsive === */
   @media (max-width: 480px) {
     .widget-container { padding: 8px; }
@@ -594,6 +731,19 @@
         Nachholtermin buchen
       </button>
     </div>
+  </div>
+</div>
+
+<!-- Checkout Stepper Modal -->
+<div class="checkout-overlay" id="checkout-modal">
+  <div class="checkout-modal">
+    <div class="modal-header">
+      <span class="modal-title" id="checkout-title">Kurs buchen</span>
+      <button class="modal-close" onclick="closeCheckout()">&times;</button>
+    </div>
+    <div class="checkout-progress" id="checkout-progress"></div>
+    <div class="checkout-body" id="checkout-body"></div>
+    <div class="checkout-footer" id="checkout-footer"></div>
   </div>
 </div>
 
@@ -1163,17 +1313,247 @@ function cancelMakeup(makeupId) {
 }
 
 // ============================================================
-// Booking & Waitlist Placeholder
+// Checkout Stepper
 // ============================================================
+let checkoutStep = 1
+let checkoutBlockId = null
+let checkoutBlock = null
+let checkoutData = {
+  child: { firstName: '', lastName: '', birthYear: '' },
+  parent: { firstName: '', lastName: '', email: '', phone: '' },
+  agbAccepted: false,
+}
+const CHECKOUT_TOTAL_STEPS = 3 // 1: Kind & Eltern, 2: Zusammenfassung & AGB, 3: Bestätigung
+
 function startBooking(blockId) {
-  // In Phase 1: Redirect zu Acuity oder direkte Buchung
-  // In Phase 2: Urban Kids Club Checkout
+  // If external booking URL is configured, redirect
   if (window.UKC_BOOKING_URL) {
     window.open(`${window.UKC_BOOKING_URL}?block=${blockId}`, '_blank')
-  } else {
-    showToast('Buchung wird vorbereitet...')
-    // TODO: Inline Checkout oder Redirect
+    return
   }
+
+  checkoutBlockId = blockId
+  checkoutStep = 1
+  // Preserve previous data so going back keeps form state
+  // Only reset if booking a different block
+  if (!checkoutBlock || checkoutBlock.id !== blockId) {
+    checkoutData = {
+      child: { firstName: '', lastName: '', birthYear: '' },
+      parent: { firstName: '', lastName: '', email: '', phone: '' },
+      agbAccepted: false,
+    }
+  }
+
+  // Load block details
+  loadCheckoutBlock(blockId)
+}
+
+async function loadCheckoutBlock(blockId) {
+  const modal = document.getElementById('checkout-modal')
+  modal.classList.add('active')
+  document.getElementById('checkout-body').innerHTML = '<div class="loading"><div class="spinner"></div></div>'
+  document.getElementById('checkout-footer').innerHTML = ''
+  document.getElementById('checkout-progress').innerHTML = ''
+
+  try {
+    checkoutBlock = await api(`/course-blocks/${blockId}`)
+    renderCheckoutStep()
+  } catch (e) {
+    document.getElementById('checkout-body').innerHTML =
+      '<div class="empty-state"><div class="empty-state-text">Kursdaten konnten nicht geladen werden.</div></div>'
+    document.getElementById('checkout-footer').innerHTML =
+      '<div></div><button class="btn btn-secondary btn-sm" onclick="closeCheckout()">Schließen</button>'
+  }
+}
+
+function renderCheckoutStep() {
+  const body = document.getElementById('checkout-body')
+  const footer = document.getElementById('checkout-footer')
+  const progress = document.getElementById('checkout-progress')
+  const title = document.getElementById('checkout-title')
+
+  // Update progress bar
+  let progressHtml = ''
+  for (let i = 1; i <= CHECKOUT_TOTAL_STEPS; i++) {
+    progressHtml += `<div class="checkout-progress-step ${i <= checkoutStep ? 'active' : ''}"></div>`
+  }
+  progress.innerHTML = progressHtml
+
+  if (checkoutStep === 1) {
+    // Step 1: Kind & Elternteil Daten
+    title.textContent = 'Kurs buchen'
+    const c = checkoutData.child
+    const p = checkoutData.parent
+
+    body.innerHTML = `
+      <div class="checkout-section-title">Kind</div>
+      <div class="checkout-input-row">
+        <input class="checkout-input" id="co-child-first" placeholder="Vorname *" value="${esc(c.firstName)}">
+        <input class="checkout-input" id="co-child-last" placeholder="Nachname *" value="${esc(c.lastName)}">
+      </div>
+      <input class="checkout-input" id="co-child-year" type="number" placeholder="Geburtsjahr (z.B. 2020) *"
+        value="${c.birthYear || ''}" min="2005" max="2026" style="margin-bottom:20px">
+
+      <div class="checkout-section-title">Elternteil</div>
+      <div class="checkout-input-row">
+        <input class="checkout-input" id="co-parent-first" placeholder="Vorname *" value="${esc(p.firstName)}">
+        <input class="checkout-input" id="co-parent-last" placeholder="Nachname *" value="${esc(p.lastName)}">
+      </div>
+      <input class="checkout-input" id="co-parent-email" type="email" placeholder="E-Mail *"
+        value="${esc(p.email)}" style="margin-bottom:8px">
+      <input class="checkout-input" id="co-parent-phone" type="tel" placeholder="Telefon *"
+        value="${esc(p.phone)}">`
+
+    footer.innerHTML = `
+      <div></div>
+      <button class="btn btn-primary" onclick="checkoutNext()">Weiter</button>`
+
+  } else if (checkoutStep === 2) {
+    // Step 2: Zusammenfassung & AGB
+    title.textContent = 'Bestätigung'
+    const block = checkoutBlock
+    const dayNames = { mon: 'Montag', tue: 'Dienstag', wed: 'Mittwoch', thu: 'Donnerstag', fri: 'Freitag', sat: 'Samstag', sun: 'Sonntag' }
+    const day = dayNames[block.recurringDay] || block.recurringDay
+    const price = block.pricePerBlock.toFixed(2).replace('.', ',') + ' \u20AC'
+
+    body.innerHTML = `
+      <div class="checkout-summary">
+        <div style="font-weight:600">${esc(block._activityTitle || block.activityType)}</div>
+        <div style="color:var(--text-muted);margin-top:4px">${esc(block.seasonLabel)}</div>
+        <div style="color:var(--text-muted);margin-top:4px">${day}, ${block.recurringTime} Uhr &middot; ${block.totalSessions} Termine</div>
+        <div style="color:var(--text-muted);margin-top:4px">Kind: ${esc(checkoutData.child.firstName)} ${esc(checkoutData.child.lastName)}</div>
+        <div style="color:var(--text-muted);margin-top:4px">Elternteil: ${esc(checkoutData.parent.firstName)} ${esc(checkoutData.parent.lastName)}</div>
+        <div style="color:var(--text-muted);margin-top:4px">${esc(checkoutData.parent.email)}</div>
+        <div class="checkout-summary-price">${price}</div>
+      </div>
+
+      <label class="checkout-checkbox">
+        <input type="checkbox" id="co-agb" ${checkoutData.agbAccepted ? 'checked' : ''}>
+        <span>Ich stimme den <a href="#" style="color:var(--primary)">AGB</a> und <a href="#" style="color:var(--primary)">Datenschutzbestimmungen</a> zu. *</span>
+      </label>`
+
+    footer.innerHTML = `
+      <button class="btn-back" onclick="checkoutBack()">Zur\u00FCck</button>
+      <button class="btn btn-primary" onclick="checkoutNext()">Verbindlich buchen</button>`
+
+  } else if (checkoutStep === 3) {
+    // Step 3: Success
+    title.textContent = 'Buchung best\u00E4tigt'
+
+    body.innerHTML = `
+      <div style="text-align:center;padding:20px 0">
+        <div style="width:56px;height:56px;border-radius:50%;background:var(--success);color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto 16px">\u2713</div>
+        <div style="font-size:18px;font-weight:700;margin-bottom:8px">Vielen Dank!</div>
+        <div style="font-size:14px;color:var(--text-muted);line-height:1.6">
+          Deine Buchung f\u00FCr <strong>${esc(checkoutBlock._activityTitle || checkoutBlock.activityType)}</strong> wurde erfolgreich abgeschlossen.
+          Eine Best\u00E4tigung wird an <strong>${esc(checkoutData.parent.email)}</strong> gesendet.
+        </div>
+      </div>`
+
+    footer.innerHTML = `
+      <div></div>
+      <button class="btn btn-primary" onclick="closeCheckout()">Schlie\u00DFen</button>`
+  }
+}
+
+function saveCheckoutFormData() {
+  // Save current form inputs so data is preserved when navigating back
+  if (checkoutStep === 1) {
+    const childFirst = document.getElementById('co-child-first')
+    const childLast = document.getElementById('co-child-last')
+    const childYear = document.getElementById('co-child-year')
+    const parentFirst = document.getElementById('co-parent-first')
+    const parentLast = document.getElementById('co-parent-last')
+    const parentEmail = document.getElementById('co-parent-email')
+    const parentPhone = document.getElementById('co-parent-phone')
+
+    if (childFirst) checkoutData.child.firstName = childFirst.value.trim()
+    if (childLast) checkoutData.child.lastName = childLast.value.trim()
+    if (childYear) checkoutData.child.birthYear = childYear.value
+    if (parentFirst) checkoutData.parent.firstName = parentFirst.value.trim()
+    if (parentLast) checkoutData.parent.lastName = parentLast.value.trim()
+    if (parentEmail) checkoutData.parent.email = parentEmail.value.trim()
+    if (parentPhone) checkoutData.parent.phone = parentPhone.value.trim()
+  } else if (checkoutStep === 2) {
+    const agb = document.getElementById('co-agb')
+    if (agb) checkoutData.agbAccepted = agb.checked
+  }
+}
+
+function checkoutNext() {
+  saveCheckoutFormData()
+
+  if (checkoutStep === 1) {
+    // Validate step 1
+    const c = checkoutData.child
+    const p = checkoutData.parent
+    if (!c.firstName || !c.lastName || !c.birthYear) {
+      showToast('Bitte alle Felder f\u00FCr das Kind ausf\u00FCllen.', true)
+      return
+    }
+    if (!p.firstName || !p.lastName || !p.email || !p.phone) {
+      showToast('Bitte alle Felder f\u00FCr den Elternteil ausf\u00FCllen.', true)
+      return
+    }
+    // Basic email validation
+    if (!p.email.includes('@') || !p.email.includes('.')) {
+      showToast('Bitte eine g\u00FCltige E-Mail-Adresse eingeben.', true)
+      return
+    }
+    checkoutStep = 2
+    renderCheckoutStep()
+  } else if (checkoutStep === 2) {
+    // Validate step 2
+    if (!checkoutData.agbAccepted) {
+      showToast('Bitte stimme den AGB zu.', true)
+      return
+    }
+    submitCheckout()
+  }
+}
+
+function checkoutBack() {
+  saveCheckoutFormData()
+  if (checkoutStep > 1) {
+    checkoutStep--
+    renderCheckoutStep()
+  }
+}
+
+async function submitCheckout() {
+  const submitBtn = document.querySelector('#checkout-footer .btn-primary')
+  if (submitBtn) {
+    submitBtn.disabled = true
+    submitBtn.textContent = 'Wird verarbeitet...'
+  }
+
+  try {
+    await api(`/course-blocks/${checkoutBlockId}/enroll`, {
+      method: 'POST',
+      body: JSON.stringify({
+        child: checkoutData.child,
+        parent: checkoutData.parent,
+        parentId: currentParentId || undefined,
+      }),
+    })
+
+    checkoutStep = 3
+    renderCheckoutStep()
+    // Reload course blocks to update availability
+    loadCourseBlocks()
+  } catch (e) {
+    showToast(e.message || 'Fehler bei der Buchung. Bitte versuche es erneut.', true)
+    if (submitBtn) {
+      submitBtn.disabled = false
+      submitBtn.textContent = 'Verbindlich buchen'
+    }
+  }
+}
+
+function closeCheckout() {
+  document.getElementById('checkout-modal').classList.remove('active')
+  checkoutBlockId = null
+  checkoutBlock = null
 }
 
 function joinWaitlist(blockId) {
