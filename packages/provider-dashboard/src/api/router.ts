@@ -101,7 +101,8 @@ export class Router {
         body = result.parsed
         rawBody = result.rawBuffer
       } catch (err) {
-        res.writeHead(413, { 'Content-Type': 'application/json' })
+        res.setHeader('Content-Type', 'application/json')
+        res.statusCode = 413
         res.end(JSON.stringify({ error: 'Request body too large (max 1MB)' }))
         return
       }
@@ -122,15 +123,18 @@ export class Router {
       const apiRes: ApiResponse = {
         status(code: number) { statusCode = code; return apiRes },
         json(data: unknown) {
-          res.writeHead(statusCode, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.setHeader('Content-Type', 'application/json; charset=utf-8')
+          res.statusCode = statusCode
           res.end(JSON.stringify(data))
         },
         error(code: number, message: string) {
-          res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' })
+          res.setHeader('Content-Type', 'application/json; charset=utf-8')
+          res.statusCode = code
           res.end(JSON.stringify({ error: message }))
         },
         html(content: string, code?: number) {
-          res.writeHead(code ?? statusCode, { 'Content-Type': 'text/html; charset=utf-8' })
+          res.setHeader('Content-Type', 'text/html; charset=utf-8')
+          res.statusCode = code ?? statusCode
           res.end(content)
         },
       }
@@ -140,7 +144,8 @@ export class Router {
       } catch (err) {
         console.error(`Error handling ${method} ${path}:`, err)
         if (!res.headersSent) {
-          res.writeHead(500, { 'Content-Type': 'application/json' })
+          res.setHeader('Content-Type', 'application/json')
+          res.statusCode = 500
           res.end(JSON.stringify({ error: 'Internal Server Error' }))
         }
       }
@@ -148,7 +153,8 @@ export class Router {
     }
 
     // 404
-    res.writeHead(404, { 'Content-Type': 'application/json' })
+    res.setHeader('Content-Type', 'application/json')
+    res.statusCode = 404
     res.end(JSON.stringify({ error: 'Route not found' }))
   }
 }
