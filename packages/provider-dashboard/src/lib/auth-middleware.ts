@@ -8,9 +8,16 @@ export interface AuthContext {
   providerId: string
 }
 
-// Cache provider lookups for 5 minutes
+// Cache provider lookups for 5 minutes (with periodic eviction)
 const providerCache = new Map<string, { providerId: string; expiresAt: number }>()
 const CACHE_TTL = 5 * 60 * 1000
+// Evict expired entries every 10 minutes to prevent memory leak
+setInterval(() => {
+  const now = Date.now()
+  for (const [key, val] of providerCache) {
+    if (val.expiresAt < now) providerCache.delete(key)
+  }
+}, 10 * 60 * 1000).unref()
 
 export async function authenticateRequest(req: ParsedRequest): Promise<AuthContext> {
   const token = req.raw.headers.authorization?.replace('Bearer ', '')

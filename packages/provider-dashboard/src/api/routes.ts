@@ -1225,8 +1225,8 @@ export function registerRoutes(router: Router) {
     const { data: invoice } = await db.from('invoices').select('*').eq('id', req.params.id).maybeSingle()
     if (!invoice) return res.error(404, 'Rechnung nicht gefunden')
 
-    const { data: provider } = await db.from('providers').select('*').eq('id', invoice.provider_id).single()
-    const { data: parent } = await db.from('parents').select('*').eq('id', invoice.parent_id).single()
+    const { data: provider } = await db.from('providers').select('id, name, display_name, company_name, legal_form, address_street, address_zip, address_city, email, phone, tax_id, vat_id, kleinunternehmer, bank_holder, bank_iban, bank_bic, logo_url').eq('id', invoice.provider_id).single()
+    const { data: parent } = await db.from('parents').select('id, name, email, street, zip, city').eq('id', invoice.parent_id).single()
 
     const lineItems = (invoice.line_items || []) as Array<{ description: string; quantity: number; unitPrice: number; vatRate: number; total: number }>
     const isKleinunternehmer = provider?.kleinunternehmer || false
@@ -1912,7 +1912,7 @@ export function registerRoutes(router: Router) {
     // Allow internal calls (from server setInterval) or admin auth
     const srcIp = req.raw?.socket?.remoteAddress || ''
     const isInternal = srcIp === '127.0.0.1' || srcIp === '::1' || srcIp === '::ffff:127.0.0.1'
-    if (!isInternal) { const admin = await authenticateAdmin(req); if (!admin) return res.error(401, 'Nicht autorisiert') }
+    if (!isInternal) { const admin = await authenticateAdmin(req, res); if (!admin) return }
     const db = getServiceClient()
     const now = new Date().toISOString()
 
@@ -1977,7 +1977,7 @@ export function registerRoutes(router: Router) {
   router.post('/api/admin/jobs/send-reminders', async (req, res) => {
     const srcIp = req.raw?.socket?.remoteAddress || ''
     const isInternal = srcIp === '127.0.0.1' || srcIp === '::1' || srcIp === '::ffff:127.0.0.1'
-    if (!isInternal) { const admin = await authenticateAdmin(req); if (!admin) return res.error(401, 'Nicht autorisiert') }
+    if (!isInternal) { const admin = await authenticateAdmin(req, res); if (!admin) return }
     const db = getServiceClient()
     const nowDE = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Berlin' }))
     const tomorrow = new Date(nowDE)
@@ -2117,11 +2117,11 @@ export function registerRoutes(router: Router) {
       while (taken.has(slug)) { slug = `${base}-${i++}` }
     }
 
-    // 2. Create auth user (email_confirm: false — admin must approve)
+    // 2. Create auth user (email_confirm: true — auto-approve for MVP)
     const { data: authData, error: authError } = await db.auth.admin.createUser({
       email,
       password,
-      email_confirm: false,
+      email_confirm: true,
     })
     if (authError) {
       if (authError.message.includes('already been registered')) {
@@ -3043,7 +3043,7 @@ export function registerRoutes(router: Router) {
   // ADMIN ENDPOINTS
   // ============================================================
 
-  const ADMIN_EMAILS = ['remy.dostal@gmail.com']
+  const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || 'remy.dostal@gmail.com').split(',').map(e => e.trim())
 
   // Lightweight admin auth – validates JWT and checks admin email
   // Does NOT require a provider record (unlike requireAuth)

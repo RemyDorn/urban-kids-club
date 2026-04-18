@@ -23,7 +23,11 @@ export const SupabaseParentService = {
     const parentIds = [...new Set((bookingRows ?? []).map((r: { parent_id: string }) => r.parent_id))]
     if (parentIds.length === 0) return []
     let dbQuery = sb.from(TABLE).select('*').in('id', parentIds).order('created_at', { ascending: false })
-    if (query) dbQuery = dbQuery.or(`name.ilike.%${query}%,email.ilike.%${query}%`)
+    if (query) {
+      // Sanitize query: escape PostgREST special chars (commas, dots, parens)
+      const sanitized = query.replace(/[,().%*]/g, '')
+      if (sanitized) dbQuery = dbQuery.or(`name.ilike.%${sanitized}%,email.ilike.%${sanitized}%`)
+    }
     const { data, error } = await dbQuery
     if (error) throw error
     return (data ?? []).map(parentFromDb)
