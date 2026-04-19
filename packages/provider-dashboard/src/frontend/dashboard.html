@@ -1503,7 +1503,11 @@
               ${instrColor ? 'border-right: 3px solid ' + instrColor + ';' : ''}
             `
             eventEl.onclick = (e) => { e.stopPropagation(); if (!eventEl._dragged) showEventDetail(ev, activity, occ) }
-            eventEl.title = ev.title + ' (' + ev.startTime + '–' + ev.endTime + ')' + (instrName ? '\nKursleiter: ' + instrName : '') + (roomName ? '\nRaum: ' + roomName : '') + '\n' + occText + ' Teilnehmer (' + occPct + '%)'
+            // Tooltip handlers (replaces native title)
+            eventEl.addEventListener('mouseenter', function(me) { showCalTooltip(me, ev, activity, occ, clr, roomName, occText, occPct) })
+            eventEl.addEventListener('mousemove', moveCalTooltip)
+            eventEl.addEventListener('mouseleave', hideCalTooltip)
+            eventEl.addEventListener('dragstart', function(de) { hideCalTooltip() })
 
             // Drag handlers
             eventEl.addEventListener('dragstart', function(e) {
