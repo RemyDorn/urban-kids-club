@@ -66,26 +66,17 @@ export function registerPortalRoutes(router: Router) {
     // Always return success (don't leak whether email exists)
     if (!parent) return res.json({ success: true })
 
-    // Ensure Supabase Auth user exists for this parent email
-    // (parents don't register themselves — they are added by providers)
-    const { data: existingUsers } = await sb.auth.admin.listUsers({ perPage: 1, page: 1 })
-    let authUserExists = false
-    // Check by email using the getUserByEmail-style lookup
-    const { data: userByEmail } = await sb.auth.admin.listUsers()
-    const existingUser = userByEmail?.users?.find(u => u.email?.toLowerCase() === normalizedEmail)
-    authUserExists = !!existingUser
-
-    if (!authUserExists) {
-      // Create a Supabase Auth user for this parent (no password — magic link only)
-      const { error: createError } = await sb.auth.admin.createUser({
-        email: normalizedEmail,
-        email_confirm: true, // Auto-confirm since parent is already known
-        user_metadata: { role: 'parent', parent_id: parent.id },
-      })
-      if (createError) {
-        console.error('[Portal] Failed to create auth user for parent:', createError)
-        return res.json({ success: true }) // Don't leak error
-      }
+    // Ensure Supabase Auth user exists for this parent email.
+    // Parents don't register themselves — they are added by providers.
+    // Try to create; if already exists, that's fine (idempotent).
+    const { error: createError } = await sb.auth.admin.createUser({
+      email: normalizedEmail,
+      email_confirm: true,
+      user_metadata: { role: 'parent', parent_id: parent.id },
+    })
+    if (createError && !createError.message?.includes('already been registered')) {
+      console.error('[Portal] Failed to create auth user for parent:', createError)
+      // Continue anyway — the user might already exist
     }
 
     // Send Magic Link via Supabase Auth OTP
@@ -135,16 +126,12 @@ export function registerPortalRoutes(router: Router) {
     const { data: parent } = await sb.from('parents').select('id, name').ilike('email', normalizedEmail).maybeSingle()
     if (!parent) return res.json({ success: true })
 
-    // Ensure Supabase Auth user exists
-    const { data: userByEmail } = await sb.auth.admin.listUsers()
-    const existingUser = userByEmail?.users?.find(u => u.email?.toLowerCase() === normalizedEmail)
-    if (!existingUser) {
-      await sb.auth.admin.createUser({
-        email: normalizedEmail,
-        email_confirm: true,
-        user_metadata: { role: 'parent', parent_id: parent.id },
-      })
-    }
+    // Ensure Supabase Auth user exists (idempotent create)
+    await sb.auth.admin.createUser({
+      email: normalizedEmail,
+      email_confirm: true,
+      user_metadata: { role: 'parent', parent_id: parent.id },
+    })
 
     // Send Magic Link via Supabase Auth
     const origin = process.env.APP_PUBLIC_URL || 'https://dev.urbankids.club'

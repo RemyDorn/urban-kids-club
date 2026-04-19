@@ -81,10 +81,10 @@ select:focus { border-color:var(--primary); }
     <div class="card" style="padding:40px">
       <div class="logo">👋</div>
       <h2 style="margin-bottom:8px">Willkommen!</h2>
-      <p style="color:var(--muted);font-size:14px;margin-bottom:24px">Gib deine E-Mail-Adresse ein — wir senden dir einen Login-Link.</p>
+      <p style="color:var(--muted);font-size:14px;margin-bottom:24px">Gib deine E-Mail-Adresse ein und wir senden dir einen Magic Link zum Einloggen. Kein Passwort noetig.</p>
       <form id="loginForm">
         <input type="email" id="loginEmail" placeholder="deine@email.de" required autocomplete="email" style="margin-bottom:12px">
-        <button type="submit" class="btn" style="width:100%" id="loginBtn">Login-Link senden</button>
+        <button type="submit" class="btn" style="width:100%" id="loginBtn">Magic Link senden</button>
       </form>
       <div id="loginMsg" style="margin-top:16px"></div>
     </div>
@@ -143,6 +143,22 @@ function getSupabaseClient() {
   }
   return _supabaseClient;
 }
+
+// Listen for Supabase auth state changes (token refresh, sign-in, sign-out)
+(function() {
+  var sb = getSupabaseClient();
+  if (sb) {
+    sb.auth.onAuthStateChange(function(event, session) {
+      if (event === 'TOKEN_REFRESHED' && session) {
+        sessionToken = session.access_token;
+        localStorage.setItem('ukc_parent_session', sessionToken);
+      } else if (event === 'SIGNED_OUT') {
+        sessionToken = null;
+        localStorage.removeItem('ukc_parent_session');
+      }
+    });
+  }
+})();
 
 // Check for legacy magic link token in URL
 const urlParams = new URLSearchParams(window.location.search);
@@ -274,7 +290,14 @@ async function updateNavBadges() {
   } catch(e) { /* badge loading is non-critical */ }
 }
 
-function logout() {
+async function logout() {
+  // Notify server
+  try {
+    await fetch(API + '/api/portal/auth/logout', { method: 'POST', headers: { 'Authorization': 'Bearer ' + sessionToken } });
+  } catch(e) {}
+  // Sign out from Supabase client
+  const sb = getSupabaseClient();
+  if (sb) { try { await sb.auth.signOut(); } catch(e) {} }
   localStorage.removeItem('ukc_parent_session');
   sessionToken = null;
   parentData = null;
@@ -288,12 +311,17 @@ document.getElementById('loginForm').addEventListener('submit', async function(e
   const btn = document.getElementById('loginBtn');
   btn.disabled = true; btn.textContent = 'Wird gesendet...';
   try {
-    await fetch(API + '/api/portal/login', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ email }) });
-    document.getElementById('loginMsg').innerHTML = '<div class="card" style="background:#ecfdf5;border-color:#a7f3d0"><p style="font-weight:600;color:#059669">Login-Link gesendet!</p><p style="font-size:13px;color:#047857;margin-top:4px">Schau in dein E-Mail-Postfach und klicke auf den Link.</p></div>';
+    const resp = await fetch(API + '/api/portal/auth/magic-link', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ email }) });
+    if (resp.status === 429) {
+      document.getElementById('loginMsg').innerHTML = '<p style="color:#ef4444">Zu viele Versuche. Bitte spaeter erneut probieren.</p>';
+      btn.disabled = false; btn.textContent = 'Magic Link senden';
+      return;
+    }
+    document.getElementById('loginMsg').innerHTML = '<div class="card" style="background:#ecfdf5;border-color:#a7f3d0"><p style="font-weight:600;color:#059669">Login-Link gesendet!</p><p style="font-size:13px;color:#047857;margin-top:4px">Wir haben dir einen Login-Link per E-Mail geschickt. Klicke darauf, um dich einzuloggen.</p></div>';
     document.getElementById('loginForm').style.display = 'none';
   } catch(e) {
     document.getElementById('loginMsg').innerHTML = '<p style="color:#ef4444">Fehler beim Senden.</p>';
-    btn.disabled = false; btn.textContent = 'Login-Link senden';
+    btn.disabled = false; btn.textContent = 'Magic Link senden';
   }
 });
 
