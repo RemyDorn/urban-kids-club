@@ -138,6 +138,7 @@ export interface StoreIndexes {
   calendarByLocation: Map<ID, Set<ID>>
   calendarByInstructor: Map<ID, Set<ID>>
   waitlistByActivity: Map<ID, Set<ID>>
+  waitlistByCourseBlock: Map<ID, Set<ID>>
   waitlistByParent: Map<ID, Set<ID>>
   widgetsByProvider: Map<ID, Set<ID>>
   notesByParent: Map<ID, Set<ID>>
@@ -267,6 +268,7 @@ class Store {
       calendarByLocation: new Map(),
       calendarByInstructor: new Map(),
       waitlistByActivity: new Map(),
+      waitlistByCourseBlock: new Map(),
       waitlistByParent: new Map(),
       widgetsByProvider: new Map(),
       notesByParent: new Map(),

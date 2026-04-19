@@ -867,6 +867,7 @@ export function waitlistEntryFromDb(r: Row): WaitlistEntry {
   return {
     id: r.id,
     activityId: r.activity_id,
+    courseBlockId: r.course_block_id ?? undefined,
     parentId: r.parent_id,
     child: r.child_info ?? { name: '', age: 0, emergencyContact: '', emergencyPhone: '' },
     position: r.position ?? 0,
@@ -882,6 +883,7 @@ export function waitlistEntryToDb(w: Partial<WaitlistEntry> & { id?: ID }): Row 
   const row: Row = {}
   if (w.id !== undefined) row.id = w.id
   if (w.activityId !== undefined) row.activity_id = w.activityId
+  if (w.courseBlockId !== undefined) row.course_block_id = w.courseBlockId
   if (w.parentId !== undefined) row.parent_id = w.parentId
   if (w.child !== undefined) row.child_info = w.child
   if (w.position !== undefined) row.position = w.position

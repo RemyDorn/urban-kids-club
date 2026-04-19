@@ -15,7 +15,13 @@ export function registerWaitlistRoutes(router: Router) {
   router.get('/api/activities/:activityId/waitlist', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const entries = await WaitlistService.listByActivity(req.params.activityId)
+    const courseBlockId = req.query.courseBlockId
+    let entries
+    if (courseBlockId && typeof WaitlistService.listByCourseBlock === 'function') {
+      entries = await WaitlistService.listByCourseBlock(courseBlockId)
+    } else {
+      entries = await WaitlistService.listByActivity(req.params.activityId)
+    }
     res.json({ data: entries, count: entries.length })
   })
 

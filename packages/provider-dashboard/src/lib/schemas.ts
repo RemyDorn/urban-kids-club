@@ -242,6 +242,7 @@ export const CreateTrialSchema = z.object({
 
 export const AddToWaitlistSchema = z.object({
   activityId: z.string().min(1),
+  courseBlockId: z.string().min(1).optional(),
   parentId: z.string().min(1),
   child: ChildInfoSchema,
   priority: z.enum(['normal', 'sibling', 'returning', 'high']).optional(),

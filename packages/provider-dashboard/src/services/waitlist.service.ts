@@ -11,6 +11,7 @@ import type { WaitlistEntry, ChildInfo, ID } from '../types'
 
 export interface AddToWaitlistInput {
   activityId: ID
+  courseBlockId?: ID
   parentId: ID
   child: ChildInfo
   priority?: 'normal' | 'sibling' | 'returning' | 'high'
@@ -21,22 +22,27 @@ const OFFER_EXPIRY_HOURS = 48 // Frist zur Annahme
 export const WaitlistService = {
 
   add(input: AddToWaitlistInput): WaitlistEntry | { error: string } {
-    // Duplikat-Check
-    const existing = this.listByActivity(input.activityId)
-    const duplicate = existing.find(
+    // Duplikat-Check: Scope auf courseBlockId wenn vorhanden, sonst Activity-Level
+    const scopeEntries = input.courseBlockId
+      ? this.listByCourseBlock(input.courseBlockId)
+      : this.listByActivity(input.activityId)
+    const duplicate = scopeEntries.find(
       (e) => e.parentId === input.parentId && e.child.name === input.child.name
     )
     if (duplicate) {
-      return { error: 'Kind ist bereits auf der Warteliste für diesen Kurs' }
+      return { error: input.courseBlockId
+        ? 'Kind ist bereits auf der Warteliste für diesen Kursblock'
+        : 'Kind ist bereits auf der Warteliste für diesen Kurs' }
     }
 
     const id = generateId('wl')
     const now = new Date()
-    const maxPosition = existing.reduce((max, e) => Math.max(max, e.position), 0)
+    const maxPosition = scopeEntries.reduce((max, e) => Math.max(max, e.position), 0)
 
     const entry: WaitlistEntry = {
       id,
       activityId: input.activityId,
+      courseBlockId: input.courseBlockId,
       parentId: input.parentId,
       child: input.child,
       position: maxPosition + 1,
@@ -48,9 +54,16 @@ export const WaitlistService = {
     store.state.waitlistEntries.set(id, entry)
     store.addToIndex(store.indexes.waitlistByActivity, input.activityId, id)
     store.addToIndex(store.indexes.waitlistByParent, input.parentId, id)
+    if (input.courseBlockId) {
+      store.addToIndex(store.indexes.waitlistByCourseBlock, input.courseBlockId, id)
+    }
 
-    // Neuordnung nach Priorität
-    this._reorderByPriority(input.activityId)
+    // Neuordnung nach Priorität (innerhalb Block-Scope wenn vorhanden)
+    if (input.courseBlockId) {
+      this._reorderByPriority(input.activityId, input.courseBlockId)
+    } else {
+      this._reorderByPriority(input.activityId)
+    }
 
     return entry
   },
@@ -152,24 +165,43 @@ export const WaitlistService = {
     return this.listByActivity(activityId).length
   },
 
+  listByCourseBlock(courseBlockId: ID): WaitlistEntry[] {
+    const ids = store.getFromIndex(store.indexes.waitlistByCourseBlock, courseBlockId)
+    return Array.from(ids)
+      .map((id) => store.state.waitlistEntries.get(id)!)
+      .filter(Boolean)
+      .filter((e) => e.status === 'waiting' || e.status === 'offered')
+      .sort((a, b) => a.position - b.position)
+  },
+
   remove(id: ID): boolean {
     const entry = store.state.waitlistEntries.get(id)
     if (!entry) return false
 
     store.removeFromIndex(store.indexes.waitlistByActivity, entry.activityId, id)
     store.removeFromIndex(store.indexes.waitlistByParent, entry.parentId, id)
+    if (entry.courseBlockId) {
+      store.removeFromIndex(store.indexes.waitlistByCourseBlock, entry.courseBlockId, id)
+    }
     store.state.waitlistEntries.delete(id)
 
     // Positionen neu vergeben
-    this._reorderByPriority(entry.activityId)
+    if (entry.courseBlockId) {
+      this._reorderByPriority(entry.activityId, entry.courseBlockId)
+    } else {
+      this._reorderByPriority(entry.activityId)
+    }
 
     return true
   },
 
   // Neuordnung: Hohe Priorität zuerst, dann nach Zeitpunkt
-  _reorderByPriority(activityId: ID): void {
+  // Wenn courseBlockId angegeben, nur innerhalb dieses Blocks reordern
+  _reorderByPriority(activityId: ID, courseBlockId?: ID): void {
     const priorityOrder = { high: 0, sibling: 1, returning: 2, normal: 3 }
-    const entries = this.listByActivity(activityId)
+    const entries = courseBlockId
+      ? this.listByCourseBlock(courseBlockId)
+      : this.listByActivity(activityId)
 
     entries.sort((a, b) => {
       const pDiff = priorityOrder[a.priority] - priorityOrder[b.priority]

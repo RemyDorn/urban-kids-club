@@ -11,30 +11,42 @@ const OFFER_EXPIRY_HOURS = 3
 
 export const SupabaseWaitlistService = {
 
-  async add(input: { activityId: ID; parentId: ID; child: ChildInfo } | ID, parentId?: ID, childInfo?: ChildInfo): Promise<WaitlistEntry | { error: string }> {
+  async add(input: { activityId: ID; courseBlockId?: ID; parentId: ID; child: ChildInfo } | ID, parentId?: ID, childInfo?: ChildInfo): Promise<WaitlistEntry | { error: string }> {
     const activityId = typeof input === 'object' ? input.activityId : input
+    const courseBlockId = typeof input === 'object' ? input.courseBlockId : undefined
     const pid = typeof input === 'object' ? input.parentId : parentId!
     const child = typeof input === 'object' ? input.child : childInfo!
-    return this._addInternal(activityId, pid, child)
+    return this._addInternal(activityId, pid, child, courseBlockId)
   },
 
-  async _addInternal(activityId: ID, parentId: ID, childInfo: ChildInfo): Promise<WaitlistEntry | { error: string }> {
+  async _addInternal(activityId: ID, parentId: ID, childInfo: ChildInfo, courseBlockId?: ID): Promise<WaitlistEntry | { error: string }> {
     const sb = getServiceClient()
 
-    // Duplicate check
-    const { data: existing } = await sb.from(TABLE)
-      .select('id').eq('activity_id', activityId).eq('parent_id', parentId)
-      .in('status', ['waiting', 'offered'])
-    if (existing?.length) return { error: 'Kind ist bereits auf der Warteliste' }
+    // Duplicate check: scope to courseBlockId if provided, otherwise activity-level
+    let dupQuery = sb.from(TABLE).select('id').eq('parent_id', parentId).in('status', ['waiting', 'offered'])
+    if (courseBlockId) {
+      dupQuery = dupQuery.eq('course_block_id', courseBlockId)
+    } else {
+      dupQuery = dupQuery.eq('activity_id', activityId)
+    }
+    const { data: existing } = await dupQuery
+    if (existing?.length) return { error: courseBlockId
+      ? 'Kind ist bereits auf der Warteliste für diesen Kursblock'
+      : 'Kind ist bereits auf der Warteliste' }
 
-    // Get max position
-    const { data: maxRows } = await sb.from(TABLE)
-      .select('position').eq('activity_id', activityId)
-      .order('position', { ascending: false }).limit(1)
+    // Get max position (scoped to block or activity)
+    let posQuery = sb.from(TABLE).select('position').order('position', { ascending: false }).limit(1)
+    if (courseBlockId) {
+      posQuery = posQuery.eq('course_block_id', courseBlockId)
+    } else {
+      posQuery = posQuery.eq('activity_id', activityId)
+    }
+    const { data: maxRows } = await posQuery
     const maxPos = maxRows?.[0]?.position ?? 0
 
     const row = waitlistEntryToDb({
       activityId,
+      courseBlockId,
       parentId,
       child: childInfo,
       position: maxPos + 1,
@@ -58,6 +70,19 @@ export const SupabaseWaitlistService = {
     const offset = options?.offset ?? 0
     const { data, error } = await sb.from(TABLE).select('*')
       .eq('activity_id', activityId)
+      .in('status', ['waiting', 'offered'])
+      .order('position', { ascending: true })
+      .range(offset, offset + limit - 1)
+    if (error) throw error
+    return (data ?? []).map(waitlistEntryFromDb)
+  },
+
+  async listByCourseBlock(courseBlockId: ID, options?: { limit?: number; offset?: number }): Promise<WaitlistEntry[]> {
+    const sb = getServiceClient()
+    const limit = options?.limit ?? 100
+    const offset = options?.offset ?? 0
+    const { data, error } = await sb.from(TABLE).select('*')
+      .eq('course_block_id', courseBlockId)
       .in('status', ['waiting', 'offered'])
       .order('position', { ascending: true })
       .range(offset, offset + limit - 1)
