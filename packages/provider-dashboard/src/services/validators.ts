@@ -6,7 +6,7 @@
 // ============================================================
 
 import { store } from '../domain/store'
-import type { ID, ChildInfo, AgeRange, Schedule, Currency, OpeningHours, DayOfWeek } from '../types'
+import type { ID, ChildInfo, AgeRange, Schedule, Currency, DayOfWeek } from '../types'
 
 export interface ValidationResult {
   valid: boolean
@@ -268,11 +268,6 @@ export const Validators = {
 
     const oh = provider.openingHours
 
-    // Map DayOfWeek codes to opening hours day keys
-    const dayCodeToKey: Record<DayOfWeek, keyof NonNullable<typeof oh>> = {
-      MO: 'monday', TU: 'tuesday', WE: 'wednesday', TH: 'thursday',
-      FR: 'friday', SA: 'saturday', SU: 'sunday',
-    }
     const dayLabels: Record<DayOfWeek, string> = {
       MO: 'Montag', TU: 'Dienstag', WE: 'Mittwoch', TH: 'Donnerstag',
       FR: 'Freitag', SA: 'Samstag', SU: 'Sonntag',
@@ -284,9 +279,7 @@ export const Validators = {
     }
 
     const checkSlot = (day: DayOfWeek, startTime: string, endTime: string): string | null => {
-      const key = dayCodeToKey[day]
-      if (!key) return null
-      const dayHours = oh[key]
+      const dayHours = oh[day]
       if (dayHours === null || dayHours === undefined) {
         return `${dayLabels[day] || day} ist geschlossen. Kein Kurs an diesem Tag möglich.`
       }

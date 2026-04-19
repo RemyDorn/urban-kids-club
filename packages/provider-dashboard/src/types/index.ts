@@ -43,7 +43,7 @@ export interface OpeningHoursDay {
 }
 
 export type OpeningHours = {
-  [day in 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday']?: OpeningHoursDay | null  // null = closed
+  [day in DayOfWeek]?: OpeningHoursDay | null  // null = closed
 }
 
 export interface Provider {

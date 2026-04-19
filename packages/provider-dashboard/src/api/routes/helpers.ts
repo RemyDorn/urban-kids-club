@@ -92,14 +92,12 @@ export async function checkOpeningHours(providerId: string, schedule: any): Prom
   if (!oh) return null // no opening hours set = no restriction
 
   const dayLabels: Record<string, string> = { MO: 'Montag', TU: 'Dienstag', WE: 'Mittwoch', TH: 'Donnerstag', FR: 'Freitag', SA: 'Samstag', SU: 'Sonntag' }
-  const dayCodeToKey: Record<string, string> = { MO: 'monday', TU: 'tuesday', WE: 'wednesday', TH: 'thursday', FR: 'friday', SA: 'saturday', SU: 'sunday' }
   const toMin = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + (m || 0) }
 
   const slots = Array.isArray(schedule) ? schedule : (schedule.slots ?? [])
   for (const slot of slots) {
     const day = slot.day?.toUpperCase()
-    const key = dayCodeToKey[day] || day
-    const dayHours = oh[key]
+    const dayHours = oh[day]
     if (!dayHours) return `${dayLabels[day] || day} ist geschlossen. Kein Kurs an diesem Tag möglich.`
     const slotStart = toMin(slot.startTime)
     const slotEnd = toMin(slot.endTime)
