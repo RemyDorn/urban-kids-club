@@ -409,9 +409,35 @@ export function registerPublicRoutes(router: Router) {
     }
 
     if (paymentMethod === 'paypal') {
-      // PayPal integration is not yet complete (no capture/webhook for booking creation)
-      // Disable until properly implemented to prevent orphaned orders
-      return res.error(400, 'PayPal-Zahlung ist derzeit nicht verfügbar. Bitte wählen Sie Kartenzahlung oder Vor-Ort-Zahlung.')
+      try {
+        const { createPayPalOrder } = await import('../../lib/paypal')
+        const origin = req.raw.headers.origin || (req.raw.headers.host ? `https://${req.raw.headers.host}` : 'https://app.urbankids.club')
+        const returnUrl = `${origin}/api/paypal/capture?slug=${encodeURIComponent(slug)}`
+        const cancelUrl = `${origin}/embed/${slug}/calendar`
+        const { orderId, approvalUrl } = await createPayPalOrder({
+          providerId: provider.id,
+          amount: price,
+          currency: 'EUR',
+          courseName: activity.title,
+          returnUrl,
+          cancelUrl,
+          metadata: {
+            provider_id: provider.id, activity_id: activityId, block_id: blockId || '',
+            child_first: child.firstName, child_last: child.lastName, child_year: String(child.birthYear),
+            parent_first: parent.firstName, parent_last: parent.lastName,
+            parent_email: parent.email, parent_phone: parent.phone || '',
+            booked_date: bookedDate || '',
+          },
+        })
+        const responseData = { success: true, redirect: approvalUrl, paypalOrderId: orderId }
+        if (idempotencyKey) {
+          idempotencyStore.set(idempotencyKey, { response: responseData, expiresAt: Date.now() + 5 * 60 * 1000 })
+        }
+        return res.json(responseData)
+      } catch (ppErr: any) {
+        console.error('[PayPal] Order creation failed:', ppErr)
+        return res.error(500, 'PayPal-Zahlung fehlgeschlagen: ' + (ppErr.message || 'Unbekannter Fehler'))
+      }
     }
 
     res.error(400, 'Ungueltige Zahlungsart')
@@ -485,6 +511,74 @@ export function registerPublicRoutes(router: Router) {
       }
     }
     res.json({ received: true })
+  })
+
+  // PayPal: Capture after user approves payment (return URL)
+  router.get('/api/paypal/capture', async (req, res) => {
+    const token = req.query.token as string // PayPal order ID
+    const slug = req.query.slug as string
+    if (!token || !slug) return res.error(400, 'Missing token or slug')
+
+    try {
+      const provider = await ProviderService.getBySlug(slug)
+      if (!provider) return res.error(404, 'Provider nicht gefunden')
+
+      const { capturePayPalOrder } = await import('../../lib/paypal')
+      const result = await capturePayPalOrder(provider.id, token)
+
+      if (result.status !== 'COMPLETED') {
+        console.error('[PayPal] Capture status:', result.status)
+        return res.error(400, 'PayPal-Zahlung nicht abgeschlossen')
+      }
+
+      const meta = result.metadata
+      const db = getServiceClient()
+
+      // Idempotency: check if booking already exists for this PayPal order
+      const { data: existing } = await db.from('provider_bookings')
+        .select('id').eq('paypal_order_id', token).maybeSingle()
+      if (existing) {
+        // Already processed — redirect to success
+        const { data: provExtra } = await db.from('providers')
+          .select('booking_redirect_url').eq('id', provider.id).single()
+        const origin = req.raw.headers.origin || (req.raw.headers.host ? `https://${req.raw.headers.host}` : 'https://app.urbankids.club')
+        const redirectUrl = provExtra?.booking_redirect_url || `${origin}/embed/${slug}/booking-success`
+        ;(res as any).writeHead(302, { Location: redirectUrl })
+        ;(res as any).end()
+        return
+      }
+
+      // Create booking
+      const { CheckoutService } = await import('../../services/supabase/checkout.service')
+      await CheckoutService.createBooking({
+        providerId: meta.provider_id || provider.id,
+        activityId: meta.activity_id,
+        blockId: meta.block_id || undefined,
+        childFirstName: meta.child_first,
+        childLastName: meta.child_last,
+        childBirthYear: parseInt(meta.child_year) || 2020,
+        parentFirstName: meta.parent_first,
+        parentLastName: meta.parent_last,
+        parentEmail: meta.parent_email,
+        parentPhone: meta.parent_phone || '',
+        bookedDate: meta.booked_date || undefined,
+        paymentMethod: 'paypal',
+        amount: result.amount,
+        currency: result.currency,
+        paypalOrderId: token,
+      })
+
+      // Redirect to success page
+      const { data: provExtra } = await db.from('providers')
+        .select('booking_redirect_url').eq('id', provider.id).single()
+      const origin = req.raw.headers.origin || (req.raw.headers.host ? `https://${req.raw.headers.host}` : 'https://app.urbankids.club')
+      const redirectUrl = provExtra?.booking_redirect_url || `${origin}/embed/${slug}/booking-success`
+      ;(res as any).writeHead(302, { Location: redirectUrl })
+      ;(res as any).end()
+    } catch (err: any) {
+      console.error('[PayPal] Capture failed:', err)
+      res.error(500, 'PayPal-Zahlung fehlgeschlagen: ' + (err.message || 'Unbekannter Fehler'))
+    }
   })
 
   // Public: Get activity details + payment config for checkout form

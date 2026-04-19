@@ -2658,10 +2658,34 @@
         </div>
         <div id="activityModal" class="hidden"></div>
       `
+      // Load rating badges asynchronously
+      activities.forEach(a => {
+        api('/activities/' + a.id + '/rating').then(r => {
+          const d = r.data || r
+          const el = document.getElementById('rating-badge-' + a.id)
+          if (el && d.count > 0) el.innerHTML = ratingBadge(d.average, d.count)
+        }).catch(() => {})
+      })
     }
 
     const statusColors = { published: 'bg-green-100 text-green-700', draft: 'bg-gray-100 text-gray-600', cancelled: 'bg-red-100 text-red-700', archived: 'bg-gray-100 text-gray-500' }
     const statusLabels = { published: 'Aktiv', draft: 'Entwurf', cancelled: 'Abgesagt', archived: 'Archiviert' }
+
+    function starSvg(filled, size) {
+      size = size || 14
+      return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="' + (filled ? '#f59e0b' : 'none') + '" stroke="' + (filled ? '#f59e0b' : '#d1d5db') + '" stroke-width="2" style="display:inline-block;vertical-align:middle"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>'
+    }
+
+    function renderStarsInline(rating, size) {
+      var html = ''
+      for (var i = 1; i <= 5; i++) html += starSvg(i <= Math.round(rating), size)
+      return html
+    }
+
+    function ratingBadge(avg, count) {
+      if (!count) return ''
+      return '<span class="inline-flex items-center gap-1 text-xs text-amber-600 font-medium">' + starSvg(true, 12) + ' ' + avg.toFixed(1) + ' <span class="text-gray-400">(' + count + ')</span></span>'
+    }
 
     function activityCard(a) {
       const scheduleText = a.schedule.type === 'recurring' ? a.schedule.slots.map(s => s.day + ' ' + s.startTime + '–' + s.endTime).join(', ')
@@ -2673,6 +2697,7 @@
           <div class="flex items-center gap-2 mb-2 flex-wrap">
             <h3 class="font-semibold text-gray-900 text-sm md:text-base">${escapeHtml(a.title)}</h3>
             <span class="px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[a.status] || 'bg-gray-100'}">${statusLabels[a.status] || escapeHtml(a.status)}</span>
+            <span id="rating-badge-${a.id}"></span>
           </div>
           <p class="text-xs md:text-sm text-gray-500 mb-2 line-clamp-2">${escapeHtml(a.description)}</p>
           <div class="flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500 mb-3">
@@ -2686,6 +2711,7 @@
             ${a.status === 'draft' ? `<button onclick="publishActivity('${a.id}')" class="px-2.5 py-1 text-xs font-medium bg-green-500 text-white rounded-lg hover:bg-green-600">Veröffentlichen</button>` : ''}
             <button onclick="showActivityForm('${a.id}')" class="px-2.5 py-1 text-xs font-medium bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">Bearbeiten</button>
             ${a.status === 'published' ? `<button onclick="showInviteModal('${a.id}', '${escapeHtml(a.title)}')" class="px-2.5 py-1 text-xs font-medium bg-brand-50 text-brand-700 rounded-lg hover:bg-brand-100">📧 Einladen</button>` : ''}
+            <button onclick="showReviewsModal('${a.id}', '${escapeHtml(a.title)}')" class="px-2.5 py-1 text-xs font-medium bg-amber-50 text-amber-700 rounded-lg hover:bg-amber-100" title="Bewertungen anzeigen">&#9733; Bewertungen</button>
             <button onclick="duplicateActivity('${a.id}')" class="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200" title="Duplizieren">
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
             </button>
@@ -2695,6 +2721,63 @@
           </div>
         </div>
       `
+    }
+
+    // Reviews modal
+    async function showReviewsModal(activityId, title) {
+      const modal = document.getElementById('activityModal')
+      modal.className = 'cal-modal-backdrop'
+      modal.onclick = (e) => { if (e.target === modal) modal.className = 'hidden' }
+      modal.innerHTML = '<div class="cal-modal fade-in" style="width:550px"><div class="text-center py-8"><div class="text-2xl mb-2">&#9733;</div><p class="text-gray-500">Lade Bewertungen...</p></div></div>'
+
+      try {
+        const [ratingRes, reviewsRes] = await Promise.all([
+          api('/activities/' + activityId + '/rating'),
+          api('/reviews?activityId=' + activityId)
+        ])
+        const rating = ratingRes.data || ratingRes
+        const reviews = (reviewsRes.data || [])
+
+        let html = '<div class="cal-modal fade-in" style="width:550px">'
+        html += '<div class="flex items-center justify-between mb-4">'
+        html += '<h2 class="text-lg font-bold text-gray-900">Bewertungen: ' + escapeHtml(title) + '</h2>'
+        html += '<button onclick="document.getElementById(\'activityModal\').className=\'hidden\'" class="text-gray-400 hover:text-gray-600 text-xl">&times;</button>'
+        html += '</div>'
+
+        // Summary
+        if (rating.count > 0) {
+          html += '<div class="bg-amber-50 rounded-xl p-4 mb-4 flex items-center gap-4">'
+          html += '<div class="text-center"><div class="text-3xl font-bold text-amber-600">' + rating.average.toFixed(1) + '</div>'
+          html += '<div class="text-xs text-gray-500">' + rating.count + ' Bewertung' + (rating.count !== 1 ? 'en' : '') + '</div></div>'
+          html += '<div>' + renderStarsInline(rating.average, 20) + '</div>'
+          html += '</div>'
+        } else {
+          html += '<div class="bg-gray-50 rounded-xl p-4 mb-4 text-center text-sm text-gray-500">Noch keine Bewertungen fuer diesen Kurs.</div>'
+        }
+
+        // Review list
+        if (reviews.length > 0) {
+          for (var i = 0; i < reviews.length; i++) {
+            var r = reviews[i]
+            var date = new Date(r.created_at).toLocaleDateString('de-DE')
+            html += '<div class="border-b border-gray-100 py-3 last:border-0">'
+            html += '<div class="flex items-center justify-between mb-1">'
+            html += '<span class="text-sm font-medium text-gray-900">' + escapeHtml(r.parentName || 'Elternteil') + '</span>'
+            html += '<span class="text-xs text-gray-400">' + date + '</span>'
+            html += '</div>'
+            html += '<div class="mb-1">' + renderStarsInline(r.rating, 14) + '</div>'
+            if (r.comment) {
+              html += '<p class="text-sm text-gray-600 mt-1">' + escapeHtml(r.comment) + '</p>'
+            }
+            html += '</div>'
+          }
+        }
+
+        html += '</div>'
+        modal.innerHTML = html
+      } catch(e) {
+        modal.innerHTML = '<div class="cal-modal fade-in" style="width:550px"><div class="text-center py-8"><p class="text-red-500">Fehler beim Laden der Bewertungen.</p><button onclick="document.getElementById(\'activityModal\').className=\'hidden\'" class="mt-4 px-4 py-2 bg-gray-100 rounded-lg text-sm">Schliessen</button></div></div>'
+      }
     }
 
     // Activity CRUD actions
@@ -7295,9 +7378,10 @@
 
     async function loadPaymentsTab() {
       try {
-        const [stripeRes, paymentRes] = await Promise.all([
+        const [stripeRes, paymentRes, sepaRes] = await Promise.all([
           api('/stripe/status').catch(() => ({ data: { connected: false, testMode: false, platformConfigured: false } })),
           api('/providers/' + currentProvider.id + '/payment-config').catch(() => ({ data: {} })),
+          api('/providers/' + currentProvider.id + '/sepa/mandates').catch(() => ({ data: [] })),
         ])
         const stripe = stripeRes.data || {}
         const payment = paymentRes.data || {}
@@ -7427,12 +7511,82 @@
         summaryHtml += '<span class="text-sm text-gray-600">PayPal</span>'
         summaryHtml += (payment.paypal_connected ? '<span class="text-sm font-medium text-green-600">Aktiv</span>' : '<span class="text-sm font-medium text-gray-400">Inaktiv</span>')
         summaryHtml += '</div>'
-        summaryHtml += '<div class="flex items-center justify-between py-2">'
+        summaryHtml += '<div class="flex items-center justify-between py-2 border-b border-gray-100">'
         summaryHtml += '<span class="text-sm text-gray-600">Vor-Ort-Zahlungen</span>'
         summaryHtml += '<span class="text-sm font-medium text-green-600">Immer verfuegbar</span>'
+        summaryHtml += '</div>'
+        summaryHtml += '<div class="flex items-center justify-between py-2">'
+        summaryHtml += '<span class="text-sm text-gray-600">SEPA-Lastschrift</span>'
+        const sepaActiveCount = (sepaRes.data || []).filter(m => m.status === 'active').length
+        summaryHtml += (sepaActiveCount > 0 ? '<span class="text-sm font-medium text-green-600">' + sepaActiveCount + ' Mandate aktiv</span>' : '<span class="text-sm font-medium text-gray-400">Keine Mandate</span>')
         summaryHtml += '</div></div></div>'
 
-        content.innerHTML = stripeHtml + paypalHtml + summaryHtml
+        // --- SEPA-Lastschrift Card ---
+        const sepaMandates = sepaRes.data || []
+        const provSettings = currentProvider || {}
+        let sepaHtml = '<div class="bg-white rounded-xl border border-brand-200 p-6">'
+        sepaHtml += '<div class="flex items-center justify-between mb-5">'
+        sepaHtml += '<div class="flex items-center gap-3">'
+        sepaHtml += '<div class="w-11 h-11 bg-emerald-100 rounded-xl flex items-center justify-center text-xl">🏦</div>'
+        sepaHtml += '<div><div class="text-sm font-semibold text-gray-900">SEPA-Lastschrift</div>'
+        sepaHtml += '<div class="text-xs text-gray-500">Mandate verwalten &amp; Bankdaten</div></div>'
+        sepaHtml += '</div>'
+        const sepaActive = sepaMandates.filter(m => m.status === 'active').length
+        if (sepaActive > 0) {
+          sepaHtml += '<span class="inline-flex items-center gap-1.5 bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-semibold">' + sepaActive + ' aktiv</span>'
+        } else {
+          sepaHtml += '<span class="inline-flex items-center gap-1.5 bg-gray-100 text-gray-500 px-3 py-1 rounded-full text-xs font-semibold">Keine Mandate</span>'
+        }
+        sepaHtml += '</div>'
+
+        // Bank details summary
+        const bankIban = provSettings.iban || ''
+        const bankBic = provSettings.bic || ''
+        const bankName = provSettings.bankName || ''
+        if (bankIban) {
+          const maskedIban = bankIban.replace(/\s/g, '').length > 8 ? bankIban.substring(0, 4) + ' **** **** ' + bankIban.slice(-4) : bankIban
+          sepaHtml += '<div class="bg-gray-50 rounded-lg p-4 mb-4">'
+          sepaHtml += '<div class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Ihre Bankverbindung</div>'
+          sepaHtml += '<div class="grid grid-cols-2 gap-3 text-sm">'
+          sepaHtml += '<div><span class="text-gray-500">IBAN:</span> <span class="font-mono font-medium">' + escapeHtml(maskedIban) + '</span></div>'
+          if (bankBic) sepaHtml += '<div><span class="text-gray-500">BIC:</span> <span class="font-mono font-medium">' + escapeHtml(bankBic) + '</span></div>'
+          if (bankName) sepaHtml += '<div><span class="text-gray-500">Bank:</span> <span class="font-medium">' + escapeHtml(bankName) + '</span></div>'
+          sepaHtml += '</div></div>'
+        } else {
+          sepaHtml += '<div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 text-xs text-amber-700">Bankverbindung noch nicht hinterlegt. Bitte unter Einstellungen &rarr; Steuern &amp; Finanzen eingeben.</div>'
+        }
+
+        // Mandate list
+        if (sepaMandates.length > 0) {
+          sepaHtml += '<div class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">SEPA-Mandate (' + sepaMandates.length + ')</div>'
+          sepaHtml += '<div class="space-y-2 max-h-64 overflow-y-auto">'
+          for (const m of sepaMandates) {
+            const statusColors = { active: 'bg-green-100 text-green-700', pending: 'bg-yellow-100 text-yellow-700', cancelled: 'bg-gray-100 text-gray-500', failed: 'bg-red-100 text-red-700' }
+            const statusLabels = { active: 'Aktiv', pending: 'Ausstehend', cancelled: 'Widerrufen', failed: 'Fehlgeschlagen' }
+            const sColor = statusColors[m.status] || 'bg-gray-100 text-gray-500'
+            const sLabel = statusLabels[m.status] || m.status
+            const signedDate = m.signedAt ? new Date(m.signedAt).toLocaleDateString('de-DE') : '-'
+            sepaHtml += '<div class="flex items-center justify-between p-3 border border-gray-100 rounded-lg hover:bg-gray-50 transition-colors">'
+            sepaHtml += '<div class="flex items-center gap-3">'
+            sepaHtml += '<div class="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center text-xs font-bold text-gray-500">🏦</div>'
+            sepaHtml += '<div>'
+            sepaHtml += '<div class="text-sm font-medium text-gray-900">' + escapeHtml(m.accountHolder || '-') + '</div>'
+            sepaHtml += '<div class="text-xs text-gray-500">' + escapeHtml(m.ibanMasked || m.iban || '-') + '</div>'
+            sepaHtml += '</div></div>'
+            sepaHtml += '<div class="text-right">'
+            sepaHtml += '<div class="text-xs font-mono text-gray-400 mb-1">' + escapeHtml(m.mandateReference || '-') + '</div>'
+            sepaHtml += '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ' + sColor + '">' + sLabel + '</span>'
+            sepaHtml += '<div class="text-xs text-gray-400 mt-0.5">Erteilt: ' + signedDate + '</div>'
+            sepaHtml += '</div></div>'
+          }
+          sepaHtml += '</div>'
+        }
+
+        // Create new mandate button
+        sepaHtml += '<button onclick="showCreateSepaMandate()" class="mt-4 w-full border-2 border-dashed border-gray-200 rounded-lg py-3 text-sm text-gray-500 hover:border-brand-300 hover:text-brand-600 transition-colors flex items-center justify-center gap-2"><span class="text-lg">+</span> SEPA-Mandat erstellen</button>'
+        sepaHtml += '</div>'
+
+        content.innerHTML = stripeHtml + paypalHtml + summaryHtml + sepaHtml
       } catch(e) {
         document.getElementById('paymentsLoading').innerHTML = '<p class="text-red-500">Fehler beim Laden des Zahlungsstatus.</p>'
       }
@@ -7447,6 +7601,76 @@
         showToast('PayPal verbunden!', 'success')
         settingsTab = 'payments'; renderSettings()
       } catch(e) { showToast('Fehler: ' + (e.message || 'Verbindung fehlgeschlagen'), 'error') }
+    }
+
+    async function showCreateSepaMandate() {
+      const modal = document.getElementById('calModal')
+      modal.className = 'cal-modal-backdrop'
+      modal.onclick = (e) => { if (e.target === modal) modal.className = 'hidden' }
+      modal.innerHTML = '<div class="cal-modal fade-in" style="max-width:420px"><div class="text-center text-gray-400 py-8">Lade Elternliste...</div></div>'
+
+      // Load parents for pre-fill
+      let parents = []
+      try {
+        const res = await api('/providers/' + currentProvider.id + '/parents?limit=200')
+        parents = res.data || []
+      } catch(e) {}
+
+      let parentOptions = '<option value="">-- Elternteil auswaehlen --</option>'
+      for (const p of parents) {
+        parentOptions += '<option value="' + escapeHtml(p.id) + '" data-name="' + escapeHtml(p.name || '') + '">' + escapeHtml(p.name || p.email || '-') + ' (' + escapeHtml(p.email || '') + ')</option>'
+      }
+
+      modal.innerHTML = `
+        <div class="cal-modal fade-in" style="max-width:420px">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-bold text-gray-900">SEPA-Mandat erstellen</h3>
+            <button onclick="document.getElementById('calModal').className='hidden'" class="text-gray-400 hover:text-gray-600">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+          </div>
+          <div class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Elternteil</label>
+              <select id="sepaMandateParent" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" onchange="var opt=this.options[this.selectedIndex];document.getElementById('sepaMandateHolder').value=opt.dataset.name||''">
+                ${parentOptions}
+              </select>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Kontoinhaber</label>
+              <input id="sepaMandateHolder" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Vor- und Nachname">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">IBAN</label>
+              <input id="sepaMandateIban" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono" placeholder="DE89 3704 0044 0532 0130 00">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">BIC (optional)</label>
+              <input id="sepaMandateBic" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono" placeholder="COBADEFFXXX">
+            </div>
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-800">
+              <strong>Hinweis:</strong> Das Mandat wird mit Status "Aktiv" erstellt. Eine Mandatsreferenz wird automatisch generiert.
+            </div>
+            <button onclick="submitSepaMandate()" class="w-full bg-brand-500 text-white px-4 py-2.5 rounded-lg text-sm font-semibold hover:bg-brand-600">Mandat erstellen</button>
+          </div>
+        </div>
+      `
+    }
+
+    async function submitSepaMandate() {
+      const parentId = document.getElementById('sepaMandateParent')?.value
+      const accountHolder = document.getElementById('sepaMandateHolder')?.value?.trim()
+      const iban = document.getElementById('sepaMandateIban')?.value?.trim()
+      const bic = document.getElementById('sepaMandateBic')?.value?.trim()
+      if (!parentId) { showToast('Bitte Elternteil auswaehlen', 'error'); return }
+      if (!accountHolder) { showToast('Bitte Kontoinhaber eingeben', 'error'); return }
+      if (!iban) { showToast('Bitte IBAN eingeben', 'error'); return }
+      try {
+        await api('/sepa/mandates', 'POST', { providerId: currentProvider.id, parentId, accountHolder, iban, bic: bic || undefined })
+        showToast('SEPA-Mandat erstellt!', 'success')
+        document.getElementById('calModal').className = 'hidden'
+        settingsTab = 'payments'; renderSettings()
+      } catch(e) { showToast('Fehler: ' + (e.message || 'Mandat konnte nicht erstellt werden'), 'error') }
     }
 
     function renderFinanceTab(p, s) {
@@ -7590,27 +7814,38 @@
           <div class="bg-white rounded-xl border border-brand-200 p-6 mt-6">
             <h3 class="font-semibold text-gray-900 mb-4">Stornierungsbedingungen</h3>
             <div class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Kostenlose Stornierung bis</label>
+                <div class="flex items-center gap-2">
+                  <input id="cancelDeadline" type="number" min="0" value="48" class="w-24 border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                  <span class="text-sm text-gray-500">Stunden vor Kursbeginn</span>
+                </div>
+                <div class="text-xs text-gray-400 mt-1">Stornierungen innerhalb dieser Frist werden mit Gebuehr berechnet</div>
+              </div>
               <div class="grid grid-cols-2 gap-4">
                 <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-1">Stornogebühr-Art</label>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Stornogebuehr-Art</label>
                   <select id="cancelFeeType" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
-                    <option value="fixed">Fester Betrag</option>
-                    <option value="percent">Prozentual</option>
+                    <option value="fixed">Fester Betrag (EUR)</option>
+                    <option value="percent">Prozentual (%)</option>
                   </select>
                 </div>
                 <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-1">Gebühr (EUR / %)</label>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Gebuehr nach Fristablauf</label>
                   <input id="cancelFeeValue" type="number" step="0.01" min="0" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="z.B. 10">
                 </div>
               </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Stornofrist (Stunden vor Kursbeginn)</label>
-                <input id="cancelDeadline" type="number" min="0" value="48" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
-                <div class="text-xs text-gray-400 mt-1">Stornierungen innerhalb dieser Frist werden mit Gebühr berechnet</div>
+              <div class="bg-green-50 border border-green-200 rounded-lg p-3">
+                <div class="flex items-center gap-2">
+                  <svg class="w-4 h-4 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                  <span class="text-sm text-green-700 font-medium">Volle Rueckerstattung bei Absage durch den Anbieter</span>
+                </div>
+                <p class="text-xs text-green-600 mt-1 ml-6">Wenn Sie einen Kurs absagen, erhalten die Eltern immer eine volle Rueckerstattung.</p>
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Stornierungshinweis (optional)</label>
-                <textarea id="cancelText" rows="3" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="z.B. Stornierungen sind bis 48 Stunden vor Kursbeginn kostenlos möglich..."></textarea>
+                <textarea id="cancelText" rows="3" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="z.B. Stornierungen sind bis 48 Stunden vor Kursbeginn kostenlos moeglich. Danach faellt eine Gebuehr von 10 EUR an."></textarea>
+                <div class="text-xs text-gray-400 mt-1">Dieser Text wird Eltern bei der Buchung angezeigt</div>
               </div>
               <button onclick="saveCancellationPolicy()" class="bg-brand-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-brand-600">Stornierungsbedingungen speichern</button>
             </div>

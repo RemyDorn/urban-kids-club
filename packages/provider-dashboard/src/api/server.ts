@@ -361,7 +361,12 @@ window._bookCourse=async function(title,date,time){
       html+='<button id="btnBack2" style="margin-bottom:12px;padding:6px 12px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;color:#64748b;font-size:12px;cursor:pointer">← Zurück</button>'
       html+='<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:12px">Zahlungsart wählen</div>'
       if(hasOnline){
-        html+='<button class="pay-opt" data-method="online" style="width:100%;padding:14px 16px;border:2px solid #e2e8f0;border-radius:12px;background:#fff;cursor:pointer;display:flex;align-items:center;gap:12px;margin-bottom:8px;transition:all 0.2s"><span style="font-size:24px">💳</span><div style="text-align:left"><div style="font-weight:600;font-size:14px;color:#1f2937">Jetzt online bezahlen</div><div style="font-size:12px;color:#64748b">'+(prov.stripeConnected?'Kreditkarte, Apple Pay':'')+(prov.stripeConnected&&prov.paypalConnected?' oder ':'')+(prov.paypalConnected?'PayPal':'')+'</div></div></button>'
+        if(prov.stripeConnected){
+          html+='<button class="pay-opt" data-method="stripe" style="width:100%;padding:14px 16px;border:2px solid #e2e8f0;border-radius:12px;background:#fff;cursor:pointer;display:flex;align-items:center;gap:12px;margin-bottom:8px;transition:all 0.2s"><span style="font-size:24px">💳</span><div style="text-align:left"><div style="font-weight:600;font-size:14px;color:#1f2937">Kreditkarte / Apple Pay</div><div style="font-size:12px;color:#64748b">Sicher bezahlen via Stripe</div></div></button>'
+        }
+        if(prov.paypalConnected){
+          html+='<button class="pay-opt" data-method="paypal" style="width:100%;padding:14px 16px;border:2px solid #e2e8f0;border-radius:12px;background:#fff;cursor:pointer;display:flex;align-items:center;gap:12px;margin-bottom:8px;transition:all 0.2s"><span style="font-size:24px">🅿️</span><div style="text-align:left"><div style="font-weight:600;font-size:14px;color:#1f2937">PayPal</div><div style="font-size:12px;color:#64748b">Mit PayPal-Konto bezahlen</div></div></button>'
+        }
       }
       if(hasOnsite){
         html+='<button class="pay-opt" data-method="onsite" style="width:100%;padding:14px 16px;border:2px solid #e2e8f0;border-radius:12px;background:#fff;cursor:pointer;display:flex;align-items:center;gap:12px;margin-bottom:8px;transition:all 0.2s"><span style="font-size:24px">🏠</span><div style="text-align:left"><div style="font-weight:600;font-size:14px;color:#1f2937">Vor Ort bezahlen</div><div style="font-size:12px;color:#64748b">Zahlung beim ersten Termin</div></div></button>'
@@ -416,7 +421,7 @@ window._bookCourse=async function(title,date,time){
         window._checkoutChild={firstName:ckF,lastName:ckL,birthYear:parseInt(ckY)}
         window._checkoutParent={firstName:cpF,lastName:cpL,email:cpE,phone:cpP}
         if(!hasOnline){window._checkoutPayMethod='onsite'}
-        else if(!hasOnsite){window._checkoutPayMethod='stripe'}
+        else if(!hasOnsite){window._checkoutPayMethod=prov.stripeConnected?'stripe':'paypal'}
         step=2;renderStep()
       }
     }
@@ -427,7 +432,8 @@ window._bookCourse=async function(title,date,time){
         btn.onmouseover=function(){this.style.borderColor='${brandColor}'}
         btn.onmouseout=function(){this.style.borderColor='#e2e8f0'}
         btn.onclick=function(){
-          window._checkoutPayMethod=this.dataset.method==='online'?(prov.stripeConnected?'stripe':'paypal'):'onsite'
+          const m=this.dataset.method
+          window._checkoutPayMethod=m==='stripe'?'stripe':m==='paypal'?'paypal':'onsite'
           step=3;renderStep()
         }
       })
@@ -489,7 +495,8 @@ if(params.get('font')){document.body.style.fontFamily=params.get('font')+',syste
     const{data}=await r.json()
     const published=data.filter(a=>a.status==='published')
     if(!published.length){app.innerHTML='<div class="empty">Aktuell keine Kurse.</div>';return}
-    app.innerHTML=published.map(a=>'<div class="course"><div class="course-title">'+esc(a.title)+'</div><div class="course-meta"><span class="badge">'+esc(a.category)+'</span> '+(a.ageRange?.min||'?')+'-'+(a.ageRange?.max||'?')+' Jahre · '+(a.duration||'?')+' Min.'+(a.pricing?.[0]?.amount?' · '+a.pricing[0].amount+'€':'')+'</div>'+(a.description?'<p style="font-size:13px;color:#3C2225;margin-top:8px">'+esc(a.description.substring(0,150))+(a.description.length>150?'...':'')+'</p>':'')+'</div>').join('')+'<div style="text-align:center;padding:8px 0;font-size:10px"><a href="https://urbankidsclub.de" target="_blank" rel="noopener" style="color:#94a3b8;text-decoration:none;transition:color 0.2s" onmouseover="this.style.color=\'#6B7280\'" onmouseout="this.style.color=\'#94a3b8\'">Powered by Urban Kids Club</a></div>'
+    app.innerHTML=published.map(a=>'<div class="course"><div class="course-title">'+esc(a.title)+'</div><div class="course-meta"><span class="badge">'+esc(a.category)+'</span> '+(a.ageRange?.min||'?')+'-'+(a.ageRange?.max||'?')+' Jahre · '+(a.duration||'?')+' Min.'+(a.pricing?.[0]?.amount?' · '+a.pricing[0].amount+'€':'')+'<span id="rb-'+a.id+'" style="margin-left:6px"></span></div>'+(a.description?'<p style="font-size:13px;color:#3C2225;margin-top:8px">'+esc(a.description.substring(0,150))+(a.description.length>150?'...':'')+'</p>':'')+'</div>').join('')+'<div style="text-align:center;padding:8px 0;font-size:10px"><a href="https://urbankidsclub.de" target="_blank" rel="noopener" style="color:#94a3b8;text-decoration:none;transition:color 0.2s" onmouseover="this.style.color=\'#6B7280\'" onmouseout="this.style.color=\'#94a3b8\'">Powered by Urban Kids Club</a></div>'
+    published.forEach(a=>{fetch('${apiBase}/api/public/activities/'+a.id+'/rating').then(r=>r.json()).then(res=>{var d=res.data||res;if(d.count>0){var el=document.getElementById('rb-'+a.id);if(el)el.innerHTML='<span style="color:#d97706;font-weight:600">\\u2605 '+d.average.toFixed(1)+' \\u00B7 '+d.count+' Bewertung'+(d.count!==1?'en':'')+'</span>'}}).catch(()=>{})})
   }catch(e){app.innerHTML='<div class="empty">Fehler beim Laden.</div>'}
 })()
 </script></body></html>`
