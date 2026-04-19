@@ -26,3 +26,16 @@ function log(level: LogLevel, module: string, msg: string, data?: any) {
   const fn = level === 'error' ? console.error : level === 'warn' ? console.warn : console.log
   fn(JSON.stringify(entry))
 }
+
+// ============================================================
+// Job tracking (shared state for health check)
+// ============================================================
+let _lastJobRun: string | null = null
+
+export function setLastJobRun(timestamp: string) {
+  _lastJobRun = timestamp
+}
+
+export function getLastJobRun(): string | null {
+  return _lastJobRun
+}

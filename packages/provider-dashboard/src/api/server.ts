@@ -9,7 +9,8 @@ import { fileURLToPath } from 'node:url'
 import zlib from 'node:zlib'
 import { Router } from './router'
 import { registerRoutes } from './routes'
-import { logger } from '../lib/logger'
+import { logger, setLastJobRun } from '../lib/logger'
+import { runExpireWaitlistJob, runSendRemindersJob, runTrialFollowupsJob } from './routes/admin'
 
 const PORT = parseInt(process.env.PORT ?? '3000')
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -18,13 +19,11 @@ const USE_SUPABASE = process.env.USE_SUPABASE === 'true'
 // ============================================================
 // Job tracking & retry logic
 // ============================================================
-export let lastJobRun: string | null = null
-
 async function runWithRetry(name: string, fn: () => Promise<void>, maxRetries = 3) {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       await fn()
-      lastJobRun = new Date().toISOString()
+      setLastJobRun(new Date().toISOString())
       return
     } catch (e) {
       logger.error('Job', `${name} attempt ${attempt}/${maxRetries} failed`, { error: String(e) })
@@ -857,6 +856,11 @@ const server = createServer((req, res) => {
 
 const modeLabel = USE_SUPABASE ? 'Supabase' : 'In-Memory'
 
+// ============================================================
+// Background job interval IDs (for graceful shutdown)
+// ============================================================
+const jobIntervals: ReturnType<typeof setInterval>[] = []
+
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`
 ┌─────────────────────────────────────────────────┐
@@ -873,50 +877,84 @@ server.listen(PORT, '0.0.0.0', () => {
 └─────────────────────────────────────────────────┘
   `)
 
-  // Auto-expire waitlist offers every 15 minutes (Supabase mode only)
+  // Background jobs: direct function calls (no self-fetch), Supabase mode only
   if (USE_SUPABASE) {
-    setInterval(async () => {
-      try {
-        const resp = await fetch(`http://localhost:${PORT}/api/admin/jobs/expire-waitlist`, { method: 'POST' })
-        const data = await resp.json() as any
-        if (data.data?.expired > 0 || data.data?.offered > 0) {
-          console.log(`[AutoOffer] Expired: ${data.data.expired}, Offered to next: ${data.data.offered}`)
+    // Auto-expire waitlist offers every 15 minutes
+    jobIntervals.push(setInterval(async () => {
+      await runWithRetry('expire-waitlist', async () => {
+        logger.info('Job', 'Running waitlist expiry...')
+        const result = await runExpireWaitlistJob()
+        if (result.expired > 0 || result.offered > 0) {
+          logger.info('AutoOffer', `Expired: ${result.expired}, Offered to next: ${result.offered}`)
         }
-      } catch (e) { /* silent */ }
-    }, 15 * 60 * 1000) // every 15 minutes
-    console.log('  [AutoOffer] Waitlist auto-expire job running every 15 minutes')
+        logger.info('Job', 'Waitlist expiry complete')
+      })
+    }, 15 * 60 * 1000))
+    logger.info('Job', 'Waitlist auto-expire job registered (every 15 minutes)')
 
     // Send course reminders daily at ~17:00 DE time (check every 30 min)
     let lastReminderDate = ''
-    setInterval(async () => {
-      try {
-        const nowDE = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Berlin' }))
-        const hour = nowDE.getHours()
-        const todayStr = nowDE.toISOString().slice(0, 10)
-        // Send between 17:00-17:29 DE time, once per day
-        if (hour === 17 && lastReminderDate !== todayStr) {
-          lastReminderDate = todayStr
-          const resp = await fetch(`http://localhost:${PORT}/api/admin/jobs/send-reminders`, { method: 'POST' })
-          const data = await resp.json() as any
-          if (data.data?.sent > 0) {
-            console.log(`[Reminder] Sent ${data.data.sent} reminders for ${data.data.date}`)
+    jobIntervals.push(setInterval(async () => {
+      const nowDE = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Berlin' }))
+      const hour = nowDE.getHours()
+      const todayStr = nowDE.toISOString().slice(0, 10)
+      if (hour === 17 && lastReminderDate !== todayStr) {
+        lastReminderDate = todayStr
+        await runWithRetry('send-reminders', async () => {
+          logger.info('Job', 'Running course reminders...')
+          const result = await runSendRemindersJob()
+          if (result.sent > 0) {
+            logger.info('Reminder', `Sent ${result.sent} reminders for ${result.date}`)
           }
-        }
-      } catch (e) { /* silent */ }
-    }, 30 * 60 * 1000) // check every 30 minutes
-    console.log('  [Reminder] Course reminder job active (daily at 17:00 DE)')
+          logger.info('Job', 'Course reminders complete')
+        })
+      }
+    }, 30 * 60 * 1000))
+    logger.info('Job', 'Course reminder job registered (daily at 17:00 DE)')
 
     // Process trial follow-up emails every hour
-    setInterval(async () => {
-      try {
-        const resp = await fetch(`http://localhost:${PORT}/api/admin/jobs/process-trial-followups`, { method: 'POST' })
-        const data = await resp.json() as any
-        const d = data.data
-        if (d && (d.totalFeedbackSent > 0 || d.totalReminderSent > 0 || d.totalLastChanceSent > 0)) {
-          console.log(`[TrialFollowup] Feedback: ${d.totalFeedbackSent}, Reminder: ${d.totalReminderSent}, LastChance: ${d.totalLastChanceSent}`)
+    jobIntervals.push(setInterval(async () => {
+      await runWithRetry('trial-followups', async () => {
+        logger.info('Job', 'Running trial follow-ups...')
+        const result = await runTrialFollowupsJob()
+        if (result.totalFeedbackSent > 0 || result.totalReminderSent > 0 || result.totalLastChanceSent > 0) {
+          logger.info('TrialFollowup', `Feedback: ${result.totalFeedbackSent}, Reminder: ${result.totalReminderSent}, LastChance: ${result.totalLastChanceSent}`)
         }
-      } catch (e) { /* silent */ }
-    }, 60 * 60 * 1000) // every hour
-    console.log('  [TrialFollowup] Trial follow-up job running every hour')
+        logger.info('Job', 'Trial follow-ups complete')
+      })
+    }, 60 * 60 * 1000))
+    logger.info('Job', 'Trial follow-up job registered (every hour)')
   }
 })
+
+// ============================================================
+// Graceful shutdown
+// ============================================================
+async function gracefulShutdown(signal: string) {
+  logger.info('Server', `Received ${signal}, shutting down gracefully...`)
+
+  // Stop accepting new connections
+  server.close()
+
+  // Clear all job intervals
+  for (const id of jobIntervals) {
+    clearInterval(id)
+  }
+
+  // Save in-memory data if needed
+  if (!USE_SUPABASE) {
+    try {
+      const { saveToDisk } = await import('../domain/persistence')
+      saveToDisk()
+      logger.info('Server', 'In-memory data saved to disk')
+    } catch {
+      // persistence module may not be available
+    }
+  }
+
+  logger.info('Server', 'Shutdown complete')
+  process.exit(0)
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'))
+process.on('SIGINT', () => gracefulShutdown('SIGINT'))

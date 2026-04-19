@@ -3,6 +3,7 @@
 // ============================================================
 
 import { Router } from '../router'
+import { getLastJobRun } from '../../lib/logger'
 
 export function registerHealthRoutes(router: Router) {
 
@@ -13,13 +14,23 @@ export function registerHealthRoutes(router: Router) {
       const { checkConnection } = await import('../../lib/supabase')
       dbHealthy = await checkConnection()
     }
-    const status = dbHealthy ? 'ok' : 'degraded'
+    const status = dbHealthy ? 'healthy' : 'degraded'
     if (!dbHealthy) res.status(503)
+
+    const mem = process.memoryUsage()
     res.json({
       status,
       mode: isSupabase ? 'supabase' : 'memory',
       version: '0.1.0',
       timestamp: new Date().toISOString(),
+      uptime: Math.floor(process.uptime()),
+      memory: {
+        heapUsed: Math.round(mem.heapUsed / 1024 / 1024),
+        heapTotal: Math.round(mem.heapTotal / 1024 / 1024),
+        rss: Math.round(mem.rss / 1024 / 1024),
+      },
+      supabase: isSupabase ? (dbHealthy ? 'connected' : 'error') : 'n/a',
+      lastJobRun: getLastJobRun(),
       checks: { database: dbHealthy ? 'ok' : 'error' },
     })
   })
