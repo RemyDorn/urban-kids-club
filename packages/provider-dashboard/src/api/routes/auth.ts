@@ -109,7 +109,6 @@ export function registerAuthRoutes(router: Router) {
         phone: phone || '',
         role: 'owner',
         active: true,
-        user_id: authData.user.id,
       })
     } catch (e) { console.error('[Register] Team member auto-create failed:', e) }
 
