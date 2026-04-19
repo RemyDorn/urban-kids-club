@@ -130,7 +130,8 @@ export const Validators = {
       .filter((b) => b && (b.status === 'confirmed' || b.status === 'pending'))
       .length
 
-    if (activeCount >= activity.capacity) {
+    const totalCapacity = activity.capacity + ((activity as any).makeupCapacity || 0)
+    if (activeCount >= totalCapacity) {
       if (activity.waitlistEnabled) {
         return { valid: false, errors: [WAITLIST_SIGNAL], waitlist: true }
       }

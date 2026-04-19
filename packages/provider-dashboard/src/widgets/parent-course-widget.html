@@ -747,6 +747,11 @@
   </div>
 </div>
 
+<!-- Powered by Footer -->
+<div style="text-align:center;padding:8px 0 4px;font-size:12px;color:#9CA3AF;">
+  <a href="https://urbankidsclub.de" target="_blank" rel="noopener" style="color:#9CA3AF;text-decoration:none;transition:color 0.2s;" onmouseover="this.style.color='#6B7280'" onmouseout="this.style.color='#9CA3AF'">Powered by Urban Kids Club</a>
+</div>
+
 <!-- Toast -->
 <div class="toast" id="toast"></div>
 
@@ -882,7 +887,8 @@ function renderBlockCard(block) {
   const startFormatted = formatDate(block.startDate)
   const endFormatted = formatDate(block.extendedEndDate || block.endDate)
 
-  const spotsLeft = block.capacity - (block._enrollmentCount || 0)
+  const totalCapacity = block.capacity + (block.makeupCapacity || block.makeup_capacity || 0)
+  const spotsLeft = totalCapacity - (block._enrollmentCount || 0)
   const spotsText = spotsLeft <= 0
     ? '<span style="color:var(--danger);font-weight:700">Ausgebucht</span>'
     : spotsLeft <= 3

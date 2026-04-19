@@ -244,7 +244,7 @@ export function registerPublicRoutes(router: Router) {
       currentCount = bookingCount ?? 0
     }
 
-    const effectiveCapacity = activeBlock?.capacity || activity.capacity || 0
+    const effectiveCapacity = (activeBlock?.capacity || activity.capacity || 0) + (activeBlock?.makeup_capacity || 0)
     if (currentCount >= effectiveCapacity) {
       // Course full → auto-add to waitlist (scoped to block if available)
       let parentId = ''
