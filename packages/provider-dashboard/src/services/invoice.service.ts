@@ -28,6 +28,9 @@ export interface CreateInvoiceInput {
 }
 
 // Laufende Rechnungsnummer pro Provider (persistent in Produktion!)
+// LIMITATION: This in-memory counter is safe for single-process Node.js (event loop is
+// single-threaded, so no concurrent increments). For multi-process or clustered deployments,
+// use the Supabase-backed invoice service which uses SELECT ... FOR UPDATE or a DB sequence.
 const invoiceCounters = new Map<ID, number>()
 
 function nextInvoiceNumber(providerId: ID): string {

@@ -182,10 +182,13 @@ export function registerReviewRoutes(router: Router) {
   })
 
   // ============================================================
-  // DASHBOARD: Get average rating for an activity
+  // DASHBOARD: Get average rating for an activity (auth required)
+  // Removed redundant unauthenticated endpoint — use /api/public/activities/:id/rating instead
   // ============================================================
 
   router.get('/api/activities/:id/rating', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
     const sb = getServiceClient()
     const { data: reviews } = await sb.from('reviews').select('rating')
       .eq('activity_id', req.params.id)
@@ -204,10 +207,12 @@ export function registerReviewRoutes(router: Router) {
   })
 
   // ============================================================
-  // DASHBOARD: Get provider's overall rating
+  // DASHBOARD: Get provider's overall rating (auth required)
   // ============================================================
 
   router.get('/api/providers/:id/rating', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
     const sb = getServiceClient()
     const { data: reviews } = await sb.from('reviews').select('rating')
       .eq('provider_id', req.params.id)

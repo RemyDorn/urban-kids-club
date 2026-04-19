@@ -103,19 +103,14 @@ export const SupabaseInvoiceService = {
     if (fetchErr) throw fetchErr
     if (!invoiceRow) return undefined
 
-    // Generate final invoice number (only on send, not on draft creation)
-    // Unique constraint on (provider_id, number) prevents duplicates
-    const { data: existingInvoices } = await sb.from(TABLE)
-      .select('number').eq('provider_id', invoiceRow.provider_id)
-      .not('number', 'like', 'ENTWURF%')
-      .order('number', { ascending: false }).limit(1)
-    let nextNum = 1
-    if (existingInvoices?.length) {
-      const match = existingInvoices[0].number?.match(/INV-\d{4}-(\d+)/)
-      if (match) nextNum = parseInt(match[1]) + 1
+    // Generate final invoice number atomically via DB function (next_invoice_number)
+    // Uses INSERT ... ON CONFLICT to guarantee unique sequential numbers per provider
+    const { data: finalNumber, error: seqErr } = await sb.rpc('next_invoice_number', {
+      p_provider_id: invoiceRow.provider_id,
+    })
+    if (seqErr || !finalNumber) {
+      throw new Error('Rechnungsnummer konnte nicht generiert werden: ' + (seqErr?.message || 'unknown'))
     }
-    const year = new Date().getFullYear()
-    const finalNumber = `INV-${year}-${nextNum.toString().padStart(4, '0')}`
 
     // Send email with final number
     try {
@@ -158,9 +153,9 @@ export const SupabaseInvoiceService = {
       throw new Error('E-Mail konnte nicht gesendet werden. Rechnung bleibt als Entwurf.')
     }
 
-    // Email sent → assign number + update status
+    // Email sent → update status (number was already claimed above to prevent race conditions)
     const { data, error } = await sb.from(TABLE)
-      .update({ status: 'sent', number: finalNumber })
+      .update({ status: 'sent' })
       .eq('id', id)
       .select().maybeSingle()
     if (error) throw error

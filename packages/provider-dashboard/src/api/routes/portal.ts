@@ -98,7 +98,11 @@ export function registerPortalRoutes(router: Router) {
     if (!auth) return
     const sb = getServiceClient()
     const { data: parent } = await sb.from('parents').select('id, name, email, phone, children').eq('id', auth.parentId).single()
-    res.json({ data: { loggedIn: true, parent } })
+    // Generate HMAC calendar token for iCal subscription URL
+    const { createHmac } = await import('node:crypto')
+    const calSecret = process.env.CALENDAR_TOKEN_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || 'ukc-calendar-default'
+    const calendarToken = createHmac('sha256', calSecret).update(auth.parentId).digest('hex').slice(0, 32)
+    res.json({ data: { loggedIn: true, parent, calendarToken } })
   })
 
   // ── Supabase Auth: Logout ─────────────────────────────────
@@ -213,19 +217,37 @@ export function registerPortalRoutes(router: Router) {
     if (!auth) return
     const sb = getServiceClient()
     const { data: parent } = await sb.from('parents').select('id, name, email, phone, children').eq('id', auth.parentId).single()
-    res.json({ data: parent })
+    // Generate HMAC calendar token for iCal subscription URL
+    const { createHmac } = await import('node:crypto')
+    const calSecret = process.env.CALENDAR_TOKEN_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || 'ukc-calendar-default'
+    const calendarToken = createHmac('sha256', calSecret).update(auth.parentId).digest('hex').slice(0, 32)
+    res.json({ data: { ...parent, calendarToken } })
   })
 
   // ── iCal Feed for parent's booked sessions ───────────────
-  // Public endpoint using parent ID as token (calendar apps can't send auth headers)
-  // URL format: /api/portal/calendar/:parentId.ics
-  router.get('/api/portal/calendar/:parentId.ics', async (req, res) => {
-    const parentId = req.params.parentId
-    if (!parentId) return res.error(400, 'Parent ID fehlt')
+  // Public endpoint using HMAC token (calendar apps can't send auth headers)
+  // URL format: /api/portal/calendar/:token.ics
+  // Token = HMAC-SHA256(parentId, secret).slice(0,32) — not guessable from UUID
+  router.get('/api/portal/calendar/:token.ics', async (req, res) => {
+    const token = req.params.token
+    if (!token || token.length < 16) return res.error(400, 'Ungültiger Kalender-Token')
 
     const sb = getServiceClient()
-    const { data: parent } = await sb.from('parents').select('id, name, email').eq('id', parentId).maybeSingle()
+
+    // Look up parent by HMAC token: iterate parents and compare HMAC
+    // For scalability, a calendar_token column could be added to the parents table
+    const { createHmac } = await import('node:crypto')
+    const calSecret = process.env.CALENDAR_TOKEN_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || 'ukc-calendar-default'
+
+    const { data: allParents } = await sb.from('parents').select('id, name, email')
+    if (!allParents || allParents.length === 0) return res.error(404, 'Nicht gefunden')
+
+    const parent = allParents.find((p: any) => {
+      const expectedToken = createHmac('sha256', calSecret).update(p.id).digest('hex').slice(0, 32)
+      return expectedToken === token
+    })
     if (!parent) return res.error(404, 'Nicht gefunden')
+    const parentId = parent.id
 
     // Get all active bookings for this parent
     const { data: bookings } = await sb.from('provider_bookings')

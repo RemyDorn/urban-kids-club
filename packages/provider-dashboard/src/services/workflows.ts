@@ -326,7 +326,6 @@ export const BackgroundJobs = {
     let sepaCollections = 0
     let paymentReminders = 0
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-    const processedBookings = new Set<string>()
 
     for (const booking of store.state.bookings.values()) {
       if (booking.status === 'confirmed' && booking.paymentStatus === 'unpaid' && booking.createdAt < sevenDaysAgo) {

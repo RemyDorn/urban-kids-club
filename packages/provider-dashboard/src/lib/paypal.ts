@@ -30,9 +30,10 @@ async function getProviderPayPalCredentials(providerId: string): Promise<{ clien
   let secret = data.paypal_secret
   if (secret.startsWith('enc:')) {
     try {
-      const { createDecipheriv } = await import('node:crypto')
-      const encKey = process.env.ENCRYPTION_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || ''
-      const keyBuf = Buffer.from(encKey, 'utf8').subarray(0, 32)
+      const { createDecipheriv, scryptSync } = await import('node:crypto')
+      const encKey = process.env.ENCRYPTION_KEY
+      if (!encKey) throw new Error('ENCRYPTION_KEY env var is required for PayPal')
+      const keyBuf = scryptSync(encKey, 'ukc-paypal-salt', 32)
       const parts = secret.split(':')
       const iv = Buffer.from(parts[1], 'hex')
       const encrypted = parts[2]
@@ -82,6 +83,21 @@ export async function createPayPalOrder(params: {
   const token = await getAccessToken(creds.clientId, creds.secret)
   const amountStr = (params.amount / 100).toFixed(2)
 
+  // PayPal custom_id has a 127-char limit. If metadata is too long,
+  // store only an orderId reference and keep metadata server-side.
+  let customId = JSON.stringify(params.metadata)
+  if (customId.length > 127) {
+    // Fallback: only store minimal reference that fits
+    const minimalMeta: Record<string, string> = {}
+    if (params.metadata.bookingId) minimalMeta.bookingId = params.metadata.bookingId
+    if (params.metadata.providerId) minimalMeta.providerId = params.metadata.providerId
+    customId = JSON.stringify(minimalMeta)
+    if (customId.length > 127) {
+      customId = customId.substring(0, 127)
+    }
+    console.warn('[PayPal] Metadata truncated for custom_id — original exceeded 127 chars')
+  }
+
   const orderPayload = {
     intent: 'CAPTURE',
     purchase_units: [{
@@ -90,7 +106,7 @@ export async function createPayPalOrder(params: {
         currency_code: params.currency.toUpperCase(),
         value: amountStr,
       },
-      custom_id: JSON.stringify(params.metadata),
+      custom_id: customId,
     }],
     application_context: {
       brand_name: 'Urban Kids Club',
@@ -150,9 +166,13 @@ export async function capturePayPalOrder(providerId: string, orderId: string): P
   const data = await resp.json() as any
   const capture = data.purchase_units?.[0]?.payments?.captures?.[0]
   let metadata: Record<string, string> = {}
+  const rawCustomId = data.purchase_units?.[0]?.custom_id || '{}'
   try {
-    metadata = JSON.parse(data.purchase_units?.[0]?.custom_id || '{}')
-  } catch { /* ignore */ }
+    metadata = JSON.parse(rawCustomId)
+  } catch (parseErr) {
+    console.error('[PayPal] Failed to parse custom_id metadata:', rawCustomId, parseErr)
+    // Return empty metadata rather than crashing — caller must handle missing fields
+  }
 
   return {
     status: data.status,

@@ -19,6 +19,7 @@ export function registerInvitationRoutes(router: Router) {
   router.get('/api/providers/:providerId/parents/matching', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
+    if (!checkPermission(auth, res, 'customers', 'view')) return
 
     const ageMin = safeParseInt(req.query.ageMin, 0)
     const ageMax = safeParseInt(req.query.ageMax, 18)
