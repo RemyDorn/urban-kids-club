@@ -24,6 +24,19 @@ import type { ParsedRequest, ApiResponse } from '../api/router'
 
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || 'remy.dostal@gmail.com').split(',').map(e => e.trim())
 
+/** Login a provider with email + password via Supabase Auth */
+export async function loginProvider(email: string, password: string): Promise<{ token: string; provider: any } | { error: string }> {
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+  if (error || !data.session) return { error: error?.message || 'Login fehlgeschlagen' }
+
+  const { getServiceClient } = await import('./supabase')
+  const db = getServiceClient()
+  const { data: provider } = await db.from('providers').select('*').eq('login_email', email).maybeSingle()
+  if (!provider) return { error: 'Kein Provider-Konto für diese E-Mail gefunden' }
+
+  return { token: data.session.access_token, provider }
+}
+
 /** @deprecated Use requireAdmin from api/routes/helpers.ts */
 export async function authenticateAdmin(req: ParsedRequest, res: ApiResponse): Promise<boolean> {
   const token = req.raw.headers.authorization?.replace('Bearer ', '')
