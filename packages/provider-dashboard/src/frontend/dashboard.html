@@ -63,8 +63,12 @@
     .calendar-tooltip .tt-title { font-weight: 600; color: #1f2937; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
     .calendar-tooltip .tt-color { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
     .calendar-tooltip .tt-row { color: #6b7280; line-height: 1.6; }
-    .cal-day-col { position: relative; border-left: 1px solid #f3f4f6; }
+    .cal-day-col { position: relative; border-left: 1px solid #f3f4f6; transition: background 0.15s; }
+    .cal-day-col:hover { background: #FFF9F5; }
+    .cal-day-col.cal-today:hover { background: #FFF0E6; }
     .cal-today { background: #FFF9F5; }
+    @keyframes calSlotPulse { 0% { background: #FDEBD0; } 100% { background: transparent; } }
+    .cal-slot-pulse { animation: calSlotPulse 0.4s ease-out; }
     .cal-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 50; display: flex; align-items: center; justify-content: center; }
     .cal-modal { background: white; border-radius: 16px; padding: 24px; width: 480px; max-height: 80vh; overflow-y: auto; overflow-x: hidden; box-shadow: 0 25px 50px rgba(0,0,0,0.25); scrollbar-width: thin; scrollbar-color: #d1d5db transparent; }
     .cal-modal::-webkit-scrollbar { width: 6px; }
@@ -1147,6 +1151,14 @@
       await renderCalendarInto('standaloneCalendar')
     }
 
+    // --- Calendar Tooltip ---
+    let _calTooltipEl = null; let _calTooltipTimer = null
+    function getCalTooltip() { if (!_calTooltipEl) { _calTooltipEl = document.createElement('div'); _calTooltipEl.className = 'calendar-tooltip'; document.body.appendChild(_calTooltipEl) } return _calTooltipEl }
+    function showCalTooltip(e, ev, activity, occ, clr, roomName, occText, occPct) { clearTimeout(_calTooltipTimer); const tt = getCalTooltip(); const instrName = getTeamMemberName(activity?.instructorId) || ''; tt.innerHTML = '<div class="tt-title"><span class="tt-color" style="background:' + clr + '"></span>' + escapeHtml(ev.title) + '</div><div class="tt-row">\u{1F552} ' + escapeHtml(ev.startTime) + ' \u2013 ' + escapeHtml(ev.endTime) + '</div>' + (instrName ? '<div class="tt-row">\u{1F464} ' + escapeHtml(instrName) + '</div>' : '') + '<div class="tt-row">\u{1F465} Teilnehmer: ' + occText + ' (' + occPct + '%)</div>' + (roomName ? '<div class="tt-row">\u{1F3E0} ' + escapeHtml(roomName) + '</div>' : ''); _calTooltipTimer = setTimeout(function() { positionCalTooltip(e); tt.classList.add('visible') }, 200) }
+    function positionCalTooltip(e) { const tt = getCalTooltip(); const pad = 12; let x = e.clientX + pad, y = e.clientY + pad; const tw = tt.offsetWidth || 250, th = tt.offsetHeight || 100; if (x + tw > window.innerWidth - pad) x = e.clientX - tw - pad; if (y + th > window.innerHeight - pad) y = e.clientY - th - pad; tt.style.left = x + 'px'; tt.style.top = y + 'px' }
+    function moveCalTooltip(e) { if (_calTooltipEl && _calTooltipEl.classList.contains('visible')) positionCalTooltip(e) }
+    function hideCalTooltip() { clearTimeout(_calTooltipTimer); if (_calTooltipEl) _calTooltipEl.classList.remove('visible') }
+
     // Core calendar renderer – renders into any container
     async function renderCalendarInto(containerId) {
       activeCalContainer = containerId
@@ -1164,9 +1176,11 @@
           api(`/providers/${currentProvider.id}/reports/occupancy`),
           api(`/providers/${currentProvider.id}/holidays`),
           api('/rooms'),
+          api(`/providers/${currentProvider.id}/team`),
         ])
         activities = results[0]; occupancy = results[1]; holidays = results[2]
         _rooms = results[3].data || []
+        _calTeamMembers = results[4].data || []
       } catch (err) {
         console.error('Calendar data fetch error:', err)
         calContainer.innerHTML = '<div class="text-red-500 text-sm p-4">Kalender konnte nicht geladen werden.</div>'
@@ -1284,6 +1298,20 @@
           ${conflicts.map(c => `<div class="text-sm text-red-700">- ${escapeHtml(c.description)}</div>`).join('')}
         </div>` : ''}
 
+        <!-- Instructor Legend -->
+        ${(() => {
+          const instructorsInView = new Set()
+          events.forEach(e => { const act = actMap[e.activityId]; if (act?.instructorId) instructorsInView.add(act.instructorId) })
+          if (instructorsInView.size === 0) return ''
+          return '<div class="mb-3 flex flex-wrap items-center gap-3 text-xs text-gray-600">' +
+            '<span class="font-medium text-gray-500">Kursleiter:</span>' +
+            Array.from(instructorsInView).map(id => {
+              const name = getTeamMemberName(id) || 'Unbekannt'
+              const color = getInstructorColor(id)
+              return '<span class="inline-flex items-center gap-1.5"><span style="width:10px;height:10px;border-radius:2px;background:' + color + ';display:inline-block;"></span>' + escapeHtml(name) + '</span>'
+            }).join('') + '</div>'
+        })()}
+
         <!-- Calendar Grid -->
         ${calView === 'month' ? `
         <!-- MONTH VIEW -->
@@ -1310,7 +1338,8 @@
                   const clr = getCourseColor(act, 0)
                   const occ = occMap[ev.activityId]
                   const occPct = occ ? Math.round(occ.occupancy * 100) : 0
-                  return '<div class="text-xs rounded px-1 py-0.5 mb-0.5 truncate cursor-pointer" style="background:' + hexToRgba(clr, 0.15) + ';border-left:3px solid ' + clr + ';color:#374151;" onclick="showEventDetail(' + JSON.stringify(ev).replace(/"/g,'&quot;') + ',' + (act ? JSON.stringify({title:act.title,description:act.description||'',category:act.category,ageRange:act.ageRange,pricing:act.pricing}).replace(/"/g,'&quot;') : 'null') + ',' + (occ ? JSON.stringify(occ).replace(/"/g,'&quot;') : 'null') + ')">' + escapeHtml(ev.startTime) + ' ' + escapeHtml(ev.title) + '</div>'
+                  const mInstrColor = getInstructorColor(act?.instructorId)
+                  return '<div class="text-xs rounded px-1 py-0.5 mb-0.5 truncate cursor-pointer" style="background:' + hexToRgba(clr, 0.15) + ';border-left:3px solid ' + clr + ';' + (mInstrColor ? 'border-right:3px solid ' + mInstrColor + ';' : '') + 'color:#374151;" onclick="showEventDetail(' + JSON.stringify(ev).replace(/"/g,'&quot;') + ',' + (act ? JSON.stringify({title:act.title,description:act.description||'',category:act.category,ageRange:act.ageRange,pricing:act.pricing,instructorId:act.instructorId}).replace(/"/g,'&quot;') : 'null') + ',' + (occ ? JSON.stringify(occ).replace(/"/g,'&quot;') : 'null') + ')">' + escapeHtml(ev.startTime) + ' ' + escapeHtml(ev.title) + '</div>'
                 }).join('')
                 if (dayEvents.length > 3) cells += '<div class="text-xs text-gray-400">+' + (dayEvents.length-3) + ' weitere</div>'
                 cells += '</div>'
@@ -1338,7 +1367,7 @@
               '<div class="cal-hour flex items-start justify-end pr-2 pt-1"><span class="text-xs text-gray-400">' + h + ':00</span></div>' +
               (calView === 'day' ? [calWeekStart] : days).map(d => {
                 const isToday = fmtDate(d) === today
-                return '<div class="cal-hour cal-day-col ' + (isToday ? 'cal-today' : '') + '" data-date="' + fmtDate(d) + '" data-hour="' + h + '" onclick="calSlotClick(\'' + fmtDate(d) + '\',' + h + ')" style="cursor:pointer" ondragover="event.preventDefault();this.style.background=\'#fdf4ed\'" ondragleave="this.style.background=\'\'" ondrop="calDropEvent(event,\'' + fmtDate(d) + '\',' + h + ');this.style.background=\'\'"></div>'
+                return '<div class="cal-hour cal-day-col ' + (isToday ? 'cal-today' : '') + '" data-date="' + fmtDate(d) + '" data-hour="' + h + '" onclick="calSlotClick(\'' + fmtDate(d) + '\',' + h + ',event)" style="cursor:pointer" ondragover="event.preventDefault();this.style.background=\'#fdf4ed\'" ondragleave="this.style.background=\'\'" ondrop="calDropEvent(event,\'' + fmtDate(d) + '\',' + h + ');this.style.background=\'\'"></div>'
               }).join('')
             ).join('')}
           </div>
@@ -1449,6 +1478,9 @@
 
           // Room name for tooltip
           const roomName = activity?.roomId ? (_rooms.find(r => r.id === activity.roomId)?.name || '') : ''
+          // Instructor info
+          const instrName = getTeamMemberName(activity?.instructorId)
+          const instrColor = getInstructorColor(activity?.instructorId)
 
           const firstCell = document.querySelector(`.cal-day-col[data-date="${fmtDate(d)}"][data-hour="7"]`)
           if (firstCell && !firstCell.style.position) {
@@ -1468,9 +1500,10 @@
               left:${leftPct}%; width:${widthPct - 1}%;
               border-color:${clr}; border-left-width:4px; cursor:grab;
               background: linear-gradient(to top, ${hexToRgba(clr, 0.4)} ${occPct}%, ${hexToRgba(clr, 0.06)} ${occPct}%);
+              ${instrColor ? 'border-right: 3px solid ' + instrColor + ';' : ''}
             `
-            eventEl.onclick = (e) => { if (!eventEl._dragged) showEventDetail(ev, activity, occ) }
-            eventEl.title = ev.title + ' (' + ev.startTime + '–' + ev.endTime + ')' + (roomName ? '\nRaum: ' + roomName : '') + '\n' + occText + ' Teilnehmer (' + occPct + '%)'
+            eventEl.onclick = (e) => { e.stopPropagation(); if (!eventEl._dragged) showEventDetail(ev, activity, occ) }
+            eventEl.title = ev.title + ' (' + ev.startTime + '–' + ev.endTime + ')' + (instrName ? '\nKursleiter: ' + instrName : '') + (roomName ? '\nRaum: ' + roomName : '') + '\n' + occText + ' Teilnehmer (' + occPct + '%)'
 
             // Drag handlers
             eventEl.addEventListener('dragstart', function(e) {
@@ -1483,6 +1516,7 @@
 
             eventEl.innerHTML = `
               <div class="font-semibold truncate" style="font-size:11px;line-height:1.3;color:#1f2937;">${escapeHtml(ev.title)}</div>
+              ${instrName ? '<div style="font-size:8px;color:' + instrColor + ';margin-top:1px;" class="truncate">' + escapeHtml(instrName) + '</div>' : ''}
               ${roomName ? '<div style="font-size:8px;color:#8B7355;margin-top:1px;" class="truncate">' + escapeHtml(roomName) + '</div>' : ''}
               ${occ ? '<div style="font-size:9px;font-weight:600;color:' + clr + ';margin-top:1px;">' + occText + ' (' + occPct + '%)</div>' : ''}
             `
@@ -1545,6 +1579,17 @@
                 <div class="font-semibold text-gray-900">${ev.startTime} – ${ev.endTime}</div>
               </div>
             </div>
+
+            ${activity?.instructorId ? `
+              <div class="bg-gray-50 rounded-lg p-3">
+                <div class="text-xs text-gray-500 mb-1">Kursleiter</div>
+                <div class="flex items-center gap-2">
+                  <span style="width:10px;height:10px;border-radius:2px;background:${getInstructorColor(activity.instructorId)};display:inline-block;"></span>
+                  <span class="font-semibold text-gray-900">${escapeHtml(getTeamMemberName(activity.instructorId) || 'Unbekannt')}</span>
+                  <span class="text-xs text-gray-400">${escapeHtml(getTeamMemberRole(activity.instructorId) || '')}</span>
+                </div>
+              </div>
+            ` : ''}
 
             ${activity ? `
               <div class="bg-gray-50 rounded-lg p-3">
@@ -2350,7 +2395,18 @@
     }
 
     // Click on empty calendar slot → create activity with pre-filled day/time
-    function calSlotClick(date, hour) {
+    function calSlotClick(date, hour, event) {
+      // Don't trigger when clicking on an existing event element
+      if (event && event.target.closest('.cal-event')) return
+
+      // Visual pulse feedback on the clicked cell
+      if (event && event.currentTarget) {
+        const cell = event.currentTarget
+        cell.classList.remove('cal-slot-pulse')
+        void cell.offsetWidth
+        cell.classList.add('cal-slot-pulse')
+      }
+
       // Map date to day code
       const d = new Date(date)
       const dowMap = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA']
@@ -2358,19 +2414,31 @@
       const startTime = String(hour).padStart(2, '0') + ':00'
       const endTime = String(hour + 1).padStart(2, '0') + ':00'
 
-      // Open activity form with pre-filled schedule
-      showActivityForm(null)
-      // After form renders, set the values
-      setTimeout(function() {
-        const slotDay = document.querySelector('[name="slotDay0"]')
-        const slotStart = document.querySelector('[name="slotStart0"]')
-        const slotEnd = document.querySelector('[name="slotEnd0"]')
-        const startDate = document.querySelector('[name="startDate"]')
-        if (slotDay) slotDay.value = dayCode
-        if (slotStart) slotStart.value = startTime
-        if (slotEnd) slotEnd.value = endTime
-        if (startDate) startDate.value = date
-      }, 100)
+      // Helper to open form and pre-fill schedule
+      function openAndPrefill() {
+        showActivityForm(null)
+        setTimeout(function() {
+          const slotDay = document.querySelector('[name="slotDay0"]')
+          const slotStart = document.querySelector('[name="slotStart0"]')
+          const slotEnd = document.querySelector('[name="slotEnd0"]')
+          const startDate = document.querySelector('[name="startDate"]')
+          if (slotDay) slotDay.value = dayCode
+          if (slotStart) slotStart.value = startTime
+          if (slotEnd) slotEnd.value = endTime
+          if (startDate) startDate.value = date
+        }, 100)
+      }
+
+      // If not on the activities page, navigate there first
+      if (currentPage !== 'activities') {
+        navigate('activities')
+        // Wait for activities page to render, then open form
+        setTimeout(function() {
+          openAndPrefill()
+        }, 300)
+      } else {
+        openAndPrefill()
+      }
     }
 
     // --- Dashboard ---
@@ -6660,6 +6728,17 @@
                   <option value="">– Bitte wählen –</option>
                   ${['Baden-Württemberg','Bayern','Berlin','Brandenburg','Bremen','Hamburg','Hessen','Mecklenburg-Vorpommern','Niedersachsen','Nordrhein-Westfalen','Rheinland-Pfalz','Saarland','Sachsen','Sachsen-Anhalt','Schleswig-Holstein','Thüringen'].map(bl => `<option ${(s.bundesland || '') === bl ? 'selected' : ''}>${bl}</option>`).join('')}
                 </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-xl border border-brand-200 p-6">
+            <h3 class="font-semibold text-gray-900 mb-4">Raumverwaltung</h3>
+            <div class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Anzahl Räume</label>
+                <input id="sRoomCount" type="number" min="1" max="50" value="${p.roomCount || 1}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                <div class="text-xs text-gray-400 mt-1">Begrenzt wie viele Kurse gleichzeitig stattfinden können. Bei ${p.roomCount || 1} Raum/Räumen können max. ${p.roomCount || 1} Kurse parallel laufen.</div>
               </div>
             </div>
           </div>
