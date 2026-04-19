@@ -1318,6 +1318,7 @@ function cancelMakeup(makeupId) {
 let checkoutStep = 1
 let checkoutBlockId = null
 let checkoutBlock = null
+let checkoutSiblingDiscount = 0
 let checkoutData = {
   child: { firstName: '', lastName: '', birthYear: '' },
   parent: { firstName: '', lastName: '', email: '', phone: '' },
@@ -1357,6 +1358,18 @@ async function loadCheckoutBlock(blockId) {
 
   try {
     checkoutBlock = await api(`/course-blocks/${blockId}`)
+    // Check for sibling discount: if parent has other active enrollments
+    checkoutSiblingDiscount = 0
+    if (currentParentId) {
+      try {
+        const enrollments = await api(`/parents/${currentParentId}/enrollments`)
+        const activeOthers = (enrollments || []).filter(e => e.status === 'active' && e.blockId !== blockId)
+        if (activeOthers.length > 0) {
+          // Sibling discount comes from the activity pricing
+          checkoutSiblingDiscount = checkoutBlock.siblingDiscount || 0
+        }
+      } catch (e2) { /* ignore – discount check is optional */ }
+    }
     renderCheckoutStep()
   } catch (e) {
     document.getElementById('checkout-body').innerHTML =
@@ -1415,6 +1428,10 @@ function renderCheckoutStep() {
     const dayNames = { mon: 'Montag', tue: 'Dienstag', wed: 'Mittwoch', thu: 'Donnerstag', fri: 'Freitag', sat: 'Samstag', sun: 'Sonntag' }
     const day = dayNames[block.recurringDay] || block.recurringDay
     const price = block.pricePerBlock.toFixed(2).replace('.', ',') + ' \u20AC'
+    // Sibling discount: checkoutSiblingDiscount is set during checkout init
+    const sibDiscount = checkoutSiblingDiscount || 0
+    const sibDiscountAmount = sibDiscount > 0 ? Math.round(block.pricePerBlock * (sibDiscount / 100) * 100) / 100 : 0
+    const finalPrice = sibDiscountAmount > 0 ? (block.pricePerBlock - sibDiscountAmount).toFixed(2).replace('.', ',') + ' \u20AC' : price
 
     body.innerHTML = `
       <div class="checkout-summary">
@@ -1424,7 +1441,13 @@ function renderCheckoutStep() {
         <div style="color:var(--text-muted);margin-top:4px">Kind: ${esc(checkoutData.child.firstName)} ${esc(checkoutData.child.lastName)}</div>
         <div style="color:var(--text-muted);margin-top:4px">Elternteil: ${esc(checkoutData.parent.firstName)} ${esc(checkoutData.parent.lastName)}</div>
         <div style="color:var(--text-muted);margin-top:4px">${esc(checkoutData.parent.email)}</div>
-        <div class="checkout-summary-price">${price}</div>
+        ${sibDiscountAmount > 0 ? `
+          <div style="margin-top:8px;padding:8px 12px;background:#ecfdf5;border-radius:8px;font-size:13px">
+            <div style="display:flex;justify-content:space-between;color:var(--text-muted)"><span>Kurspreis</span><span>${price}</span></div>
+            <div style="display:flex;justify-content:space-between;color:#16a34a;margin-top:4px"><span>Geschwisterrabatt (${sibDiscount}%)</span><span>-${sibDiscountAmount.toFixed(2).replace('.', ',')} \u20AC</span></div>
+            <div style="display:flex;justify-content:space-between;font-weight:700;margin-top:6px;padding-top:6px;border-top:1px solid #d1fae5"><span>Gesamt</span><span>${finalPrice}</span></div>
+          </div>
+        ` : `<div class="checkout-summary-price">${price}</div>`}
       </div>
 
       <label class="checkout-checkbox">

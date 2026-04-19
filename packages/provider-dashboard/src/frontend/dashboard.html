@@ -1652,6 +1652,16 @@
           var expired = allEntries.filter(function(e) { return e.status === 'expired' })
           var el = document.getElementById('calModalWaitlist')
           if (!el || (!waiting.length && !offered.length && !expired.length)) return
+
+          // Helper: block label for an entry
+          function blockLabel(e) {
+            if (!e.courseBlockId) return ''
+            // Try to find block name from cached blocks
+            var blockInfo = window._allBlocksCache && window._allBlocksCache.find(function(b) { return b.id === e.courseBlockId })
+            var label = blockInfo ? blockInfo.seasonLabel : 'Block'
+            return ' <span class="text-xs text-gray-400 ml-1">(' + escapeHtml(label) + ')</span>'
+          }
+
           var html = ''
           // Offered entries (ausstehend) — check if actually expired
           var now = new Date()
@@ -1663,11 +1673,11 @@
                 var expiry = e.expiresAt ? new Date(e.expiresAt).toLocaleString('de-DE', {hour:'2-digit',minute:'2-digit'}) + ' Uhr' : ''
                 if (isExpired) {
                   return '<div class="flex justify-between items-center text-xs py-2 px-3 bg-red-50 border border-red-200 rounded-lg">' +
-                    '<div class="cursor-pointer" onclick="showParentProfile(\'' + e.parentId + '\')"><span class="font-medium text-red-900">' + escapeHtml(name) + '</span></div>' +
+                    '<div class="cursor-pointer" onclick="showParentProfile(\'' + e.parentId + '\')"><span class="font-medium text-red-900">' + escapeHtml(name) + '</span>' + blockLabel(e) + '</div>' +
                     '<span class="text-red-500 font-medium">Abgelaufen</span></div>'
                 }
                 return '<div class="flex justify-between items-center text-xs py-2 px-3 bg-white border border-blue-100 rounded-lg">' +
-                  '<div class="cursor-pointer" onclick="showParentProfile(\'' + e.parentId + '\')"><span class="font-medium text-blue-900">' + escapeHtml(name) + '</span></div>' +
+                  '<div class="cursor-pointer" onclick="showParentProfile(\'' + e.parentId + '\')"><span class="font-medium text-blue-900">' + escapeHtml(name) + '</span>' + blockLabel(e) + '</div>' +
                   '<div class="flex items-center gap-2"><span class="text-blue-500">Bestätigen bis ' + expiry + '</span><button onclick="acceptWaitlistEntry(\'' + e.id + '\', \'' + (activity?.id || '') + '\')" class="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium hover:bg-blue-200">Erneut senden</button></div>' +
                   '</div>'
               }).join('') + '</div></div>'
@@ -1678,21 +1688,43 @@
               expired.map(function(e) {
                 var name = e.child?.firstName ? (e.child.firstName + ' ' + (e.child.lastName || '')) : (e.child?.name || 'Unbekannt')
                 return '<div class="flex justify-between items-center text-xs py-2 px-3 bg-white border border-red-100 rounded-lg">' +
-                  '<div class="cursor-pointer" onclick="showParentProfile(\'' + e.parentId + '\')"><span class="font-medium text-red-900">' + escapeHtml(name) + '</span></div>' +
+                  '<div class="cursor-pointer" onclick="showParentProfile(\'' + e.parentId + '\')"><span class="font-medium text-red-900">' + escapeHtml(name) + '</span>' + blockLabel(e) + '</div>' +
                   '<div class="flex items-center gap-2"><span class="text-red-400">Nicht bestätigt</span><button onclick="acceptWaitlistEntry(\'' + e.id + '\', \'' + (activity?.id || '') + '\')" class="px-2 py-1 bg-amber-100 text-amber-700 rounded text-xs font-medium hover:bg-amber-200">Erneut anbieten</button></div>' +
                   '</div>'
               }).join('') + '</div></div>'
           }
-          // Waiting entries
+          // Waiting entries — group by course block
           if (waiting.length) {
-            html += '<div class="border border-amber-200 bg-amber-50 rounded-lg p-3"><div class="text-xs font-semibold text-amber-800 mb-2">Warteliste (' + waiting.length + ')</div><div class="space-y-1">' +
-              waiting.map(e => {
+            var blockGroups = {}
+            var noBlock = []
+            waiting.forEach(function(e) {
+              if (e.courseBlockId) {
+                if (!blockGroups[e.courseBlockId]) blockGroups[e.courseBlockId] = []
+                blockGroups[e.courseBlockId].push(e)
+              } else {
+                noBlock.push(e)
+              }
+            })
+            function renderWaitingEntries(entries) {
+              return entries.map(e => {
                 const name = e.child?.firstName ? (e.child.firstName + ' ' + (e.child.lastName || '')) : (e.child?.name || 'Unbekannt')
                 return '<div class="flex justify-between items-center text-xs py-2 px-3 bg-white border border-amber-100 rounded-lg">' +
                   '<div class="cursor-pointer" onclick="showParentProfile(\'' + e.parentId + '\')"><span class="font-medium text-amber-900">' + escapeHtml(name) + '</span><span class="text-amber-600 ml-2">Pos. ' + e.position + '</span></div>' +
                   '<button onclick="acceptWaitlistEntry(\'' + e.id + '\', \'' + (activity?.id || '') + '\')" class="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-medium hover:bg-green-200">Annehmen</button>' +
                   '</div>'
-              }).join('') + '</div></div>'
+              }).join('')
+            }
+            // Render block-grouped waitlists
+            Object.keys(blockGroups).forEach(function(blockId) {
+              var blockEntries = blockGroups[blockId]
+              var blockInfo = window._allBlocksCache && window._allBlocksCache.find(function(b) { return b.id === blockId })
+              var blockName = blockInfo ? blockInfo.seasonLabel : 'Kursblock'
+              html += '<div class="border border-amber-200 bg-amber-50 rounded-lg p-3 mb-2"><div class="text-xs font-semibold text-amber-800 mb-2">' + escapeHtml(blockName) + ' — Warteliste (' + blockEntries.length + ')</div><div class="space-y-1">' + renderWaitingEntries(blockEntries) + '</div></div>'
+            })
+            // Render activity-level (no block) waitlist
+            if (noBlock.length) {
+              html += '<div class="border border-amber-200 bg-amber-50 rounded-lg p-3"><div class="text-xs font-semibold text-amber-800 mb-2">Warteliste (' + noBlock.length + ')</div><div class="space-y-1">' + renderWaitingEntries(noBlock) + '</div></div>'
+            }
           }
           el.innerHTML = html
         }).catch(() => {})
@@ -3026,11 +3058,28 @@
       const paymentColors = { paid: 'text-green-600', unpaid: 'text-red-500', partial: 'text-amber-500', refunded: 'text-gray-400' }
       const filterAct = actMap[bookingsFilterActivity]
 
-      // Group waitlist by course
-      const waitlistByCourse = {}
+      // Group waitlist by course and block
       const waitingEntries = wlData.filter(e => e.status === 'waiting')
       const offeredEntries = wlData.filter(e => e.status === 'offered')
-      waitingEntries.forEach(e => { if (!waitlistByCourse[e.courseTitle]) waitlistByCourse[e.courseTitle] = []; waitlistByCourse[e.courseTitle].push(e) })
+
+      // Group by course, then sub-group by block within course
+      const waitlistByCourseAndBlock = {}
+      waitingEntries.forEach(e => {
+        const key = e.courseTitle || 'Unbekannt'
+        if (!waitlistByCourseAndBlock[key]) waitlistByCourseAndBlock[key] = { noBlock: [], blocks: {} }
+        if (e.courseBlockId) {
+          if (!waitlistByCourseAndBlock[key].blocks[e.courseBlockId]) waitlistByCourseAndBlock[key].blocks[e.courseBlockId] = []
+          waitlistByCourseAndBlock[key].blocks[e.courseBlockId].push(e)
+        } else {
+          waitlistByCourseAndBlock[key].noBlock.push(e)
+        }
+      })
+
+      // Helper: get block label
+      function getBlockLabel(blockId) {
+        var blockInfo = window._allBlocksCache && window._allBlocksCache.find(function(b) { return b.id === blockId })
+        return blockInfo ? blockInfo.seasonLabel : 'Kursblock'
+      }
 
       let waitlistSectionHtml = ''
       if (waitingEntries.length || offeredEntries.length) {
@@ -3039,15 +3088,28 @@
           waitlistSectionHtml += '<div class="bg-blue-50 border border-blue-200 rounded-xl p-4"><div class="font-semibold text-blue-900 text-sm mb-2">Ausstehend (' + offeredEntries.length + ')</div><div class="space-y-2">' +
             offeredEntries.map(e => {
               const name = e.child?.firstName ? (e.child.firstName + ' ' + (e.child.lastName || '')) : 'Unbekannt'
-              return '<div class="flex justify-between items-center bg-white rounded-lg px-4 py-3 border border-blue-100"><div class="cursor-pointer" onclick="showParentProfile(\'' + e.parentId + '\')"><div class="font-medium text-sm">' + escapeHtml(name) + '</div><div class="text-xs text-gray-500">' + escapeHtml(e.courseTitle) + '</div></div><span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-medium">Angebot gesendet</span></div>'
+              const blockHint = e.courseBlockId ? ' · ' + escapeHtml(getBlockLabel(e.courseBlockId)) : ''
+              return '<div class="flex justify-between items-center bg-white rounded-lg px-4 py-3 border border-blue-100"><div class="cursor-pointer" onclick="showParentProfile(\'' + e.parentId + '\')"><div class="font-medium text-sm">' + escapeHtml(name) + '</div><div class="text-xs text-gray-500">' + escapeHtml(e.courseTitle) + blockHint + '</div></div><span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-medium">Angebot gesendet</span></div>'
             }).join('') + '</div></div>'
         }
-        Object.entries(waitlistByCourse).forEach(([course, entries]) => {
-          waitlistSectionHtml += '<div class="bg-amber-50 border border-amber-200 rounded-xl p-4"><div class="font-semibold text-amber-900 text-sm mb-2">' + escapeHtml(course) + ' — Warteliste (' + entries.length + ')</div><div class="space-y-2">' +
-            entries.map(e => {
-              const name = e.child?.firstName ? (e.child.firstName + ' ' + (e.child.lastName || '')) : 'Unbekannt'
-              return '<div class="flex justify-between items-center bg-white rounded-lg px-4 py-3 border border-amber-100"><div class="cursor-pointer" onclick="showParentProfile(\'' + e.parentId + '\')"><div class="font-medium text-sm">' + escapeHtml(name) + '</div><div class="text-xs text-gray-500">Position ' + e.position + '</div></div><button onclick="acceptWaitlistEntry(\'' + e.id + '\', \'' + e.courseId + '\')" class="px-3 py-1.5 bg-green-500 text-white rounded-lg text-xs font-medium hover:bg-green-600">Annehmen</button></div>'
-            }).join('') + '</div></div>'
+        Object.entries(waitlistByCourseAndBlock).forEach(([course, data]) => {
+          // Render block-specific waitlists
+          Object.entries(data.blocks).forEach(([blockId, entries]) => {
+            const blockName = getBlockLabel(blockId)
+            waitlistSectionHtml += '<div class="bg-amber-50 border border-amber-200 rounded-xl p-4"><div class="font-semibold text-amber-900 text-sm mb-2">' + escapeHtml(course) + ' · ' + escapeHtml(blockName) + ' — Warteliste (' + entries.length + ')</div><div class="space-y-2">' +
+              entries.map(e => {
+                const name = e.child?.firstName ? (e.child.firstName + ' ' + (e.child.lastName || '')) : 'Unbekannt'
+                return '<div class="flex justify-between items-center bg-white rounded-lg px-4 py-3 border border-amber-100"><div class="cursor-pointer" onclick="showParentProfile(\'' + e.parentId + '\')"><div class="font-medium text-sm">' + escapeHtml(name) + '</div><div class="text-xs text-gray-500">Position ' + e.position + '</div></div><button onclick="acceptWaitlistEntry(\'' + e.id + '\', \'' + e.courseId + '\')" class="px-3 py-1.5 bg-green-500 text-white rounded-lg text-xs font-medium hover:bg-green-600">Annehmen</button></div>'
+              }).join('') + '</div></div>'
+          })
+          // Render activity-level (no block) waitlist
+          if (data.noBlock.length) {
+            waitlistSectionHtml += '<div class="bg-amber-50 border border-amber-200 rounded-xl p-4"><div class="font-semibold text-amber-900 text-sm mb-2">' + escapeHtml(course) + ' — Warteliste (' + data.noBlock.length + ')</div><div class="space-y-2">' +
+              data.noBlock.map(e => {
+                const name = e.child?.firstName ? (e.child.firstName + ' ' + (e.child.lastName || '')) : 'Unbekannt'
+                return '<div class="flex justify-between items-center bg-white rounded-lg px-4 py-3 border border-amber-100"><div class="cursor-pointer" onclick="showParentProfile(\'' + e.parentId + '\')"><div class="font-medium text-sm">' + escapeHtml(name) + '</div><div class="text-xs text-gray-500">Position ' + e.position + '</div></div><button onclick="acceptWaitlistEntry(\'' + e.id + '\', \'' + e.courseId + '\')" class="px-3 py-1.5 bg-green-500 text-white rounded-lg text-xs font-medium hover:bg-green-600">Annehmen</button></div>'
+              }).join('') + '</div></div>'
+          }
         })
         waitlistSectionHtml += '</div>'
       }
@@ -3118,6 +3180,7 @@
                     <span class="text-sm font-medium ${paymentColors[b.paymentStatus] || ''}">${paymentLabelsDE[b.paymentStatus] || b.paymentStatus}</span>
                     ${b.amountPaid > 0 ? `<span class="text-xs text-gray-400 ml-1">(${Number(b.amountPaid).toFixed(2).replace('.',',')}€)</span>` : ''}
                     <div class="text-xs text-gray-400 mt-0.5">${({stripe:'💳 Stripe',paypal:'🅿️ PayPal',onsite:'🏠 Vor Ort'})[b.paymentMethod] || ''}</div>
+                    ${b.discountApplied > 0 ? `<div class="text-xs text-green-600 mt-0.5">Geschwisterrabatt: -${Number(b.discountApplied).toFixed(2).replace('.',',')}€</div>` : ''}
                   </td>
                   <td class="px-6 py-4">
                     <span class="px-2 py-0.5 rounded text-xs font-medium ${b.source === 'platform' ? 'bg-brand-100 text-brand-700' : 'bg-gray-100 text-gray-600'}">${b.source === 'platform' ? 'Kids Club' : 'Direkt'}</span>
@@ -3559,7 +3622,7 @@
                 const isOverdue = inv.status === 'sent' && new Date(inv.dueDate) < new Date()
                 return `
                 <tr class="hover:bg-gray-50 ${isOverdue ? 'bg-red-50/50' : ''}">
-                  <td class="px-6 py-4 text-sm font-mono font-medium text-gray-900">${escapeHtml(inv.number)}</td>
+                  <td class="px-6 py-4 text-sm font-mono font-medium text-gray-900">${inv.number === 'ENTWURF' || inv.number.startsWith('ENTWURF') ? '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">Entwurf</span>' : escapeHtml(inv.number)}</td>
                   <td class="px-6 py-4 text-sm text-gray-700">${escapeHtml(parentMap[inv.parentId]?.name || inv.parentId)}</td>
                   <td class="px-6 py-4 text-xs text-gray-500">${escapeHtml((inv.lineItems || []).map(li => li.description).join(', ').substring(0, 40))}</td>
                   <td class="px-6 py-4 text-sm text-gray-700 text-right">${formatCurrency(inv.subtotal)}</td>
@@ -3570,7 +3633,7 @@
                   <td class="px-6 py-4">
                     <div class="flex items-center gap-1">
                       <button onclick="viewInvoicePdf('${inv.id}')" class="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded hover:bg-gray-200">PDF</button>
-                      ${inv.status === 'draft' ? `<button onclick="sendInvoice('${inv.id}')" class="px-2 py-1 text-xs bg-brand-100 text-brand-700 rounded hover:bg-brand-200">Versenden</button>` : ''}
+                      ${inv.status === 'draft' ? `<button onclick="sendInvoice('${inv.id}')" class="px-3 py-1.5 text-xs font-semibold bg-brand-600 text-white rounded hover:bg-brand-700 shadow-sm">Versenden</button>` : ''}
                       ${inv.status === 'sent' || inv.status === 'overdue' ? `<button onclick="markInvoicePaid('${inv.id}')" class="px-2 py-1 text-xs bg-green-50 text-green-700 rounded hover:bg-green-100">Bezahlt</button>` : ''}
                       ${inv.status !== 'paid' && inv.status !== 'cancelled' ? `<button onclick="cancelInvoice('${inv.id}')" class="px-2 py-1 text-xs bg-red-50 text-red-600 rounded hover:bg-red-100">Stornieren</button>` : ''}
                     </div>

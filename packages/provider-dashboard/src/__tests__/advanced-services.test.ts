@@ -607,3 +607,226 @@ describe('Validators – Mixed Schedule Overlap', () => {
     assert.equal(schedulesOverlap(single, recurring), false)
   })
 })
+
+// ============================================================
+// SIBLING DISCOUNT
+// ============================================================
+
+describe('Sibling Discount', () => {
+  beforeEach(resetAll)
+
+  function setupWithSiblingDiscount() {
+    const provider = ProviderService.create({
+      name: 'Test Provider', description: '', categories: ['Tanz'],
+      address: { street: '', city: 'Köln', zip: '50667', country: 'DE' },
+      contact: { email: 'test@test.de' },
+    })
+    ProviderService.activate(provider.id)
+
+    const activity = ActivityService.create({
+      providerId: provider.id, title: 'Tanzkurs', description: '', category: 'Tanz',
+      ageRange: { min: 3, max: 10 }, capacity: 12, waitlistEnabled: true,
+      schedule: { type: 'recurring', slots: [{ day: 'MO', startTime: '15:00', endTime: '16:00' }], startDate: '2026-04-06' },
+      pricing: [{ label: 'Monat', type: 'subscription', amount: 100, currency: 'EUR', intervalMonths: 1, siblingDiscount: 10 }],
+    })
+    ActivityService.publish(activity.id)
+
+    const parent = assertNotError(ParentService.create({
+      name: 'Familie Müller', email: 'mueller@test.de',
+      children: [
+        { name: 'Anna', age: 5, emergencyContact: 'Frau Müller', emergencyPhone: '0221-123' },
+        { name: 'Ben', age: 7, emergencyContact: 'Frau Müller', emergencyPhone: '0221-123' },
+      ],
+    }))
+
+    return { provider, activity, parent }
+  }
+
+  it('should NOT apply sibling discount on first booking', () => {
+    const { provider, activity, parent } = setupWithSiblingDiscount()
+
+    const result = BookingService.create({
+      activityId: activity.id,
+      providerId: provider.id,
+      parentId: parent.id,
+      child: { name: 'Anna', age: 5, emergencyContact: 'Frau Müller', emergencyPhone: '0221-123' },
+      pricingOptionId: activity.pricing[0].id,
+    })
+
+    assert.ok(!('error' in result))
+    const booking = result.booking
+    assert.equal(booking.discountApplied, undefined)
+    assert.equal(booking.discountReason, undefined)
+    // No discount should be reported
+    assert.equal(result.discountApplied, undefined)
+  })
+
+  it('should apply sibling discount on second booking (same parent, same provider)', () => {
+    const { provider, activity, parent } = setupWithSiblingDiscount()
+
+    // First booking – no discount
+    const first = BookingService.create({
+      activityId: activity.id,
+      providerId: provider.id,
+      parentId: parent.id,
+      child: { name: 'Anna', age: 5, emergencyContact: 'Frau Müller', emergencyPhone: '0221-123' },
+      pricingOptionId: activity.pricing[0].id,
+    })
+    assert.ok(!('error' in first))
+
+    // Second booking – should get 10% sibling discount
+    const second = BookingService.create({
+      activityId: activity.id,
+      providerId: provider.id,
+      parentId: parent.id,
+      child: { name: 'Ben', age: 7, emergencyContact: 'Frau Müller', emergencyPhone: '0221-123' },
+      pricingOptionId: activity.pricing[0].id,
+    })
+    assert.ok(!('error' in second))
+    const booking = second.booking
+    assert.equal(booking.discountApplied, 10) // 10% of 100€ = 10€
+    assert.equal(booking.discountReason, 'sibling')
+    assert.equal(second.discountApplied, 10)
+  })
+
+  it('should create invoice with Geschwisterrabatt line item from discounted booking', () => {
+    const { provider, activity, parent } = setupWithSiblingDiscount()
+
+    // First booking
+    const first = BookingService.create({
+      activityId: activity.id, providerId: provider.id, parentId: parent.id,
+      child: { name: 'Anna', age: 5, emergencyContact: 'Frau Müller', emergencyPhone: '0221-123' },
+      pricingOptionId: activity.pricing[0].id,
+    })
+    assert.ok(!('error' in first))
+
+    // Second booking with sibling discount
+    const second = BookingService.create({
+      activityId: activity.id, providerId: provider.id, parentId: parent.id,
+      child: { name: 'Ben', age: 7, emergencyContact: 'Frau Müller', emergencyPhone: '0221-123' },
+      pricingOptionId: activity.pricing[0].id,
+    })
+    assert.ok(!('error' in second))
+    assert.equal(second.booking.discountApplied, 10)
+
+    // Create invoice from discounted booking
+    const invoice = InvoiceService.createFromBooking(second.booking.id)
+    assert.ok(!('error' in invoice))
+    assert.equal(invoice.lineItems.length, 2)
+    // First line: full price (Brutto)
+    assert.equal(invoice.lineItems[0].unitPrice, 100)
+    // Second line: sibling discount (negative)
+    assert.equal(invoice.lineItems[1].unitPrice, -10)
+    assert.ok(invoice.lineItems[1].description.includes('Geschwisterrabatt'))
+    // Total (Brutto) should reflect discount: 100 - 10 = 90€
+    assert.equal(invoice.total, 90)
+  })
+})
+
+// ============================================================
+// WAITLIST SERVICE – Block-Specific Waitlist
+// ============================================================
+
+describe('WaitlistService – Block-Specific Waitlist', () => {
+  beforeEach(resetAll)
+
+  it('should scope waitlist entry to a specific course block', () => {
+    const { activity, parent } = setup()
+    const blockId = 'block-001'
+
+    const entry = assertNotError(WaitlistService.add({
+      activityId: activity.id,
+      courseBlockId: blockId,
+      parentId: parent.id,
+      child: parent.children[0],
+    }))
+
+    assert.equal(entry.courseBlockId, blockId)
+    assert.equal(entry.activityId, activity.id)
+
+    // Should appear in block-specific list
+    const blockList = WaitlistService.listByCourseBlock(blockId)
+    assert.equal(blockList.length, 1)
+    assert.equal(blockList[0].id, entry.id)
+
+    // Should also appear in activity-level list (backward compat)
+    const actList = WaitlistService.listByActivity(activity.id)
+    assert.equal(actList.length, 1)
+  })
+
+  it('should allow same child on waitlist for different blocks of same activity', () => {
+    const { activity, parent } = setup()
+    const blockA = 'block-A'
+    const blockB = 'block-B'
+
+    const e1 = assertNotError(WaitlistService.add({
+      activityId: activity.id,
+      courseBlockId: blockA,
+      parentId: parent.id,
+      child: parent.children[0],
+    }))
+
+    const e2 = assertNotError(WaitlistService.add({
+      activityId: activity.id,
+      courseBlockId: blockB,
+      parentId: parent.id,
+      child: parent.children[0],
+    }))
+
+    assert.equal(e1.courseBlockId, blockA)
+    assert.equal(e2.courseBlockId, blockB)
+
+    // Each block has its own waitlist
+    assert.equal(WaitlistService.listByCourseBlock(blockA).length, 1)
+    assert.equal(WaitlistService.listByCourseBlock(blockB).length, 1)
+
+    // Activity-level sees both
+    assert.equal(WaitlistService.listByActivity(activity.id).length, 2)
+  })
+
+  it('should reject duplicate within same block scope', () => {
+    const { activity, parent } = setup()
+    const blockId = 'block-dup'
+
+    const e1 = WaitlistService.add({
+      activityId: activity.id,
+      courseBlockId: blockId,
+      parentId: parent.id,
+      child: parent.children[0],
+    })
+    assert.ok(!('error' in e1))
+
+    const e2 = WaitlistService.add({
+      activityId: activity.id,
+      courseBlockId: blockId,
+      parentId: parent.id,
+      child: parent.children[0],
+    })
+    assert.ok('error' in e2)
+  })
+
+  it('should reorder priority within block scope', () => {
+    const { activity, parent } = setup()
+    const blockId = 'block-prio'
+    const p2 = assertNotError(ParentService.create({ name: 'P2', email: 'p2b@t.de', children: [{ name: 'Sibling', age: 5, emergencyContact: 'P2', emergencyPhone: '1' }] }))
+
+    const e1 = assertNotError(WaitlistService.add({
+      activityId: activity.id,
+      courseBlockId: blockId,
+      parentId: parent.id,
+      child: parent.children[0],
+      priority: 'normal',
+    }))
+    const e2 = assertNotError(WaitlistService.add({
+      activityId: activity.id,
+      courseBlockId: blockId,
+      parentId: p2.id,
+      child: p2.children[0],
+      priority: 'sibling',
+    }))
+
+    const blockList = WaitlistService.listByCourseBlock(blockId)
+    assert.equal(blockList[0].id, e2.id) // sibling first
+    assert.equal(blockList[1].id, e1.id)
+  })
+})

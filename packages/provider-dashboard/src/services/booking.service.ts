@@ -150,10 +150,29 @@ export const BookingService = {
       }
     }
 
+    // --- Geschwisterrabatt prüfen ---
+    let siblingDiscountApplied = 0
+    let discountReason = ''
+    if (!input.couponCode && pricingOption.siblingDiscount && pricingOption.siblingDiscount > 0) {
+      const existingBookingIds = store.getFromIndex(store.indexes.bookingsByParent, input.parentId)
+      const hasOtherActiveBookings = Array.from(existingBookingIds)
+        .map(bid => store.state.bookings.get(bid)!)
+        .filter(b => b && b.providerId === input.providerId && b.status === 'confirmed')
+        .length > 0
+
+      if (hasOtherActiveBookings) {
+        siblingDiscountApplied = Math.round(pricingOption.amount * (pricingOption.siblingDiscount / 100) * 100) / 100
+        discountReason = 'sibling'
+      }
+    }
+
+    // Combine coupon + sibling discount (coupon takes priority, sibling stacks if no coupon)
+    const totalDiscount = discountApplied + siblingDiscountApplied
+
     // --- Buchung erstellen ---
     const id = generateId('book')
     const now = new Date()
-    const finalAmount = Math.max(0, pricingOption.amount - discountApplied)
+    const finalAmount = Math.max(0, pricingOption.amount - totalDiscount)
 
     const booking: Booking = {
       id,
@@ -167,6 +186,8 @@ export const BookingService = {
       amountPaid: 0,
       currency: pricingOption.currency,
       source: input.source ?? 'direct',
+      discountApplied: siblingDiscountApplied > 0 ? siblingDiscountApplied : undefined,
+      discountReason: discountReason || undefined,
       notes: input.notes,
       createdAt: now,
       updatedAt: now,
@@ -215,11 +236,11 @@ export const BookingService = {
       title: waitlisted ? 'Auf Warteliste gesetzt' : 'Buchungsbestätigung',
       body: waitlisted
         ? `"${input.child.name}" steht auf der Warteliste für "${activity.title}". Sie werden benachrichtigt, sobald ein Platz frei wird.`
-        : `Buchung bestätigt: "${input.child.name}" für "${activity.title}".${discountApplied > 0 ? ` Rabatt: ${discountApplied} ${pricingOption.currency}` : ''}`,
+        : `Buchung bestätigt: "${input.child.name}" für "${activity.title}".${totalDiscount > 0 ? ` Rabatt: ${totalDiscount} ${pricingOption.currency}${discountReason === 'sibling' ? ' (Geschwisterrabatt)' : ''}` : ''}`,
       data: { bookingId: id, activityId: input.activityId },
     }))
 
-    return { booking, discountApplied: discountApplied > 0 ? discountApplied : undefined, waitlisted, notifications }
+    return { booking, discountApplied: totalDiscount > 0 ? totalDiscount : undefined, waitlisted, notifications }
   },
 
   getById(id: ID): Booking | undefined {
@@ -337,6 +358,11 @@ export const BookingService = {
     const activity = store.state.activities.get(booking.activityId)
     const pricingOption = activity?.pricing.find((p) => p.id === booking.pricingOptionId)
     let expectedAmount = pricingOption?.amount ?? 0
+
+    // Geschwisterrabatt abziehen
+    if (booking.discountApplied && booking.discountApplied > 0) {
+      expectedAmount = Math.max(0, expectedAmount - booking.discountApplied)
+    }
 
     // Coupon-Rabatt abziehen
     const redemptionIds = store.getFromIndex(store.indexes.redemptionsByParent, booking.parentId)
