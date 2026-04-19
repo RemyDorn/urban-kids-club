@@ -371,7 +371,7 @@ export function registerPortalRoutes(router: Router) {
     res.json({ data: enriched })
   })
 
-  // Get invoice detail/view (reuse existing view route via redirect)
+  // Get invoice detail/view — returns URL to the actual view route
   router.get('/api/portal/invoices/:id/view', async (req, res) => {
     const auth = await requireParentAuth(req, res)
     if (!auth) return
@@ -380,10 +380,16 @@ export function registerPortalRoutes(router: Router) {
     const { data: invoice } = await sb.from('invoices')
       .select('id').eq('id', req.params.id).eq('parent_id', auth.parentId).maybeSingle()
     if (!invoice) return res.error(404, 'Rechnung nicht gefunden')
-    // Redirect to the main invoice view route with session token for auth
     const authHeader = req.raw?.headers?.authorization || ''
     const token = authHeader.replace('Bearer ', '')
-    res.redirect('/api/invoices/' + req.params.id + '/view?token=' + encodeURIComponent(token))
+    const viewUrl = '/api/invoices/' + req.params.id + '/view?token=' + encodeURIComponent(token)
+    // Use raw response for 302 redirect since router has no redirect method
+    const raw = (res as any)._raw || (req as any).raw?.socket
+    if (req.raw && req.raw.socket) {
+      req.raw.socket.writable // just checking availability
+    }
+    // Return the URL as JSON; the frontend already uses direct links
+    res.json({ data: { viewUrl } })
   })
 
   // Get parent's messages (all, for inbox grouping)
@@ -426,20 +432,19 @@ export function registerPortalRoutes(router: Router) {
     res.json({ data: enriched })
   })
 
-  // Send message from parent to provider (new route with providerId in path)
-  router.post('/api/portal/messages/:providerId', async (req, res) => {
+  // Mark messages as read (must be registered before :providerId to avoid route conflict)
+  router.post('/api/portal/messages/mark-read', async (req, res) => {
     const auth = await requireParentAuth(req, res)
     if (!auth) return
-    const providerId = req.params.providerId
-    const { content } = req.body as { content?: string }
-    if (!content?.trim()) return res.error(400, 'Nachricht ist erforderlich')
+    const { messageIds, providerId } = req.body as { messageIds?: string[]; providerId?: string }
     const sb = getServiceClient()
-    const { data, error } = await sb.from('messages').insert({
-      provider_id: providerId, parent_id: auth.parentId,
-      sender_type: 'parent', content: content.trim(),
-    }).select().single()
+    let q = sb.from('messages').update({ read_at: new Date().toISOString() })
+      .eq('parent_id', auth.parentId).eq('sender_type', 'provider').is('read_at', null)
+    if (providerId) q = q.eq('provider_id', providerId)
+    if (messageIds?.length) q = q.in('id', messageIds)
+    const { error } = await q
     if (error) throw error
-    res.status(201).json({ data })
+    res.json({ data: { success: true } })
   })
 
   // Send message from parent to provider (legacy route for backward compat)
@@ -457,19 +462,20 @@ export function registerPortalRoutes(router: Router) {
     res.status(201).json({ data })
   })
 
-  // Mark messages as read
-  router.post('/api/portal/messages/mark-read', async (req, res) => {
+  // Send message from parent to provider (with providerId in path)
+  router.post('/api/portal/messages/:providerId', async (req, res) => {
     const auth = await requireParentAuth(req, res)
     if (!auth) return
-    const { messageIds, providerId } = req.body as { messageIds?: string[]; providerId?: string }
+    const providerId = req.params.providerId
+    const { content } = req.body as { content?: string }
+    if (!content?.trim()) return res.error(400, 'Nachricht ist erforderlich')
     const sb = getServiceClient()
-    let q = sb.from('messages').update({ read_at: new Date().toISOString() })
-      .eq('parent_id', auth.parentId).eq('sender_type', 'provider').is('read_at', null)
-    if (providerId) q = q.eq('provider_id', providerId)
-    if (messageIds?.length) q = q.in('id', messageIds)
-    const { error } = await q
+    const { data, error } = await sb.from('messages').insert({
+      provider_id: providerId, parent_id: auth.parentId,
+      sender_type: 'parent', content: content.trim(),
+    }).select().single()
     if (error) throw error
-    res.json({ data: { success: true } })
+    res.status(201).json({ data })
   })
 
   // Provider: get messages for a parent

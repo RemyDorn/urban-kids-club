@@ -567,111 +567,238 @@ async function renderCreditHistory(el) {
   } catch(e) { el.innerHTML = '<div class="empty"><div class="icon">⚠️</div>Fehler beim Laden.</div>'; }
 }
 
+// ── Rechnungen (Invoices) with filter ──────────────────────
+var _allInvoices = [];
+var _invoiceFilter = 'all';
+
 async function renderInvoices() {
-  const el = document.getElementById('content');
+  var el = document.getElementById('content');
   el.innerHTML = '<div class="empty"><div class="icon">⏳</div>Lade...</div>';
   try {
-    const invoices = await apiFetch('/api/portal/invoices');
-    if (!invoices.length) {
+    _allInvoices = await apiFetch('/api/portal/invoices');
+    if (!_allInvoices.length) {
       el.innerHTML = '<div class="empty"><div class="icon">🧾</div><p>Noch keine Rechnungen.</p></div>';
       return;
     }
-    const statusLabels = { draft: 'Entwurf', sent: 'Gesendet', paid: 'Bezahlt', cancelled: 'Storniert' };
-    const statusBadge = { draft: 'badge-gray', sent: 'badge-amber', paid: 'badge-green', cancelled: 'badge-red' };
-
-    el.innerHTML = invoices.map(function(inv) {
-      const issued = inv.issued_at ? new Date(inv.issued_at).toLocaleDateString('de-DE') : '';
-      const due = inv.due_date ? new Date(inv.due_date).toLocaleDateString('de-DE') : '';
-      return '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center">' +
-        '<div><h3>Rechnung ' + esc(inv.number) + '</h3>' +
-        '<p style="font-size:13px;color:var(--muted)">Erstellt: ' + issued + (due ? ' · Fällig: ' + due : '') + '</p></div>' +
-        '<div style="display:flex;align-items:center;gap:12px">' +
-        '<span style="font-size:18px;font-weight:700">' + Number(inv.total||0).toFixed(2).replace('.',',') + ' €</span>' +
-        '<span class="badge ' + (statusBadge[inv.status]||'badge-gray') + '">' + (statusLabels[inv.status]||inv.status) + '</span>' +
-        '</div></div>' +
-        (inv.status === 'sent' ? '<a href="/api/invoices/' + inv.id + '/view?token=' + encodeURIComponent(sessionToken || '') + '" target="_blank" style="display:inline-block;margin-top:8px;font-size:13px;color:var(--primary);font-weight:600">Rechnung ansehen →</a>' : '') +
-        '</div>';
-    }).join('');
+    renderInvoiceList(el);
   } catch(e) { el.innerHTML = '<div class="empty"><div class="icon">⚠️</div>Fehler beim Laden.</div>'; }
 }
 
-let _messages = [];
-let _msgProviders = new Map();
-let _selectedProvider = null;
+function renderInvoiceList(el) {
+  var invSL = { draft: 'Entwurf', sent: 'Offen', paid: 'Bezahlt', cancelled: 'Storniert' };
+  var invSB = { draft: 'badge-gray', sent: 'badge-amber', paid: 'badge-green', cancelled: 'badge-red' };
+  var counts = { all: _allInvoices.length, sent: 0, paid: 0, overdue: 0 };
+  _allInvoices.forEach(function(inv) {
+    if (inv.status === 'sent') counts.sent++;
+    if (inv.status === 'paid') counts.paid++;
+    if (inv.isOverdue) counts.overdue++;
+  });
+  var filtered = _allInvoices;
+  if (_invoiceFilter === 'sent') filtered = _allInvoices.filter(function(i) { return i.status === 'sent' && !i.isOverdue; });
+  else if (_invoiceFilter === 'overdue') filtered = _allInvoices.filter(function(i) { return i.isOverdue; });
+  else if (_invoiceFilter === 'paid') filtered = _allInvoices.filter(function(i) { return i.status === 'paid'; });
+
+  var html = '<div class="filter-bar">';
+  html += '<button class="filter-btn' + (_invoiceFilter === 'all' ? ' active' : '') + '" onclick="_invoiceFilter=\'all\';renderInvoiceList(document.getElementById(\'content\'))">Alle (' + counts.all + ')</button>';
+  html += '<button class="filter-btn' + (_invoiceFilter === 'sent' ? ' active' : '') + '" onclick="_invoiceFilter=\'sent\';renderInvoiceList(document.getElementById(\'content\'))">Offen (' + counts.sent + ')</button>';
+  if (counts.overdue > 0) {
+    html += '<button class="filter-btn' + (_invoiceFilter === 'overdue' ? ' active' : '') + '" onclick="_invoiceFilter=\'overdue\';renderInvoiceList(document.getElementById(\'content\'))" style="' + (_invoiceFilter !== 'overdue' ? 'border-color:#ef4444;color:#ef4444' : '') + '">\u00DCberf\u00E4llig (' + counts.overdue + ')</button>';
+  }
+  html += '<button class="filter-btn' + (_invoiceFilter === 'paid' ? ' active' : '') + '" onclick="_invoiceFilter=\'paid\';renderInvoiceList(document.getElementById(\'content\'))">Bezahlt (' + counts.paid + ')</button>';
+  html += '</div>';
+
+  if (!filtered.length) {
+    html += '<div class="empty" style="padding:24px"><p>Keine Rechnungen in dieser Kategorie.</p></div>';
+  } else {
+    html += '<div class="card" style="padding:0;overflow:hidden">';
+    filtered.forEach(function(inv) {
+      var issued = inv.issued_at ? new Date(inv.issued_at).toLocaleDateString('de-DE') : '';
+      var due = inv.due_date ? new Date(inv.due_date).toLocaleDateString('de-DE') : '';
+      var displayLabel = inv.isOverdue ? '\u00DCberf\u00E4llig' : (invSL[inv.status] || inv.status);
+      var displayBadge = inv.isOverdue ? 'badge-red' : (invSB[inv.status] || 'badge-gray');
+      html += '<div style="padding:14px 16px;border-bottom:1px solid var(--border)">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:start;flex-wrap:wrap;gap:8px">';
+      html += '<div style="flex:1;min-width:180px">';
+      html += '<h3 style="font-size:14px;font-weight:600;margin-bottom:2px">' + esc(inv.number) + '</h3>';
+      html += '<p style="font-size:12px;color:var(--muted)">' + esc(inv.providerName || '') + '</p>';
+      html += '<p style="font-size:12px;color:var(--muted)">Erstellt: ' + issued + (due ? ' \u00B7 F\u00E4llig: ' + due : '') + '</p>';
+      html += '</div>';
+      html += '<div style="display:flex;align-items:center;gap:12px;flex-shrink:0">';
+      html += '<span style="font-size:17px;font-weight:700">' + Number(inv.total || 0).toFixed(2).replace('.', ',') + ' \u20AC</span>';
+      html += '<span class="badge ' + displayBadge + '">' + displayLabel + '</span>';
+      html += '</div></div>';
+      if (inv.status === 'sent' || inv.status === 'paid') {
+        html += '<div style="display:flex;gap:8px;margin-top:10px">';
+        html += '<a href="/api/invoices/' + inv.id + '/view?token=' + encodeURIComponent(sessionToken || '') + '" target="_blank" class="btn-sm btn-outline" style="display:inline-flex;align-items:center;gap:4px;text-decoration:none;font-size:12px;padding:6px 12px;border-width:1px">Rechnung ansehen</a>';
+        html += '<a href="/api/invoices/' + inv.id + '/view?token=' + encodeURIComponent(sessionToken || '') + '" target="_blank" class="btn-sm btn-outline" style="display:inline-flex;align-items:center;gap:4px;text-decoration:none;font-size:12px;padding:6px 12px;border-width:1px">PDF herunterladen</a>';
+        html += '</div>';
+      }
+      if (inv.isOverdue) {
+        html += '<p style="font-size:12px;color:#ef4444;margin-top:8px;font-weight:500">Diese Rechnung ist \u00FCberf\u00E4llig. Bitte zeitnah begleichen.</p>';
+      }
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+  el.innerHTML = html;
+}
+
+// ── Postfach (Messages) with inbox + thread view ───────────
+var _messages = [];
+var _msgProviders = new Map();
+var _selectedProvider = null;
+var _msgView = 'inbox';
 
 async function renderMessages() {
-  const el = document.getElementById('content');
+  var el = document.getElementById('content');
   el.innerHTML = '<div class="empty"><div class="icon">⏳</div>Lade...</div>';
   try {
     _messages = await apiFetch('/api/portal/messages');
-    // Group by provider
     _msgProviders = new Map();
-    for (const m of _messages) {
+    for (var i = 0; i < _messages.length; i++) {
+      var m = _messages[i];
       if (!_msgProviders.has(m.provider_id)) _msgProviders.set(m.provider_id, { name: m.providerName, messages: [] });
       _msgProviders.get(m.provider_id).messages.push(m);
     }
-
-    // Also get providers from bookings (to start new conversations)
-    const bookings = await apiFetch('/api/portal/bookings');
-    for (const b of bookings) {
+    var bookings = await apiFetch('/api/portal/bookings');
+    for (var j = 0; j < bookings.length; j++) {
+      var b = bookings[j];
       if (!_msgProviders.has(b.provider_id)) _msgProviders.set(b.provider_id, { name: b.providerName, messages: [] });
     }
-
     if (_msgProviders.size === 0) {
       el.innerHTML = '<div class="empty"><div class="icon">💬</div><p>Noch keine Nachrichten.</p></div>';
       return;
     }
-
-    if (!_selectedProvider) _selectedProvider = _msgProviders.keys().next().value;
-    renderMessageView(el);
+    if (_msgView === 'thread' && _selectedProvider) {
+      renderThread(el);
+    } else {
+      renderInbox(el);
+    }
   } catch(e) { el.innerHTML = '<div class="empty"><div class="icon">⚠️</div>Fehler beim Laden.</div>'; }
 }
 
-function renderMessageView(el) {
-  const isMobile = window.innerWidth < 600;
-  let html = '<div style="display:grid;grid-template-columns:' + (isMobile ? '1fr' : '200px 1fr') + ';gap:12px;min-height:' + (isMobile ? '200px' : '400px') + '">';
-
-  // Provider list
-  html += '<div class="card" style="padding:8px">';
-  for (const [id, prov] of _msgProviders) {
-    const unread = prov.messages.filter(m => m.sender_type === 'provider' && !m.read_at).length;
-    html += '<div onclick="_selectedProvider=\'' + id + '\';renderMessageView(document.getElementById(\'content\'))" class="' + (id === _selectedProvider ? 'tab active' : 'tab') + '" style="text-align:left;padding:10px 12px;font-size:13px">' +
-      esc(prov.name) + (unread ? ' <span class="badge badge-amber" style="font-size:10px">' + unread + '</span>' : '') + '</div>';
+function renderInbox(el) {
+  var html = '<h2 style="font-size:15px;font-weight:600;margin-bottom:12px">Postfach</h2>';
+  html += '<div class="card" style="padding:0;overflow:hidden">';
+  var provEntries = Array.from(_msgProviders.entries());
+  provEntries.sort(function(a, b) {
+    var aU = a[1].messages.filter(function(m) { return m.sender_type === 'provider' && !m.read_at; }).length;
+    var bU = b[1].messages.filter(function(m) { return m.sender_type === 'provider' && !m.read_at; }).length;
+    if (aU > 0 && bU === 0) return -1;
+    if (bU > 0 && aU === 0) return 1;
+    var aL = a[1].messages.length ? new Date(a[1].messages[0].created_at).getTime() : 0;
+    var bL = b[1].messages.length ? new Date(b[1].messages[0].created_at).getTime() : 0;
+    return bL - aL;
+  });
+  for (var i = 0; i < provEntries.length; i++) {
+    var id = provEntries[i][0];
+    var prov = provEntries[i][1];
+    var unread = prov.messages.filter(function(m) { return m.sender_type === 'provider' && !m.read_at; }).length;
+    var lastMsg = prov.messages.length > 0 ? prov.messages[0] : null;
+    var preview = lastMsg ? lastMsg.content : 'Noch keine Nachrichten';
+    if (preview.length > 60) preview = preview.substring(0, 60) + '...';
+    var timeStr = lastMsg ? fmtRelDate(lastMsg.created_at) : '';
+    var initial = prov.name ? prov.name.charAt(0).toUpperCase() : '?';
+    html += '<div class="inbox-item' + (unread > 0 ? ' unread' : '') + '" onclick="openThread(\'' + id + '\')">';
+    html += '<div class="inbox-avatar">' + esc(initial) + '</div>';
+    html += '<div class="inbox-preview">';
+    html += '<h4' + (unread > 0 ? ' style="color:var(--text)"' : ' style="color:var(--muted)"') + '>' + esc(prov.name) + '</h4>';
+    html += '<p>' + (lastMsg && lastMsg.sender_type === 'parent' ? 'Du: ' : '') + esc(preview) + '</p>';
+    html += '</div>';
+    html += '<div class="inbox-meta">';
+    html += '<div class="time">' + esc(timeStr) + '</div>';
+    if (unread > 0) {
+      html += '<div style="background:var(--primary);color:white;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;margin-top:4px;display:inline-block;float:right">' + unread + '</div>';
+    }
+    html += '</div></div>';
   }
   html += '</div>';
+  el.innerHTML = html;
+}
 
-  // Messages
-  const prov = _msgProviders.get(_selectedProvider);
-  html += '<div class="card" style="display:flex;flex-direction:column">';
-  html += '<h3 style="margin-bottom:12px">' + esc(prov?.name || '') + '</h3>';
-  html += '<div style="flex:1;overflow-y:auto;max-height:300px;display:flex;flex-direction:column;gap:8px" id="msgList">';
-  if (!prov?.messages.length) {
-    html += '<div class="empty" style="padding:20px"><p style="font-size:13px">Noch keine Nachrichten. Schreibe die erste!</p></div>';
+function fmtRelDate(dateStr) {
+  var d = new Date(dateStr);
+  var now = new Date();
+  var mins = Math.floor((now.getTime() - d.getTime()) / 60000);
+  if (mins < 1) return 'Jetzt';
+  if (mins < 60) return mins + ' Min.';
+  var hours = Math.floor(mins / 60);
+  if (hours < 24) return hours + ' Std.';
+  var days = Math.floor(hours / 24);
+  if (days === 1) return 'Gestern';
+  if (days < 7) return days + ' Tage';
+  return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+}
+
+function openThread(providerId) {
+  _selectedProvider = providerId;
+  _msgView = 'thread';
+  apiPost('/api/portal/messages/mark-read', { providerId: providerId }).then(function() {
+    updateNavBadges();
+  }).catch(function() {});
+  renderThread(document.getElementById('content'));
+}
+
+function renderThread(el) {
+  var prov = _msgProviders.get(_selectedProvider);
+  if (!prov) { renderInbox(el); return; }
+  var html = '';
+  html += '<div class="thread-header">';
+  html += '<button onclick="_msgView=\'inbox\';_selectedProvider=null;renderMessages()" class="btn-sm btn-outline" style="font-size:13px;padding:6px 12px">\u2190</button>';
+  html += '<div class="inbox-avatar" style="width:36px;height:36px;font-size:14px">' + esc(prov.name.charAt(0).toUpperCase()) + '</div>';
+  html += '<div><h3 style="font-size:15px;margin-bottom:0">' + esc(prov.name) + '</h3></div>';
+  html += '</div>';
+  html += '<div style="overflow-y:auto;max-height:400px;display:flex;flex-direction:column;gap:8px;padding:4px 0" id="msgList">';
+  if (!prov.messages.length) {
+    html += '<div class="empty" style="padding:30px"><p style="font-size:13px">Noch keine Nachrichten. Schreibe die erste!</p></div>';
   } else {
-    for (const m of prov.messages.sort((a,b) => new Date(a.created_at) - new Date(b.created_at))) {
-      const time = new Date(m.created_at).toLocaleString('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
-      html += '<div class="msg msg-' + m.sender_type + '">' + esc(m.content) + '<div class="msg-time">' + time + '</div></div>';
+    var sorted = prov.messages.slice().sort(function(a, b) { return new Date(a.created_at).getTime() - new Date(b.created_at).getTime(); });
+    var lastDate = '';
+    for (var i = 0; i < sorted.length; i++) {
+      var sm = sorted[i];
+      var msgDate = new Date(sm.created_at).toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: 'long' });
+      if (msgDate !== lastDate) {
+        html += '<div style="text-align:center;font-size:11px;color:var(--muted);padding:12px 0 4px">' + esc(msgDate) + '</div>';
+        lastDate = msgDate;
+      }
+      var time = new Date(sm.created_at).toLocaleString('de-DE', { hour: '2-digit', minute: '2-digit' });
+      var senderLabel = sm.sender_type === 'provider' ? esc(prov.name) : 'Du';
+      html += '<div class="msg msg-' + sm.sender_type + '">';
+      html += '<div class="msg-sender">' + senderLabel + '</div>';
+      html += esc(sm.content);
+      html += '<div class="msg-time">' + time + '</div>';
+      html += '</div>';
     }
   }
   html += '</div>';
-  html += '<div style="display:flex;gap:8px;margin-top:12px"><input type="text" id="msgInput" placeholder="Nachricht schreiben..." style="flex:1"><button onclick="sendMessage()" class="btn btn-sm">Senden</button></div>';
-  html += '</div></div>';
-
+  html += '<div style="display:flex;gap:8px;margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">';
+  html += '<input type="text" id="msgInput" placeholder="Nachricht schreiben..." style="flex:1" onkeydown="if(event.key===\'Enter\'){event.preventDefault();sendMessage()}">';
+  html += '<button onclick="sendMessage()" class="btn btn-sm">Senden</button>';
+  html += '</div>';
   el.innerHTML = html;
-  // Scroll to bottom
-  const list = document.getElementById('msgList');
+  var list = document.getElementById('msgList');
   if (list) list.scrollTop = list.scrollHeight;
+  if (prov.messages) {
+    prov.messages.forEach(function(mm) {
+      if (mm.sender_type === 'provider' && !mm.read_at) mm.read_at = new Date().toISOString();
+    });
+  }
 }
 
 async function sendMessage() {
-  const input = document.getElementById('msgInput');
-  const content = input?.value?.trim();
+  var input = document.getElementById('msgInput');
+  var content = input ? input.value.trim() : '';
   if (!content || !_selectedProvider) return;
   input.value = '';
+  input.disabled = true;
   try {
-    await apiPost('/api/portal/messages', { providerId: _selectedProvider, content });
-    renderMessages();
-  } catch(e) { showToast('Fehler beim Senden.', 'error'); }
+    await apiPost('/api/portal/messages/' + _selectedProvider, { content: content });
+    _msgView = 'thread';
+    await renderMessages();
+  } catch(e) {
+    showToast('Fehler beim Senden.', 'error');
+    if (input) input.disabled = false;
+  }
 }
 
 // Start
