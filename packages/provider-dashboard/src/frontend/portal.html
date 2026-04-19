@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Mein Bereich — Urban Kids Club</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root { --primary: #D4956A; --primary-hover: #c4854a; --bg: #faf9f8; --card: #fff; --text: #3C2225; --muted: #8B7355; --border: #e8e0d8; }
@@ -47,6 +48,29 @@ input:focus, textarea:focus { border-color:var(--primary); }
 .toast-info { background:#3C2124; color:white; }
 @keyframes toastIn { from { opacity:0; transform:translateX(-50%) translateY(20px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
 @keyframes toastOut { from { opacity:1; } to { opacity:0; } }
+.filter-bar { display:flex; gap:6px; margin-bottom:16px; flex-wrap:wrap; }
+.filter-btn { padding:6px 14px; border:1px solid var(--border); background:white; border-radius:20px; font-size:12px; font-weight:600; cursor:pointer; color:var(--muted); transition:all .2s; font-family:inherit; }
+.filter-btn.active { background:var(--primary); color:white; border-color:var(--primary); }
+.filter-btn:hover:not(.active) { border-color:var(--primary); color:var(--primary); }
+.inbox-item { display:flex; align-items:center; gap:12px; padding:14px 16px; border-bottom:1px solid var(--border); cursor:pointer; transition:background .15s; }
+.inbox-item:last-child { border-bottom:none; }
+.inbox-item:hover { background:#f5f0eb; }
+.inbox-item.unread { background:#fffbf5; }
+.inbox-avatar { width:40px; height:40px; border-radius:50%; background:var(--primary); color:white; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:16px; flex-shrink:0; }
+.inbox-preview { flex:1; min-width:0; }
+.inbox-preview h4 { font-size:14px; font-weight:600; margin-bottom:2px; }
+.inbox-preview p { font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.inbox-meta { text-align:right; flex-shrink:0; }
+.inbox-meta .time { font-size:11px; color:var(--muted); }
+.inbox-meta .unread-dot { width:10px; height:10px; border-radius:50%; background:var(--primary); margin-top:4px; margin-left:auto; }
+.thread-header { display:flex; align-items:center; gap:12px; padding-bottom:16px; border-bottom:1px solid var(--border); margin-bottom:16px; }
+.msg-sender { font-size:11px; font-weight:600; margin-bottom:2px; color:var(--muted); }
+.msg-parent .msg-sender { color:rgba(255,255,255,0.8); }
+.invoice-row { display:flex; align-items:center; padding:14px 0; border-bottom:1px solid var(--border); gap:12px; flex-wrap:wrap; }
+.invoice-row:last-child { border-bottom:none; }
+@media (max-width:599px) { .invoice-row { flex-direction:column; align-items:flex-start; } }
+select { padding:8px 12px; border:2px solid var(--border); border-radius:8px; font-size:13px; font-family:inherit; outline:none; background:white; cursor:pointer; }
+select:focus { border-color:var(--primary); }
 </style>
 </head>
 <body>
@@ -78,10 +102,11 @@ input:focus, textarea:focus { border-color:var(--primary); }
   </div>
 
   <div class="container">
-    <div class="tabs">
-      <div class="tab active" onclick="switchTab('bookings')">Buchungen</div>
-      <div class="tab" onclick="switchTab('invoices')">Rechnungen</div>
-      <div class="tab" onclick="switchTab('messages')">Nachrichten</div>
+    <div class="tabs" id="navTabs">
+      <div class="tab active" onclick="switchTab('bookings')" id="tab-bookings">Buchungen</div>
+      <div class="tab" onclick="switchTab('credits')" id="tab-credits">Guthaben</div>
+      <div class="tab" onclick="switchTab('messages')" id="tab-messages" style="position:relative">Postfach <span id="badge-messages" style="display:none;position:absolute;top:2px;right:4px;background:#ef4444;color:white;font-size:9px;font-weight:700;padding:1px 5px;border-radius:10px;min-width:16px;text-align:center"></span></div>
+      <div class="tab" onclick="switchTab('invoices')" id="tab-invoices" style="position:relative">Rechnungen <span id="badge-invoices" style="display:none;position:absolute;top:2px;right:4px;background:#ef4444;color:white;font-size:9px;font-weight:700;padding:1px 5px;border-radius:10px;min-width:16px;text-align:center"></span></div>
     </div>
     <div id="content"></div>
   </div>
@@ -103,14 +128,72 @@ function showToast(message, type = 'info') {
 const API = '';
 let sessionToken = localStorage.getItem('ukc_parent_session') || null;
 let parentData = null;
+let _supabaseClient = null;
 
-// Check for magic link token in URL
+// Initialize Supabase client for auth (reads config from meta tag or env)
+function getSupabaseClient() {
+  if (_supabaseClient) return _supabaseClient;
+  // Config is injected by the server or falls back to known dev values
+  const meta = document.querySelector('meta[name="supabase-url"]');
+  const metaKey = document.querySelector('meta[name="supabase-anon-key"]');
+  const sbUrl = meta ? meta.content : (window.__SUPABASE_URL || 'https://yuilhiqnrjuuqoqggihm.supabase.co');
+  const sbKey = metaKey ? metaKey.content : (window.__SUPABASE_ANON_KEY || '');
+  if (sbUrl && sbKey && window.supabase) {
+    _supabaseClient = window.supabase.createClient(sbUrl, sbKey);
+  }
+  return _supabaseClient;
+}
+
+// Check for legacy magic link token in URL
 const urlParams = new URLSearchParams(window.location.search);
 const magicToken = urlParams.get('token');
 
 async function init() {
+  // 1. Handle Supabase Auth callback (magic link redirect with hash fragment)
+  const sb = getSupabaseClient();
+  if (sb) {
+    try {
+      // Supabase magic links redirect with #access_token=...&type=magiclink
+      const hashParams = new URLSearchParams(window.location.hash.substring(1));
+      const accessToken = hashParams.get('access_token');
+      const tokenType = hashParams.get('type');
+      if (accessToken && (tokenType === 'magiclink' || tokenType === 'recovery')) {
+        const refreshToken = hashParams.get('refresh_token') || '';
+        const { data, error } = await sb.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+        if (!error && data.session) {
+          sessionToken = data.session.access_token;
+          localStorage.setItem('ukc_parent_session', sessionToken);
+          history.replaceState({}, '', '/portal/');
+          // Load parent data
+          const r = await fetch(API + '/api/portal/auth/session', { headers: { 'Authorization': 'Bearer ' + sessionToken } });
+          if (r.ok) {
+            const d = await r.json();
+            parentData = d.data?.parent;
+            showApp();
+            return;
+          }
+        }
+      }
+
+      // Check for existing Supabase session
+      const { data: { session } } = await sb.auth.getSession();
+      if (session?.access_token) {
+        sessionToken = session.access_token;
+        localStorage.setItem('ukc_parent_session', sessionToken);
+        const r = await fetch(API + '/api/portal/auth/session', { headers: { 'Authorization': 'Bearer ' + sessionToken } });
+        if (r.ok) {
+          const d = await r.json();
+          parentData = d.data?.parent;
+          if (parentData) { showApp(); return; }
+        }
+      }
+    } catch(e) {
+      console.warn('[Portal] Supabase auth check failed:', e);
+    }
+  }
+
+  // 2. Handle legacy magic link token (?token=...)
   if (magicToken) {
-    // Verify magic link
     try {
       const r = await fetch(API + '/api/portal/verify', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ token: magicToken }) });
       const d = await r.json();
@@ -123,10 +206,21 @@ async function init() {
         return;
       }
     } catch(e) {}
-    document.getElementById('loginMsg').innerHTML = '<p style="color:#ef4444">Link ungültig oder abgelaufen. Bitte fordere einen neuen an.</p>';
+    document.getElementById('loginMsg').innerHTML = '<p style="color:#ef4444">Link ungueltig oder abgelaufen. Bitte fordere einen neuen an.</p>';
   }
 
+  // 3. Try existing session token (Supabase JWT or legacy)
   if (sessionToken) {
+    try {
+      const r = await fetch(API + '/api/portal/auth/session', { headers: { 'Authorization': 'Bearer ' + sessionToken } });
+      if (r.ok) {
+        const d = await r.json();
+        parentData = d.data?.parent;
+        showApp();
+        return;
+      }
+    } catch(e) {}
+    // Fallback: try legacy /api/portal/me
     try {
       const r = await fetch(API + '/api/portal/me', { headers: { 'Authorization': 'Bearer ' + sessionToken } });
       if (r.ok) {
@@ -150,6 +244,34 @@ function showApp() {
   document.getElementById('app').style.display = '';
   document.getElementById('userName').textContent = parentData?.name || '';
   switchTab('bookings');
+  // Load badge counts async
+  updateNavBadges();
+}
+
+async function updateNavBadges() {
+  try {
+    // Unread messages badge
+    const messages = await apiFetch('/api/portal/messages');
+    const unreadCount = messages.filter(function(m) { return m.sender_type === 'provider' && !m.read_at; }).length;
+    const msgBadge = document.getElementById('badge-messages');
+    if (unreadCount > 0) {
+      msgBadge.textContent = unreadCount > 9 ? '9+' : unreadCount;
+      msgBadge.style.display = '';
+    } else {
+      msgBadge.style.display = 'none';
+    }
+
+    // Overdue invoices badge
+    const invoices = await apiFetch('/api/portal/invoices');
+    const overdueCount = invoices.filter(function(inv) { return inv.isOverdue; }).length;
+    const invBadge = document.getElementById('badge-invoices');
+    if (overdueCount > 0) {
+      invBadge.textContent = overdueCount;
+      invBadge.style.display = '';
+    } else {
+      invBadge.style.display = 'none';
+    }
+  } catch(e) { /* badge loading is non-critical */ }
 }
 
 function logout() {
@@ -189,14 +311,44 @@ async function apiPost(path, body) {
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 
 let currentTab = 'bookings';
+const tabOrder = ['bookings','credits','messages','invoices'];
 function switchTab(tab) {
   currentTab = tab;
-  document.querySelectorAll('.tab').forEach((t,i) => {
-    t.classList.toggle('active', ['bookings','invoices','messages'][i] === tab);
+  document.querySelectorAll('#navTabs .tab').forEach(function(t,i) {
+    t.classList.toggle('active', tabOrder[i] === tab);
   });
   if (tab === 'bookings') renderBookings();
+  else if (tab === 'credits') renderCredits();
   else if (tab === 'invoices') renderInvoices();
   else if (tab === 'messages') renderMessages();
+}
+
+const statusLabels = { confirmed: 'Bestätigt', pending: 'Ausstehend', cancelled: 'Storniert', completed: 'Abgeschlossen', waitlisted: 'Warteliste' };
+const statusBadge = { confirmed: 'badge-green', pending: 'badge-amber', cancelled: 'badge-red', completed: 'badge-gray', waitlisted: 'badge-amber' };
+const payLabels = { paid: 'Bezahlt', unpaid: 'Offen', refunded: 'Erstattet' };
+const payBadge = { paid: 'badge-green', unpaid: 'badge-amber', refunded: 'badge-gray' };
+
+function renderBookingCard(b) {
+  const ci = b.child_info || {};
+  const childName = ci.firstName ? (ci.firstName + ' ' + (ci.lastName||'')).trim() : 'Kind';
+  const date = new Date(b.created_at).toLocaleDateString('de-DE');
+  let scheduleInfo = '';
+  if (b.schedule && Array.isArray(b.schedule) && b.schedule.length) {
+    const dayNames = { monday:'Mo', tuesday:'Di', wednesday:'Mi', thursday:'Do', friday:'Fr', saturday:'Sa', sunday:'So' };
+    scheduleInfo = b.schedule.map(function(s) { return (dayNames[s.day]||s.day) + ' ' + (s.startTime||'') + '–' + (s.endTime||''); }).join(', ');
+  }
+  return '<div class="card" style="cursor:pointer;transition:box-shadow .2s" onclick="showBookingDetail(\'' + b.id + '\')" onmouseenter="this.style.boxShadow=\'0 4px 12px rgba(0,0,0,0.08)\'" onmouseleave="this.style.boxShadow=\'none\'">' +
+    '<div style="display:flex;justify-content:space-between;align-items:start;flex-wrap:wrap;gap:8px">' +
+    '<div style="flex:1;min-width:200px"><h3>' + esc(b.activityTitle) + '</h3>' +
+    '<p style="font-size:13px;color:var(--muted);margin-top:2px">' + esc(b.providerName) + ' · ' + esc(childName) + '</p>' +
+    (scheduleInfo ? '<p style="font-size:12px;color:var(--muted);margin-top:2px">' + esc(scheduleInfo) + '</p>' : '') +
+    '<p style="font-size:12px;color:var(--muted);margin-top:2px">Gebucht am ' + date + '</p></div>' +
+    '<div style="display:flex;gap:6px;flex-shrink:0">' +
+    '<span class="badge ' + (statusBadge[b.status]||'badge-gray') + '">' + (statusLabels[b.status]||b.status) + '</span>' +
+    '<span class="badge ' + (payBadge[b.payment_status]||'badge-gray') + '">' + (payLabels[b.payment_status]||b.payment_status) + '</span>' +
+    '</div></div>' +
+    (b.payment_status === 'unpaid' && b.amount_paid === 0 ? '<p style="font-size:13px;color:#d97706;margin-top:8px">Zahlung ausstehend — bitte vor Ort begleichen.</p>' : '') +
+    '</div>';
 }
 
 async function renderBookings() {
@@ -208,25 +360,182 @@ async function renderBookings() {
       el.innerHTML = '<div class="empty"><div class="icon">📅</div><p>Noch keine Buchungen.</p></div>';
       return;
     }
-    const statusLabels = { confirmed: 'Bestätigt', pending: 'Ausstehend', cancelled: 'Storniert', completed: 'Abgeschlossen', waitlisted: 'Warteliste' };
-    const statusBadge = { confirmed: 'badge-green', pending: 'badge-amber', cancelled: 'badge-red', completed: 'badge-gray', waitlisted: 'badge-amber' };
-    const payLabels = { paid: 'Bezahlt', unpaid: 'Offen', refunded: 'Erstattet' };
-    const payBadge = { paid: 'badge-green', unpaid: 'badge-amber', refunded: 'badge-gray' };
 
-    el.innerHTML = bookings.map(function(b) {
-      const ci = b.child_info || {};
-      const childName = ci.firstName ? (ci.firstName + ' ' + (ci.lastName||'')).trim() : 'Kind';
-      const date = new Date(b.created_at).toLocaleDateString('de-DE');
-      return '<div class="card"><div style="display:flex;justify-content:space-between;align-items:start">' +
-        '<div><h3>' + esc(b.activityTitle) + '</h3>' +
-        '<p style="font-size:13px;color:var(--muted)">' + esc(b.providerName) + ' · ' + esc(childName) + ' · Gebucht am ' + date + '</p></div>' +
-        '<div style="display:flex;gap:6px">' +
-        '<span class="badge ' + (statusBadge[b.status]||'badge-gray') + '">' + (statusLabels[b.status]||b.status) + '</span>' +
-        '<span class="badge ' + (payBadge[b.payment_status]||'badge-gray') + '">' + (payLabels[b.payment_status]||b.payment_status) + '</span>' +
-        '</div></div>' +
-        (b.payment_status === 'unpaid' && b.amount_paid === 0 ? '<p style="font-size:13px;color:#d97706;margin-top:8px">Zahlung ausstehend — bitte vor Ort begleichen.</p>' : '') +
-        '</div>';
-    }).join('');
+    // Split into active (confirmed/pending/waitlisted) and past (completed/cancelled)
+    const active = bookings.filter(function(b) { return ['confirmed','pending','waitlisted'].includes(b.status); });
+    const past = bookings.filter(function(b) { return ['completed','cancelled'].includes(b.status); });
+
+    let html = '';
+    if (active.length) {
+      html += '<h2 style="font-size:15px;font-weight:600;margin-bottom:12px;color:var(--text)">Aktive Buchungen</h2>';
+      html += active.map(renderBookingCard).join('');
+    }
+    if (past.length) {
+      html += '<h2 style="font-size:15px;font-weight:600;margin:20px 0 12px;color:var(--muted)">Vergangene Buchungen</h2>';
+      html += past.map(renderBookingCard).join('');
+    }
+    el.innerHTML = html;
+  } catch(e) { el.innerHTML = '<div class="empty"><div class="icon">⚠️</div>Fehler beim Laden.</div>'; }
+}
+
+async function showBookingDetail(bookingId) {
+  const el = document.getElementById('content');
+  el.innerHTML = '<div class="empty"><div class="icon">⏳</div>Lade...</div>';
+  try {
+    const b = await apiFetch('/api/portal/bookings/' + bookingId);
+    const ci = b.child_info || {};
+    const childName = ci.firstName ? (ci.firstName + ' ' + (ci.lastName||'')).trim() : 'Kind';
+    const bookedDate = new Date(b.created_at).toLocaleDateString('de-DE');
+
+    let html = '<div style="margin-bottom:16px"><button onclick="renderBookings()" class="btn-sm btn-outline" style="font-size:13px">← Zurück</button></div>';
+
+    // Header card
+    html += '<div class="card">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:start;flex-wrap:wrap;gap:8px">';
+    html += '<div><h3 style="font-size:18px">' + esc(b.activityTitle) + '</h3>';
+    html += '<p style="font-size:14px;color:var(--muted);margin-top:4px">' + esc(b.providerName) + '</p></div>';
+    html += '<div style="display:flex;gap:6px">';
+    html += '<span class="badge ' + (statusBadge[b.status]||'badge-gray') + '">' + (statusLabels[b.status]||b.status) + '</span>';
+    html += '<span class="badge ' + (payBadge[b.payment_status]||'badge-gray') + '">' + (payLabels[b.payment_status]||b.payment_status) + '</span>';
+    html += '</div></div>';
+
+    // Details grid
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px;font-size:13px">';
+    html += '<div><span style="color:var(--muted)">Kind</span><br><strong>' + esc(childName) + '</strong></div>';
+    html += '<div><span style="color:var(--muted)">Gebucht am</span><br><strong>' + bookedDate + '</strong></div>';
+    if (b.amount_paid !== null && b.amount_paid !== undefined) {
+      html += '<div><span style="color:var(--muted)">Bezahlt</span><br><strong>' + Number(b.amount_paid).toFixed(2).replace('.',',') + ' ' + (b.currency||'EUR') + '</strong></div>';
+    }
+    if (b.payment_method) {
+      const methodLabels = { cash: 'Bar', bank_transfer: 'Überweisung', sepa: 'SEPA', card: 'Karte', online: 'Online' };
+      html += '<div><span style="color:var(--muted)">Zahlungsart</span><br><strong>' + (methodLabels[b.payment_method]||b.payment_method) + '</strong></div>';
+    }
+    html += '</div>';
+    html += '</div>';
+
+    // Sessions list
+    if (b.sessions && b.sessions.length) {
+      html += '<h2 style="font-size:15px;font-weight:600;margin:20px 0 12px">Termine</h2>';
+      const today = new Date().toISOString().split('T')[0];
+      const sessionStatusLabels = { scheduled: 'Geplant', completed: 'Stattgefunden', cancelled: 'Ausgefallen' };
+      const sessionStatusBadge = { scheduled: 'badge-green', completed: 'badge-gray', cancelled: 'badge-red' };
+      for (const s of b.sessions) {
+        const dateStr = new Date(s.date + 'T00:00:00').toLocaleDateString('de-DE', { weekday:'short', day:'2-digit', month:'2-digit', year:'numeric' });
+        const isPast = s.date < today;
+        const sStatus = s.status || (isPast ? 'completed' : 'scheduled');
+        html += '<div class="card" style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center' + (isPast ? ';opacity:0.6' : '') + '">';
+        html += '<div><strong style="font-size:13px">' + dateStr + '</strong>';
+        if (s.start_time) html += '<span style="font-size:12px;color:var(--muted);margin-left:8px">' + esc(s.start_time) + (s.end_time ? ' – ' + esc(s.end_time) : '') + '</span>';
+        html += '</div>';
+        html += '<span class="badge ' + (sessionStatusBadge[sStatus]||'badge-gray') + '">' + (sessionStatusLabels[sStatus]||sStatus) + '</span>';
+        html += '</div>';
+      }
+    }
+
+    el.innerHTML = html;
+  } catch(e) { el.innerHTML = '<div class="empty"><div class="icon">⚠️</div>Fehler beim Laden der Buchungsdetails.</div>'; }
+}
+
+let _creditsView = 'overview';
+
+async function renderCredits() {
+  const el = document.getElementById('content');
+  el.innerHTML = '<div class="empty"><div class="icon">⏳</div>Lade...</div>';
+  try {
+    if (_creditsView === 'history') {
+      await renderCreditHistory(el);
+      return;
+    }
+
+    const credits = await apiFetch('/api/portal/credits');
+    const childIds = Object.keys(credits);
+
+    if (!childIds.length) {
+      el.innerHTML = '<div class="empty"><div class="icon">🎟️</div><p>Noch keine Guthaben vorhanden.</p><p style="font-size:13px;color:var(--muted);margin-top:8px">Guthaben entstehen durch rechtzeitige Absagen oder ausgefallene Termine.</p></div>';
+      return;
+    }
+
+    let html = '';
+
+    for (var ci = 0; ci < childIds.length; ci++) {
+      var childId = childIds[ci];
+      var c = credits[childId];
+      html += '<div class="card" style="border-left:4px solid var(--primary)">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">';
+      html += '<div>';
+      html += '<h3 style="font-size:15px;margin-bottom:4px">' + esc(c.childName) + '</h3>';
+      html += '<p style="font-size:12px;color:var(--muted)">' + c.used + ' eingelöst · ' + c.expired + ' abgelaufen</p>';
+      html += '</div>';
+      html += '<div style="text-align:right">';
+      html += '<div style="font-size:28px;font-weight:700;color:var(--primary)">' + c.available + '</div>';
+      html += '<div style="font-size:12px;color:var(--muted)">verfügbar</div>';
+      html += '</div>';
+      html += '</div>';
+
+      // Show available credits detail
+      var availableCredits = c.credits.filter(function(cr) { return cr.status === 'available'; });
+      if (availableCredits.length > 0) {
+        html += '<div style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px">';
+        for (var j = 0; j < availableCredits.length; j++) {
+          var cr = availableCredits[j];
+          var reasonLabel = cr.reason === 'provider_cancellation' ? 'Termin ausgefallen' : 'Eigene Absage';
+          var validDate = new Date(cr.valid_until + 'T00:00:00').toLocaleDateString('de-DE');
+          var origDate = new Date(cr.original_session_date + 'T00:00:00').toLocaleDateString('de-DE');
+          html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;font-size:13px;flex-wrap:wrap;gap:4px">';
+          html += '<div><span class="badge badge-green" style="margin-right:6px">Verfügbar</span>' + esc(reasonLabel) + ' (' + origDate + ')</div>';
+          html += '<div style="color:var(--muted);font-size:12px">Gültig bis ' + validDate + '</div>';
+          html += '</div>';
+        }
+        html += '</div>';
+      }
+
+      html += '</div>';
+    }
+
+    html += '<div style="text-align:center;margin-top:16px"><button onclick="_creditsView=\'history\';renderCredits()" class="btn-sm btn-outline">Guthaben-Verlauf anzeigen</button></div>';
+
+    el.innerHTML = html;
+  } catch(e) { el.innerHTML = '<div class="empty"><div class="icon">⚠️</div>Fehler beim Laden.</div>'; }
+}
+
+async function renderCreditHistory(el) {
+  try {
+    var history = await apiFetch('/api/portal/credits/history');
+    if (!history.length) {
+      el.innerHTML = '<div style="margin-bottom:16px"><button onclick="_creditsView=\'overview\';renderCredits()" class="btn-sm btn-outline">← Übersicht</button></div>' +
+        '<div class="empty"><div class="icon">🎟️</div><p>Keine Guthaben-Transaktionen.</p></div>';
+      return;
+    }
+
+    var reasonLabels = { parent_cancellation: 'Eigene Absage', provider_cancellation: 'Termin ausgefallen' };
+    var creditStatusLabels = { available: 'Verfügbar', used: 'Eingelöst', expired: 'Abgelaufen' };
+    var creditStatusBadge = { available: 'badge-green', used: 'badge-gray', expired: 'badge-red' };
+
+    var html = '<div style="margin-bottom:16px"><button onclick="_creditsView=\'overview\';renderCredits()" class="btn-sm btn-outline">← Übersicht</button></div>';
+    html += '<h2 style="font-size:15px;font-weight:600;margin-bottom:12px">Guthaben-Verlauf</h2>';
+
+    for (var i = 0; i < history.length; i++) {
+      var cr = history[i];
+      var createdDate = new Date(cr.created_at).toLocaleDateString('de-DE');
+      var origDate = new Date(cr.original_session_date + 'T00:00:00').toLocaleDateString('de-DE');
+      html += '<div class="card" style="padding:14px 16px">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:start;flex-wrap:wrap;gap:8px">';
+      html += '<div>';
+      html += '<div style="font-size:13px;font-weight:600">' + esc(cr.childName) + ' — ' + esc(reasonLabels[cr.reason] || cr.reason) + '</div>';
+      html += '<p style="font-size:12px;color:var(--muted);margin-top:2px">Kurstyp: ' + esc(cr.activity_type || '–') + ' · Termin: ' + origDate + ' · Erstellt: ' + createdDate + '</p>';
+      if (cr.status === 'used' && cr.used_at) {
+        html += '<p style="font-size:12px;color:var(--muted)">Eingelöst am ' + new Date(cr.used_at).toLocaleDateString('de-DE') + '</p>';
+      }
+      if (cr.status === 'available') {
+        html += '<p style="font-size:12px;color:#059669">Gültig bis ' + new Date(cr.valid_until + 'T00:00:00').toLocaleDateString('de-DE') + '</p>';
+      }
+      html += '</div>';
+      html += '<span class="badge ' + (creditStatusBadge[cr.status]||'badge-gray') + '">' + (creditStatusLabels[cr.status]||cr.status) + '</span>';
+      html += '</div>';
+      html += '</div>';
+    }
+
+    el.innerHTML = html;
   } catch(e) { el.innerHTML = '<div class="empty"><div class="icon">⚠️</div>Fehler beim Laden.</div>'; }
 }
 
