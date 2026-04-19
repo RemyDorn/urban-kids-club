@@ -112,6 +112,12 @@ export const SupabaseInvoiceService = {
       throw new Error('Rechnungsnummer konnte nicht generiert werden: ' + (seqErr?.message || 'unknown'))
     }
 
+    // Persist final number to DB FIRST (before email) — ensures DB always has the correct number
+    const { error: numErr } = await sb.from(TABLE)
+      .update({ number: finalNumber })
+      .eq('id', id)
+    if (numErr) throw numErr
+
     // Send email with final number
     try {
       const { data: parent } = await sb.from('parents').select('name, email').eq('id', invoiceRow.parent_id).single()
@@ -150,12 +156,14 @@ export const SupabaseInvoiceService = {
       }
     } catch (emailErr) {
       console.error('[Invoice] Email send failed:', emailErr)
+      // Revert: set number back to draft placeholder so the sequence number isn't wasted
+      await sb.from(TABLE).update({ number: 'ENTWURF-' + Date.now() }).eq('id', id)
       throw new Error('E-Mail konnte nicht gesendet werden. Rechnung bleibt als Entwurf.')
     }
 
     // Email sent → update status (number was already claimed above to prevent race conditions)
     const { data, error } = await sb.from(TABLE)
-      .update({ status: 'sent' })
+      .update({ status: 'sent', sent_at: new Date().toISOString() })
       .eq('id', id)
       .select().maybeSingle()
     if (error) throw error

@@ -17,6 +17,20 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const USE_SUPABASE = process.env.USE_SUPABASE === 'true'
 
 // ============================================================
+// Startup env var validation
+// ============================================================
+if (USE_SUPABASE) {
+  const required = ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']
+  const recommended = ['ENCRYPTION_KEY', 'CALENDAR_TOKEN_SECRET', 'RESEND_API_KEY']
+  for (const key of required) {
+    if (!process.env[key]) { console.error(`FATAL: Missing required env var: ${key}`); process.exit(1) }
+  }
+  for (const key of recommended) {
+    if (!process.env[key]) console.warn(`WARNING: Missing recommended env var: ${key} — some features will be disabled`)
+  }
+}
+
+// ============================================================
 // Job tracking & retry logic
 // ============================================================
 async function runWithRetry(name: string, fn: () => Promise<void>, maxRetries = 3) {

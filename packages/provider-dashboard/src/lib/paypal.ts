@@ -26,19 +26,12 @@ async function getProviderPayPalCredentials(providerId: string): Promise<{ clien
     return null
   }
 
-  // Decrypt provider secret
+  // Decrypt provider secret using shared encryption module (AES-256-GCM)
   let secret = data.paypal_secret
   if (secret.startsWith('enc:')) {
     try {
-      const { createDecipheriv, scryptSync } = await import('node:crypto')
-      const encKey = process.env.ENCRYPTION_KEY
-      if (!encKey) throw new Error('ENCRYPTION_KEY env var is required for PayPal')
-      const keyBuf = scryptSync(encKey, 'ukc-paypal-salt', 32)
-      const parts = secret.split(':')
-      const iv = Buffer.from(parts[1], 'hex')
-      const encrypted = parts[2]
-      const decipher = createDecipheriv('aes-256-cbc', keyBuf, iv)
-      secret = decipher.update(encrypted, 'hex', 'utf8') + decipher.final('utf8')
+      const { decrypt } = await import('./encryption')
+      secret = decrypt(secret.slice(4)) // remove 'enc:' prefix
     } catch (err) {
       console.error('[PayPal] Failed to decrypt provider secret:', err)
       return null
