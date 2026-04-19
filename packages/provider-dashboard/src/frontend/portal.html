@@ -296,6 +296,18 @@ async function updateNavBadges() {
     } else {
       invBadge.style.display = 'none';
     }
+
+    // Reviewable courses badge
+    try {
+      const reviewable = await apiFetch('/api/portal/reviewable');
+      const revBadge = document.getElementById('badge-reviews');
+      if (reviewable.length > 0) {
+        revBadge.textContent = reviewable.length;
+        revBadge.style.display = '';
+      } else {
+        revBadge.style.display = 'none';
+      }
+    } catch(e2) { /* non-critical */ }
   } catch(e) { /* badge loading is non-critical */ }
 }
 
@@ -821,6 +833,107 @@ async function sendMessage() {
   } catch(e) {
     showToast('Fehler beim Senden.', 'error');
     if (input) input.disabled = false;
+  }
+}
+
+// ── Bewertungen (Reviews) ────────────────────────────────────
+function renderStars(rating, size) {
+  size = size || 16;
+  var html = '<span class="stars-display">';
+  for (var i = 1; i <= 5; i++) {
+    html += '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="' + (i <= rating ? '#f59e0b' : 'none') + '" stroke="' + (i <= rating ? '#f59e0b' : '#d1d5db') + '" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>';
+  }
+  html += '</span>';
+  return html;
+}
+
+async function renderReviews() {
+  var el = document.getElementById('content');
+  el.innerHTML = '<div class="empty"><div class="icon">&#9733;</div>Lade...</div>';
+  try {
+    var reviewable = await apiFetch('/api/portal/reviewable');
+    var myReviews = await apiFetch('/api/portal/reviews');
+
+    var html = '';
+
+    // Reviewable courses prompt
+    if (reviewable.length > 0) {
+      html += '<h2 style="font-size:15px;font-weight:600;margin-bottom:12px;color:var(--text)">Kurs bewerten</h2>';
+      for (var i = 0; i < reviewable.length; i++) {
+        var r = reviewable[i];
+        html += '<div class="card" id="reviewable-' + r.activityId + '">';
+        html += '<h3>' + esc(r.activityTitle) + '</h3>';
+        html += '<p style="font-size:13px;color:var(--muted);margin-bottom:12px">' + esc(r.providerName) + '</p>';
+        html += '<div style="margin-bottom:12px">';
+        html += '<label style="display:block;font-size:13px;font-weight:500;margin-bottom:6px">Deine Bewertung</label>';
+        html += '<div class="star-rating" id="stars-' + r.activityId + '">';
+        for (var s = 5; s >= 1; s--) {
+          html += '<input type="radio" name="rating-' + r.activityId + '" id="star-' + r.activityId + '-' + s + '" value="' + s + '">';
+          html += '<label for="star-' + r.activityId + '-' + s + '" title="' + s + ' Sterne">&#9733;</label>';
+        }
+        html += '</div>';
+        html += '</div>';
+        html += '<div style="margin-bottom:12px">';
+        html += '<label style="display:block;font-size:13px;font-weight:500;margin-bottom:6px">Kommentar (optional)</label>';
+        html += '<textarea id="comment-' + r.activityId + '" rows="3" placeholder="Was hat dir gefallen? Was kann verbessert werden?" style="resize:vertical"></textarea>';
+        html += '</div>';
+        html += '<button onclick="submitReview(\'' + r.activityId + '\')" class="btn btn-sm">Bewertung absenden</button>';
+        html += '</div>';
+      }
+    }
+
+    // My reviews
+    html += '<h2 style="font-size:15px;font-weight:600;margin:' + (reviewable.length ? '20px' : '0') + ' 0 12px;color:' + (myReviews.length ? 'var(--text)' : 'var(--muted)') + '">Meine Bewertungen</h2>';
+    if (!myReviews.length && !reviewable.length) {
+      html += '<div class="empty"><div class="icon" style="font-size:48px">&#9733;</div><p>Noch keine Bewertungen.</p><p style="font-size:13px;color:var(--muted);margin-top:8px">Nach Abschluss eines Kurses kannst du hier eine Bewertung abgeben.</p></div>';
+    } else if (!myReviews.length) {
+      html += '<div class="empty" style="padding:24px"><p style="font-size:13px;color:var(--muted)">Du hast noch keine Bewertungen abgegeben.</p></div>';
+    } else {
+      for (var j = 0; j < myReviews.length; j++) {
+        var rev = myReviews[j];
+        var date = new Date(rev.created_at).toLocaleDateString('de-DE');
+        html += '<div class="card">';
+        html += '<div style="display:flex;justify-content:space-between;align-items:start;flex-wrap:wrap;gap:8px">';
+        html += '<div>';
+        html += '<h3 style="font-size:14px;margin-bottom:4px">' + esc(rev.activityTitle) + '</h3>';
+        html += '<div style="margin-bottom:4px">' + renderStars(rev.rating) + '</div>';
+        html += '</div>';
+        html += '<span style="font-size:12px;color:var(--muted)">' + date + '</span>';
+        html += '</div>';
+        if (rev.comment) {
+          html += '<p style="font-size:13px;color:var(--text);margin-top:8px;line-height:1.5">' + esc(rev.comment) + '</p>';
+        }
+        html += '</div>';
+      }
+    }
+
+    el.innerHTML = html;
+  } catch(e) { el.innerHTML = '<div class="empty"><div class="icon">&#9888;</div>Fehler beim Laden.</div>'; }
+}
+
+async function submitReview(activityId) {
+  var starEl = document.querySelector('input[name="rating-' + activityId + '"]:checked');
+  if (!starEl) {
+    showToast('Bitte eine Sternebewertung auswaehlen', 'error');
+    return;
+  }
+  var rating = parseInt(starEl.value);
+  var comment = document.getElementById('comment-' + activityId).value.trim();
+  try {
+    var r = await fetch(API + '/api/portal/reviews', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + sessionToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ activityId: activityId, rating: rating, comment: comment || undefined })
+    });
+    var d = await r.json();
+    if (!r.ok) {
+      showToast(d.error || 'Fehler beim Speichern', 'error');
+      return;
+    }
+    showToast('Bewertung gespeichert!', 'success');
+    renderReviews();
+  } catch(e) {
+    showToast('Fehler beim Speichern', 'error');
   }
 }
 

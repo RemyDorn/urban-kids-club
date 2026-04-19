@@ -126,6 +126,17 @@
     margin-top: 2px;
   }
 
+  .review-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #d97706;
+    margin-top: 4px;
+  }
+  .review-badge svg { vertical-align: middle; }
+
   /* === Status Badges === */
   .badge {
     display: inline-block;
@@ -1232,6 +1243,24 @@ async function loadCourseBlocks() {
     }
 
     container.innerHTML = visible.map(block => renderBlockCard(block)).join('')
+
+    // Load review ratings for each activity
+    const activityIds = [...new Set(visible.map(b => b.activityId).filter(Boolean))]
+    activityIds.forEach(actId => {
+      fetch(API_BASE + '/public/activities/' + actId + '/rating')
+        .then(r => r.json())
+        .then(res => {
+          const d = res.data || res
+          if (d.count > 0) {
+            const badges = document.querySelectorAll('#review-badge-' + actId)
+            badges.forEach(badge => {
+              badge.style.display = 'inline-flex'
+              badge.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="#f59e0b" stroke="#f59e0b" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg> ' + d.average.toFixed(1) + ' <span style="color:#9ca3af;font-weight:400">\u00B7 ' + d.count + ' Bewertung' + (d.count !== 1 ? 'en' : '') + '</span>'
+            })
+          }
+        })
+        .catch(() => {})
+    })
   } catch (e) {
     loading.style.display = 'none'
     container.innerHTML = `<div class="empty-state"><div class="empty-state-text">Kurse konnten nicht geladen werden.</div></div>`
@@ -1264,6 +1293,7 @@ function renderBlockCard(block) {
         <div>
           <div class="card-title">${esc(block._activityTitle || block.activityType)}</div>
           <div class="card-subtitle">${esc(block.seasonLabel)}</div>
+          <span class="review-badge" id="review-badge-${block.activityId || ''}" style="display:none"></span>
         </div>
         ${statusBadge}
       </div>

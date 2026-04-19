@@ -22,6 +22,7 @@ import { registerSettingsRoutes } from './settings'
 import { registerMarketingRoutes } from './marketing'
 import { registerMiscRoutes } from './misc'
 import { registerInvitationRoutes } from './invitations'
+import { registerReviewRoutes } from './reviews'
 
 export function registerRoutes(router: Router) {
 
@@ -54,4 +55,5 @@ export function registerRoutes(router: Router) {
   registerMarketingRoutes(router)
   registerMiscRoutes(router)
   registerInvitationRoutes(router)
+  registerReviewRoutes(router)
 }
