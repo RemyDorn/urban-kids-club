@@ -57,7 +57,7 @@ export function getClientIp(req: any): string {
 
 // Helper: escape HTML to prevent XSS
 export function escHtml(s: string): string {
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')
 }
 // Helper: render a branded HTML page (for confirm/decline/error pages)
 export function successPageWithRedirect(title: string, message: string, redirectUrl?: string | null) {
