@@ -4,7 +4,7 @@
 // ============================================================
 
 import { Router } from '../router'
-import { requireAuth } from '../../lib/auth-middleware'
+import { requireAuth, checkPermission } from '../../lib/auth-middleware'
 import { getServiceClient } from '../../lib/supabase'
 import { RoomService } from '../../services'
 
@@ -14,9 +14,29 @@ export function registerSettingsRoutes(router: Router) {
   // STRIPE CONNECT
   // ============================================================
 
+  // Dedicated status endpoint with test mode detection
+  router.get('/api/stripe/status', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    const db = getServiceClient()
+    const { data } = await db.from('providers').select('stripe_account_id, stripe_connected').eq('id', auth.providerId).single()
+    const stripeKey = process.env.STRIPE_SECRET_KEY || ''
+    const isTestMode = stripeKey.startsWith('sk_test_')
+    const isConfigured = !!stripeKey
+    res.json({
+      data: {
+        connected: !!data?.stripe_connected,
+        accountId: data?.stripe_account_id || null,
+        testMode: isTestMode,
+        platformConfigured: isConfigured,
+      }
+    })
+  })
+
   router.post('/api/providers/:id/stripe-connect', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
+    if (!checkPermission(auth, res, 'settings', 'edit')) return
     if (auth.providerId !== req.params.id) return res.error(403, 'Zugriff verweigert')
     const { getConnectAuthUrl } = await import('../../lib/stripe')
     const returnUrl = `${req.raw.headers.origin || 'https://app.urbankids.club'}/api/stripe/callback`
@@ -38,7 +58,7 @@ export function registerSettingsRoutes(router: Router) {
         stripe_connected: true,
         updated_at: new Date().toISOString()
       }).eq('id', providerId)
-      ;(res as any).writeHead(302, { Location: '/?page=settings&tab=finance&stripe=connected' })
+      ;(res as any).writeHead(302, { Location: '/?page=settings&tab=payments&stripe=connected' })
       ;(res as any).end()
     } catch (err: any) {
       res.error(500, 'Stripe-Verbindung fehlgeschlagen: ' + err.message)
@@ -52,6 +72,7 @@ export function registerSettingsRoutes(router: Router) {
   router.put('/api/providers/:id/paypal-config', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
+    if (!checkPermission(auth, res, 'settings', 'edit')) return
     if (auth.providerId !== req.params.id) return res.error(403, 'Zugriff verweigert')
     const { clientId, secret } = req.body as any
     if (!clientId || !secret) return res.error(400, 'Client ID und Secret erforderlich')
@@ -106,6 +127,7 @@ export function registerSettingsRoutes(router: Router) {
   router.put('/api/providers/:id/cancellation-policy', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
+    if (!checkPermission(auth, res, 'settings', 'edit')) return
     const { feeType, feeValue, deadlineHours, customText } = req.body as any
     const db = getServiceClient()
     const { error } = await db.from('cancellation_policies').upsert({
@@ -135,6 +157,7 @@ export function registerSettingsRoutes(router: Router) {
   router.put('/api/opening-hours', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
+    if (!checkPermission(auth, res, 'settings', 'edit')) return
     const sb = getServiceClient()
     const { error } = await sb.from('providers').update({ opening_hours: req.body }).eq('id', auth.providerId)
     if (error) return res.error(500, error.message)

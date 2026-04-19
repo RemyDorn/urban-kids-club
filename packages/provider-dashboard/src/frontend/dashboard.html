@@ -488,6 +488,71 @@
     let currentProvider = null
     let providers = []
     let currentSession = null
+    let currentUserRole = 'owner'
+    let currentUserPermissions = {}
+
+    // Permission areas and their possible actions (for UI display)
+    const PERMISSION_AREAS = {
+      courses: { label: 'Kurse', actions: ['view', 'create', 'edit', 'move', 'delete'] },
+      bookings: { label: 'Buchungen', actions: ['view', 'confirm', 'cancel'] },
+      customers: { label: 'Kunden', actions: ['view', 'contact'] },
+      invoices: { label: 'Rechnungen', actions: ['view', 'create', 'send'] },
+      team: { label: 'Team', actions: ['view', 'invite', 'edit'] },
+      settings: { label: 'Einstellungen', actions: ['view', 'edit'] },
+      marketing: { label: 'Marketing', actions: ['view', 'edit'] },
+      embed: { label: 'Einbettung', actions: ['view', 'edit'] },
+      reports: { label: 'Berichte', actions: ['view'] },
+      documents: { label: 'Dokumente', actions: ['view', 'upload'] },
+    }
+
+    const ACTION_LABELS = {
+      view: 'Ansehen', create: 'Erstellen', edit: 'Bearbeiten', delete: 'Loeschen',
+      send: 'Versenden', confirm: 'Bestaetigen', cancel: 'Stornieren', move: 'Verschieben',
+      invite: 'Einladen', contact: 'Kontaktieren', upload: 'Hochladen',
+    }
+
+    function hasPermission(area, action) {
+      if (currentUserRole === 'owner' || currentUserRole === 'admin') return true
+      const areaPerms = currentUserPermissions?.[area]
+      if (!areaPerms || !Array.isArray(areaPerms)) return false
+      return areaPerms.includes(action)
+    }
+
+    function hasAreaAccess(area) {
+      if (currentUserRole === 'owner' || currentUserRole === 'admin') return true
+      const areaPerms = currentUserPermissions?.[area]
+      return areaPerms && Array.isArray(areaPerms) && areaPerms.length > 0
+    }
+
+    // Map nav pages to permission areas
+    const NAV_PERMISSION_MAP = {
+      dashboard: null,           // always visible
+      activities: 'courses',
+      bookings: 'bookings',
+      courseblocks: 'courses',
+      customers: 'customers',
+      trials: 'bookings',
+      invoices: 'invoices',
+      team: 'team',
+      documents: 'documents',
+      reports: 'reports',
+      holidays: 'settings',
+      embed: 'embed',
+      marketing: 'marketing',
+      settings: 'settings',
+    }
+
+    function applyPermissionVisibility() {
+      document.querySelectorAll('.nav-item[data-page]').forEach(el => {
+        const page = el.getAttribute('data-page')
+        const area = NAV_PERMISSION_MAP[page]
+        if (area === null || area === undefined) {
+          el.style.display = ''
+          return
+        }
+        el.style.display = hasAreaAccess(area) ? '' : 'none'
+      })
+    }
 
     // --- Supabase Auth (config from server so same HTML works on dev+live) ---
     let SUPABASE_URL = ''
@@ -909,6 +974,15 @@
 
     // --- Init ---
     async function init() {
+      // Fetch current user's role and permissions
+      try {
+        const meRes = await api('/me')
+        if (meRes.data) {
+          currentUserRole = meRes.data.role || 'owner'
+          currentUserPermissions = meRes.data.permissions || {}
+        }
+      } catch (e) { console.error('Could not fetch user permissions:', e) }
+
       const res = await api('/providers')
       providers = res.data
       const select = document.getElementById('providerSelect')
@@ -916,6 +990,7 @@
       if (providers.length > 0) {
         currentProvider = providers[0]
         updateProviderDisplay()
+        applyPermissionVisibility()
         // Check URL params (e.g. after Stripe OAuth callback)
         const urlParams = new URLSearchParams(window.location.search)
         const startPage = urlParams.get('page') || 'dashboard'
@@ -1071,6 +1146,13 @@
       content.classList.remove('fade-in')
       void content.offsetWidth
       content.classList.add('fade-in')
+
+      // Check permission before rendering
+      const pageArea = NAV_PERMISSION_MAP[page]
+      if (pageArea && !hasAreaAccess(pageArea)) {
+        content.innerHTML = '<div class="p-12 text-center"><div class="text-4xl mb-3">🔒</div><p class="text-gray-600 font-medium mb-1">Kein Zugriff</p><p class="text-sm text-gray-400">Du hast keine Berechtigung fuer diesen Bereich. Wende dich an deinen Administrator.</p></div>'
+        return
+      }
 
       const renderers = { dashboard: renderDashboard, activities: renderActivities, bookings: renderBookings, courseblocks: renderCourseBlocks, customers: renderCustomers, trials: renderTrials, invoices: renderInvoices, team: renderTeam, documents: renderDocuments, reports: renderReports, holidays: renderHolidays, embed: renderEmbed, marketing: renderMarketing, settings: renderSettings }
       if (renderers[page]) {
@@ -2501,6 +2583,9 @@
         <!-- Kalender oben -->
         <div id="dashboardCalendar" class="mb-8"></div>
 
+        <!-- Payment Status Banner (loaded async) -->
+        <div id="dashPaymentBanner"></div>
+
         <!-- KPI Cards (dynamic — updates with calendar view) -->
         <div id="kpiSection">
           <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
@@ -2527,6 +2612,28 @@
       // Kalender ins Dashboard rendern
       await renderCalendarInto('dashboardCalendar')
       updateKPIsForView()
+
+      // Async: Load payment status banner
+      loadDashboardPaymentBanner()
+    }
+
+    async function loadDashboardPaymentBanner() {
+      const el = document.getElementById('dashPaymentBanner')
+      if (!el) return
+      try {
+        const cfg = await api('/providers/' + currentProvider.id + '/payment-config')
+        const d = cfg.data || {}
+        const hasPayment = d.stripe_connected || d.paypal_connected
+        if (!hasPayment) {
+          el.innerHTML = '<div class="mb-6 bg-orange-50 border border-orange-200 rounded-xl p-4 flex items-center justify-between"><div class="flex items-center gap-3"><span class="w-9 h-9 bg-orange-100 rounded-lg flex items-center justify-center text-lg">&#9888;</span><div><div class="text-sm font-semibold text-orange-800">Online-Zahlungen nicht eingerichtet</div><div class="text-xs text-orange-600">Verbinde Stripe oder PayPal, damit Eltern online bezahlen koennen.</div></div></div><button onclick="settingsTab=\'payments\'; navigate(\'settings\')" class="bg-orange-600 text-white px-4 py-2 rounded-lg text-xs font-semibold hover:bg-orange-700 whitespace-nowrap">Jetzt einrichten</button></div>'
+        } else {
+          // Compact status
+          const methods = []
+          if (d.stripe_connected) methods.push('Stripe')
+          if (d.paypal_connected) methods.push('PayPal')
+          el.innerHTML = '<div class="mb-6 bg-green-50 border border-green-200 rounded-xl p-3 flex items-center gap-3"><span class="w-7 h-7 bg-green-100 rounded-lg flex items-center justify-center text-sm text-green-600">&#10003;</span><span class="text-xs text-green-700">Online-Zahlungen aktiv via <strong>' + methods.join(' & ') + '</strong></span></div>'
+        }
+      } catch(e) { /* silent */ }
     }
 
     // --- Activities ---
@@ -3898,8 +4005,8 @@
     }
 
     // --- Team ---
-    const roleLabels = { owner: 'Inhaber', admin: 'Administrator', manager: 'Manager', instructor: 'Kursleiter', receptionist: 'Empfang', assistant: 'Assistent' }
-    const roleColors = { owner: 'bg-purple-100 text-purple-700', admin: 'bg-brand-100 text-brand-700', manager: 'bg-blue-100 text-blue-700', instructor: 'bg-green-100 text-green-700', receptionist: 'bg-amber-100 text-amber-700', assistant: 'bg-gray-100 text-gray-600' }
+    const roleLabels = { owner: 'Inhaber', admin: 'Administrator', manager: 'Manager', staff: 'Mitarbeiter', instructor: 'Kursleiter', receptionist: 'Empfang', assistant: 'Assistent' }
+    const roleColors = { owner: 'bg-purple-100 text-purple-700', admin: 'bg-brand-100 text-brand-700', manager: 'bg-blue-100 text-blue-700', staff: 'bg-teal-100 text-teal-700', instructor: 'bg-green-100 text-green-700', receptionist: 'bg-amber-100 text-amber-700', assistant: 'bg-gray-100 text-gray-600' }
 
     const docTypeLabels = { fuehrungszeugnis: 'Erw. Führungszeugnis', first_aid: 'Erste-Hilfe-Nachweis', qualification: 'Qualifikation', insurance: 'Haftpflicht', custom: 'Sonstiges' }
     const absenceTypeLabels = { vacation: 'Urlaub', sick: 'Krank', training: 'Fortbildung', personal: 'Privat', other: 'Sonstiges' }
@@ -3910,6 +4017,7 @@
         api(`/providers/${currentProvider.id}/activities`),
       ])
       const members = res.data
+      _teamMembersCache = members // cache for edit lookup
       const activities = actRes.data.filter(a => a.status === 'published')
 
       document.getElementById('content').innerHTML = `
@@ -3954,6 +4062,7 @@
                   ${m.userId ? '<span class="text-xs text-green-600 font-medium flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>Angemeldet</span>'
                     : m.inviteSentAt ? `<div class="flex items-center gap-2"><span class="text-xs text-amber-600 font-medium flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>Einladung gesendet</span><button onclick="inviteTeamMember('${m.id}')" class="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded hover:bg-amber-200 font-medium">Erneut senden</button></div>`
                     : `<button onclick="inviteTeamMember('${m.id}')" class="text-xs bg-brand-100 text-brand-700 px-3 py-1 rounded-lg hover:bg-brand-200 font-medium">Einladen</button>`}
+                  <button onclick="editTeamMember('${m.id}')" class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded hover:bg-gray-200 font-medium" title="Bearbeiten">Bearbeiten</button>
                   <label class="toggle"><input type="checkbox" ${m.active ? 'checked' : ''} onchange="toggleTeamMember('${m.id}', this.checked)"><span class="slider"></span></label>
                   <button onclick="deleteTeamMember('${m.id}', '${escapeHtml(m.name)}')" class="text-xs text-red-400 hover:text-red-600 px-1" title="Entfernen">✕</button>
                 </div>
@@ -3997,58 +4106,163 @@
       `
     }
 
-    function showTeamForm() {
+    // Default permissions per role (mirrors backend DEFAULT_ROLE_PERMISSIONS)
+    const DEFAULT_ROLE_PERMS = {
+      owner: { courses: ['view','create','edit','move','delete'], bookings: ['view','confirm','cancel'], customers: ['view','contact'], invoices: ['view','create','send'], team: ['view','invite','edit'], settings: ['view','edit'], marketing: ['view','edit'], embed: ['view','edit'], reports: ['view'], documents: ['view','upload'] },
+      admin: { courses: ['view','create','edit','move','delete'], bookings: ['view','confirm','cancel'], customers: ['view','contact'], invoices: ['view','create','send'], team: ['view','invite','edit'], settings: ['view','edit'], marketing: ['view','edit'], embed: ['view','edit'], reports: ['view'], documents: ['view','upload'] },
+      manager: { courses: ['view','create','edit','move'], bookings: ['view','confirm','cancel'], customers: ['view','contact'], invoices: ['view','create'], team: ['view'], settings: ['view'], marketing: ['view'], embed: ['view'], reports: ['view'], documents: ['view','upload'] },
+      staff: { courses: ['view'], bookings: ['view'], customers: ['view'], invoices: ['view'], team: ['view'], settings: [], marketing: [], embed: [], reports: ['view'], documents: ['view'] },
+    }
+
+    function buildPermissionsChecklist(selectedPerms, disabled) {
+      return Object.entries(PERMISSION_AREAS).map(([area, cfg]) => {
+        const areaPerms = selectedPerms?.[area] || []
+        return `
+          <div class="border border-gray-100 rounded-lg p-2">
+            <div class="text-xs font-semibold text-gray-700 mb-1">${cfg.label}</div>
+            <div class="flex flex-wrap gap-x-3 gap-y-1">
+              ${cfg.actions.map(action => `
+                <label class="flex items-center gap-1 text-xs text-gray-600 ${disabled ? 'opacity-60' : ''}">
+                  <input type="checkbox" class="perm-cb rounded border-gray-300" data-area="${area}" data-action="${action}"
+                    ${areaPerms.includes(action) ? 'checked' : ''} ${disabled ? 'disabled' : ''}>
+                  ${ACTION_LABELS[action] || action}
+                </label>
+              `).join('')}
+            </div>
+          </div>
+        `
+      }).join('')
+    }
+
+    function getPermissionsFromForm(formEl) {
+      const perms = {}
+      formEl.querySelectorAll('.perm-cb').forEach(cb => {
+        const area = cb.dataset.area
+        const action = cb.dataset.action
+        if (!perms[area]) perms[area] = []
+        if (cb.checked) perms[area].push(action)
+      })
+      return perms
+    }
+
+    function showTeamForm(editMember) {
+      const isEdit = !!editMember
       const roles = [
         { value: 'admin', label: 'Administrator', desc: 'Voller Zugriff auf alle Bereiche' },
         { value: 'manager', label: 'Manager', desc: 'Kurse, Buchungen, Kunden, Berichte' },
-        { value: 'instructor', label: 'Kursleiter', desc: 'Kalender, Buchungen einsehen, Check-in' },
-        { value: 'receptionist', label: 'Empfang', desc: 'Buchungen verwalten, Check-in, Rechnungen einsehen' },
+        { value: 'staff', label: 'Mitarbeiter', desc: 'Eingeschraenkter Zugriff (anpassbar)' },
       ]
+      const currentRole = isEdit ? (editMember.role || 'staff') : 'admin'
+      const isOwnerRole = currentRole === 'owner'
+      const currentPerms = isEdit ? (editMember.permissions || DEFAULT_ROLE_PERMS[currentRole] || DEFAULT_ROLE_PERMS.staff) : (DEFAULT_ROLE_PERMS[currentRole] || DEFAULT_ROLE_PERMS.admin)
+
       const modal = document.getElementById('teamModal')
       modal.className = 'cal-modal-backdrop'
       modal.onclick = (e) => { if (e.target === modal) modal.className = 'hidden' }
       modal.innerHTML = `
-        <div class="cal-modal fade-in" style="width:500px;">
+        <div class="cal-modal fade-in" style="width:560px;max-height:90vh;overflow-y:auto;">
           <div class="flex items-center justify-between mb-4">
-            <h3 class="text-lg font-bold text-gray-900">Neues Teammitglied</h3>
+            <h3 class="text-lg font-bold text-gray-900">${isEdit ? 'Teammitglied bearbeiten' : 'Neues Teammitglied'}</h3>
             <button onclick="document.getElementById('teamModal').className='hidden'" class="text-gray-400 hover:text-gray-600">
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
           </div>
-          <form onsubmit="saveTeamMember(event)" class="space-y-4">
+          <form onsubmit="${isEdit ? `updateTeamMember(event, '${editMember.id}')` : 'saveTeamMember(event)'}" class="space-y-4">
             <div class="grid grid-cols-2 gap-4">
-              <div><label class="block text-sm font-medium text-gray-700 mb-1">Name *</label><input name="name" required class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Vor- und Nachname"></div>
-              <div><label class="block text-sm font-medium text-gray-700 mb-1">E-Mail *</label><input name="email" type="email" required class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"></div>
+              <div><label class="block text-sm font-medium text-gray-700 mb-1">Name *</label><input name="name" required class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Vor- und Nachname" value="${isEdit ? escapeHtml(editMember.name) : ''}"></div>
+              <div><label class="block text-sm font-medium text-gray-700 mb-1">E-Mail *</label><input name="email" type="email" required class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value="${isEdit ? escapeHtml(editMember.email) : ''}"></div>
             </div>
             <div class="grid grid-cols-2 gap-4">
-              <div><label class="block text-sm font-medium text-gray-700 mb-1">Telefon</label><input name="phone" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="+49..."></div>
+              <div><label class="block text-sm font-medium text-gray-700 mb-1">Telefon</label><input name="phone" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="+49..." value="${isEdit && editMember.phone ? escapeHtml(editMember.phone) : ''}"></div>
               <div><label class="block text-sm font-medium text-gray-700 mb-1">Rolle *</label>
-                <select name="role" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
-                  ${roles.map(r => `<option value="${r.value}">${r.label}</option>`).join('')}
-                </select>
-                <div class="text-xs text-gray-400 mt-1" id="roleDesc">${roles[0].desc}</div>
+                ${isOwnerRole ? '<input type="text" value="Inhaber" disabled class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50"><input type="hidden" name="role" value="owner">' : `
+                <select name="role" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" onchange="onRoleChangeInForm(this.value)">
+                  ${roles.map(r => `<option value="${r.value}" ${r.value === currentRole ? 'selected' : ''}>${r.label}</option>`).join('')}
+                </select>`}
+                <div class="text-xs text-gray-400 mt-1" id="roleDesc">${isOwnerRole ? 'Voller Zugriff (nicht aenderbar)' : (roles.find(r => r.value === currentRole)?.desc || '')}</div>
               </div>
             </div>
-            <div><label class="block text-sm font-medium text-gray-700 mb-1">Spezialisierungen</label><input name="specializations" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Ballett, Hip-Hop (kommagetrennt)"></div>
+            <div><label class="block text-sm font-medium text-gray-700 mb-1">Spezialisierungen</label><input name="specializations" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Ballett, Hip-Hop (kommagetrennt)" value="${isEdit && editMember.specializations ? editMember.specializations.join(', ') : ''}"></div>
 
-            <div class="bg-blue-50 border border-blue-200 rounded-lg p-3">
-              <div class="text-xs font-medium text-blue-800 mb-1">Einladung per E-Mail</div>
-              <div class="text-xs text-blue-700">Nach dem Hinzufügen kann eine Einladung per E-Mail gesendet werden, damit das Mitglied sich anmelden kann.</div>
+            <!-- Permissions Checklist -->
+            <div>
+              <div class="flex items-center justify-between mb-2">
+                <label class="block text-sm font-medium text-gray-700">Berechtigungen</label>
+                ${!isOwnerRole ? '<button type="button" onclick="resetPermsToRoleDefault()" class="text-xs text-brand-600 hover:text-brand-700 font-medium">Rolle-Standard laden</button>' : ''}
+              </div>
+              <div class="space-y-2" id="permissionsChecklist">
+                ${buildPermissionsChecklist(currentPerms, isOwnerRole || currentRole === 'admin')}
+              </div>
+              ${isOwnerRole || currentRole === 'admin' ? '<div class="text-xs text-gray-400 mt-1">Inhaber und Administratoren haben immer vollen Zugriff.</div>' : ''}
             </div>
 
-            <button type="submit" class="w-full bg-brand-500 text-white py-2.5 rounded-lg font-medium hover:bg-brand-600">Hinzufügen & Einladen</button>
+            ${!isEdit ? `
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <div class="text-xs font-medium text-blue-800 mb-1">Einladung per E-Mail</div>
+              <div class="text-xs text-blue-700">Nach dem Hinzufuegen kann eine Einladung per E-Mail gesendet werden, damit das Mitglied sich anmelden kann.</div>
+            </div>` : ''}
+
+            <button type="submit" class="w-full bg-brand-500 text-white py-2.5 rounded-lg font-medium hover:bg-brand-600">${isEdit ? 'Speichern' : 'Hinzufuegen & Einladen'}</button>
           </form>
         </div>
       `
-      // Update role description on change
+      // Update role description & permissions on change
       const roleSelect = modal.querySelector('[name="role"]')
-      const roleDesc = document.getElementById('roleDesc')
-      if (roleSelect && roleDesc) {
+      const roleDescEl = document.getElementById('roleDesc')
+      if (roleSelect && roleDescEl) {
         roleSelect.addEventListener('change', function() {
           const r = roles.find(x => x.value === this.value)
-          roleDesc.textContent = r?.desc || ''
+          roleDescEl.textContent = r?.desc || ''
         })
       }
+    }
+
+    function onRoleChangeInForm(role) {
+      const checklist = document.getElementById('permissionsChecklist')
+      if (!checklist) return
+      const isAdminRole = role === 'admin' || role === 'owner'
+      const perms = DEFAULT_ROLE_PERMS[role] || DEFAULT_ROLE_PERMS.staff
+      checklist.innerHTML = buildPermissionsChecklist(perms, isAdminRole)
+      const hint = checklist.parentElement?.querySelector('.text-gray-400')
+      if (hint) hint.style.display = isAdminRole ? '' : 'none'
+    }
+
+    function resetPermsToRoleDefault() {
+      const roleSelect = document.querySelector('#teamModal [name="role"]')
+      if (roleSelect) onRoleChangeInForm(roleSelect.value)
+    }
+
+    // Cache team members for edit lookup
+    let _teamMembersCache = []
+
+    async function editTeamMember(memberId) {
+      const member = _teamMembersCache.find(m => m.id === memberId)
+      if (member) { showTeamForm(member); return }
+      // Fallback: fetch from API
+      const res = await api(`/providers/${currentProvider.id}/team`)
+      _teamMembersCache = res.data || []
+      const m = _teamMembersCache.find(x => x.id === memberId)
+      if (m) showTeamForm(m)
+    }
+
+    async function updateTeamMember(e, memberId) {
+      e.preventDefault()
+      const form = e.target
+      const fd = new FormData(form)
+      const role = fd.get('role')
+      const perms = getPermissionsFromForm(form)
+      const body = {
+        name: fd.get('name'),
+        email: fd.get('email'),
+        phone: fd.get('phone'),
+        role,
+        specializations: fd.get('specializations')?.split(',').map(s => s.trim()).filter(Boolean),
+        permissions: perms,
+      }
+      await api('/team/' + memberId, 'PUT', body)
+      showToast('Teammitglied aktualisiert', 'success')
+      document.getElementById('teamModal').className = 'hidden'
+      renderTeam()
     }
 
     function showDocForm(memberId) {
@@ -4118,9 +4332,11 @@
       const btn = e.target.querySelector('button[type="submit"]')
       if (btn) { btn.disabled = true; btn.textContent = 'Wird angelegt...' }
       try {
+        const perms = getPermissionsFromForm(e.target)
         const result = await api(`/providers/${currentProvider.id}/team`, 'POST', {
           name: f.get('name'), email: f.get('email'), phone: f.get('phone'), role: f.get('role'),
           specializations: (f.get('specializations') || '').split(',').map(s => s.trim()).filter(Boolean),
+          permissions: perms,
         })
         if (result.error) { showToast(result.error, 'error'); return }
         // Auto-send invite after creating
@@ -6213,6 +6429,7 @@
         <div class="flex gap-1 mb-6 border-b border-gray-200">
           <button onclick="settingsTab='company'; renderSettings()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${settingsTab === 'company' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}">Unternehmen</button>
           <button onclick="settingsTab='hours'; renderSettings()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${settingsTab === 'hours' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}">Öffnungszeiten</button>
+          <button onclick="settingsTab='payments'; renderSettings()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${settingsTab === 'payments' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}">Zahlungen</button>
           <button onclick="settingsTab='finance'; renderSettings()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${settingsTab === 'finance' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}">Steuern & Finanzen</button>
           <button onclick="settingsTab='loyalty'; renderSettings()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${settingsTab === 'loyalty' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}">Treueprogramm</button>
           <button onclick="settingsTab='courses'; renderSettings()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${settingsTab === 'courses' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}">Kurse & Blöcke</button>
@@ -6226,6 +6443,7 @@
       const sc = document.getElementById('settingsContent')
       if (settingsTab === 'hours') { sc.innerHTML = '<div id="hoursContainer">Lade...</div>'; loadOpeningHours() }
       else if (settingsTab === 'company') sc.innerHTML = renderCompanyTab(p, s)
+      else if (settingsTab === 'payments') { sc.innerHTML = renderPaymentsTab(); loadPaymentsTab() }
       else if (settingsTab === 'finance') { sc.innerHTML = renderFinanceTab(p, s); loadPaymentConfig() }
       else if (settingsTab === 'loyalty') sc.innerHTML = renderLoyaltyTab()
       else if (settingsTab === 'courses') sc.innerHTML = renderCoursesSettingsTab(p)
@@ -6840,36 +7058,6 @@
             </div>
           </div>
 
-          <!-- Öffnungszeiten -->
-          <div class="bg-white rounded-xl border border-brand-200 p-6">
-            <h3 class="font-semibold text-gray-900 mb-4">Öffnungszeiten</h3>
-            <p class="text-sm text-gray-500 mb-4">Kurse können nur innerhalb der Öffnungszeiten erstellt werden. Ohne Öffnungszeiten gibt es keine Einschränkung.</p>
-            <div class="space-y-3">
-              ${['monday','tuesday','wednesday','thursday','friday','saturday','sunday'].map((day, i) => {
-                const labels = ['Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag','Sonntag']
-                const oh = currentProvider.openingHours || s.openingHours || {}
-                const dayData = oh[day]
-                const isOpen = dayData !== null && dayData !== undefined
-                const openTime = isOpen ? (dayData.open || '08:00') : '08:00'
-                const closeTime = isOpen ? (dayData.close || '18:00') : '18:00'
-                return `<div class="flex items-center gap-3">
-                  <label class="flex items-center gap-2 w-28 text-sm text-gray-700 cursor-pointer">
-                    <input type="checkbox" id="oh_open_${day}" ${isOpen ? 'checked' : ''} onchange="toggleOpeningHoursDay('${day}')" class="rounded border-gray-300 text-brand-500 focus:ring-brand-500">
-                    ${labels[i]}
-                  </label>
-                  <input type="time" id="oh_from_${day}" value="${openTime}" ${!isOpen ? 'disabled' : ''} class="border border-gray-200 rounded-lg px-2 py-1.5 text-sm ${!isOpen ? 'opacity-40' : ''}">
-                  <span class="text-sm text-gray-400">bis</span>
-                  <input type="time" id="oh_to_${day}" value="${closeTime}" ${!isOpen ? 'disabled' : ''} class="border border-gray-200 rounded-lg px-2 py-1.5 text-sm ${!isOpen ? 'opacity-40' : ''}">
-                </div>`
-              }).join('')}
-            </div>
-            <div class="mt-3 flex gap-2">
-              <button type="button" onclick="prefillOpeningHours('weekdays')" class="text-xs text-brand-600 hover:text-brand-700 underline">Mo-Fr 08:00-18:00</button>
-              <button type="button" onclick="prefillOpeningHours('all')" class="text-xs text-brand-600 hover:text-brand-700 underline">Alle Tage</button>
-              <button type="button" onclick="prefillOpeningHours('clear')" class="text-xs text-gray-500 hover:text-gray-700 underline">Alle schließen</button>
-            </div>
-          </div>
-
           <button onclick="saveCompanySettings()" class="bg-brand-500 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-brand-600">Unternehmensdaten speichern</button>
 
           <!-- Kids Club Plattform Info -->
@@ -6897,6 +7085,174 @@
           </div>
         </div>
       `
+    }
+
+    // ============================================================
+    // Zahlungen Tab — Stripe Connect Wizard
+    // ============================================================
+    function renderPaymentsTab() {
+      return `
+        <div class="max-w-2xl space-y-6">
+          <div id="paymentsLoading" class="text-center py-12 text-gray-400 text-sm">Zahlungsstatus wird geladen...</div>
+          <div id="paymentsContent" class="hidden space-y-6"></div>
+        </div>
+      `
+    }
+
+    async function loadPaymentsTab() {
+      try {
+        const [stripeRes, paymentRes] = await Promise.all([
+          api('/stripe/status').catch(() => ({ data: { connected: false, testMode: false, platformConfigured: false } })),
+          api('/providers/' + currentProvider.id + '/payment-config').catch(() => ({ data: {} })),
+        ])
+        const stripe = stripeRes.data || {}
+        const payment = paymentRes.data || {}
+
+        document.getElementById('paymentsLoading').classList.add('hidden')
+        const content = document.getElementById('paymentsContent')
+        content.classList.remove('hidden')
+
+        // Determine current step
+        let currentStep = 1
+        if (stripe.connected) currentStep = 3
+
+        const testBadge = stripe.testMode ? '<span class="inline-flex items-center gap-1 bg-yellow-100 text-yellow-800 px-2.5 py-0.5 rounded-full text-xs font-semibold ml-2">Testmodus</span>' : ''
+
+        content.innerHTML = ''
+
+        // --- Stripe Connect Card ---
+        let stripeHtml = '<div class="bg-white rounded-xl border border-brand-200 p-6">'
+        stripeHtml += '<div class="flex items-center justify-between mb-5">'
+        stripeHtml += '<div class="flex items-center gap-3">'
+        stripeHtml += '<div class="w-11 h-11 bg-indigo-100 rounded-xl flex items-center justify-center"><svg class="w-6 h-6 text-indigo-600" fill="currentColor" viewBox="0 0 24 24"><path d="M13.976 9.15c-2.172-.806-3.356-1.426-3.356-2.409 0-.831.683-1.305 1.901-1.305 2.227 0 4.515.858 6.09 1.631l.89-5.494C18.252.975 15.697 0 12.165 0 9.667 0 7.589.654 6.104 1.872 4.56 3.147 3.757 4.992 3.757 7.218c0 4.039 2.467 5.76 6.476 7.219 2.585.92 3.445 1.574 3.445 2.583 0 .98-.84 1.545-2.354 1.545-1.875 0-4.965-.921-6.99-2.109l-.9 5.555C5.175 22.99 8.385 24 11.714 24c2.641 0 4.843-.624 6.328-1.813 1.664-1.305 2.525-3.236 2.525-5.732 0-4.128-2.524-5.851-6.591-7.305z"/></svg></div>'
+        stripeHtml += '<div><div class="text-sm font-semibold text-gray-900">Stripe Connect' + testBadge + '</div>'
+        stripeHtml += '<div class="text-xs text-gray-500">Kreditkarten, Apple Pay, Google Pay, Klarna</div></div>'
+        stripeHtml += '</div>'
+
+        // Status badge
+        if (stripe.connected) {
+          stripeHtml += '<span class="inline-flex items-center gap-1.5 bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-semibold"><span class="w-2 h-2 bg-green-500 rounded-full"></span>Verbunden</span>'
+        } else {
+          stripeHtml += '<span class="inline-flex items-center gap-1.5 bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-xs font-semibold"><span class="w-2 h-2 bg-orange-500 rounded-full"></span>Nicht verbunden</span>'
+        }
+        stripeHtml += '</div>'
+
+        // Step indicator
+        stripeHtml += '<div class="flex items-center gap-2 mb-6">'
+        for (let i = 1; i <= 3; i++) {
+          const isActive = i === currentStep
+          const isDone = i < currentStep
+          const stepColor = isDone ? 'bg-green-500 text-white' : isActive ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-500'
+          const lineColor = isDone ? 'bg-green-400' : 'bg-gray-200'
+          stripeHtml += '<div class="flex items-center gap-2">'
+          stripeHtml += '<div class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ' + stepColor + '">' + (isDone ? '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>' : i) + '</div>'
+          if (i < 3) stripeHtml += '<div class="w-12 h-1 rounded ' + lineColor + '"></div>'
+          stripeHtml += '</div>'
+        }
+        stripeHtml += '</div>'
+
+        // Step labels
+        stripeHtml += '<div class="flex justify-between text-xs text-gray-500 mb-6 -mt-2">'
+        stripeHtml += '<span class="' + (currentStep >= 1 ? 'text-gray-700 font-medium' : '') + '">Verbinden</span>'
+        stripeHtml += '<span class="' + (currentStep >= 2 ? 'text-gray-700 font-medium' : '') + '">Daten eingeben</span>'
+        stripeHtml += '<span class="' + (currentStep >= 3 ? 'text-gray-700 font-medium' : '') + '">Bereit</span>'
+        stripeHtml += '</div>'
+
+        if (stripe.connected) {
+          // Connected state
+          const acctId = stripe.accountId || ''
+          const masked = acctId ? acctId.slice(0, 8) + '...' + acctId.slice(-4) : ''
+          stripeHtml += '<div class="bg-green-50 border border-green-200 rounded-lg p-5">'
+          stripeHtml += '<div class="flex items-center gap-2 mb-3"><span class="text-green-600 text-xl">&#10003;</span><span class="text-sm font-semibold text-green-800">Stripe ist erfolgreich verbunden</span></div>'
+          stripeHtml += '<div class="text-xs text-green-700 mb-3">Account-ID: <code class="bg-green-100 px-1.5 py-0.5 rounded font-mono">' + escapeHtml(masked) + '</code></div>'
+          stripeHtml += '<div class="text-xs text-gray-600 space-y-1.5">'
+          stripeHtml += '<div class="flex items-center gap-2"><span class="text-green-500">&#10003;</span> Kreditkarten, Apple Pay, Google Pay aktiviert</div>'
+          stripeHtml += '<div class="flex items-center gap-2"><span class="text-green-500">&#10003;</span> Zahlungen gehen direkt auf dein Stripe-Konto</div>'
+          if (stripe.testMode) {
+            stripeHtml += '<div class="flex items-center gap-2 mt-2 text-yellow-700 bg-yellow-50 px-3 py-2 rounded-lg"><span>&#9888;</span> Testmodus aktiv — es werden keine echten Zahlungen verarbeitet</div>'
+          }
+          stripeHtml += '</div>'
+          stripeHtml += '<button onclick="showConfirm(\'Stripe-Verbindung wirklich trennen? Online-Zahlungen werden danach nicht mehr funktionieren.\', () => { disconnectStripe(); settingsTab=\\\'payments\\\'; renderSettings() }, { danger: true })" class="mt-4 text-xs text-red-500 hover:text-red-700 underline cursor-pointer">Verbindung trennen</button>'
+          stripeHtml += '</div>'
+        } else if (!stripe.platformConfigured) {
+          // Platform not configured
+          stripeHtml += '<div class="bg-gray-50 border border-gray-200 rounded-lg p-5">'
+          stripeHtml += '<div class="text-sm text-gray-600 mb-2">Stripe ist auf dieser Plattform noch nicht konfiguriert.</div>'
+          stripeHtml += '<div class="text-xs text-gray-500">Kontaktiere den Support, um Online-Zahlungen zu aktivieren.</div>'
+          stripeHtml += '</div>'
+        } else {
+          // Not connected — show wizard
+          stripeHtml += '<div class="bg-indigo-50 border border-indigo-200 rounded-lg p-5 mb-4">'
+          stripeHtml += '<div class="text-sm font-medium text-indigo-900 mb-3">In 3 Schritten Online-Zahlungen aktivieren:</div>'
+          stripeHtml += '<div class="space-y-3">'
+          stripeHtml += '<div class="flex items-start gap-3"><span class="w-6 h-6 bg-indigo-600 text-white rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">1</span><div><div class="text-sm font-medium text-indigo-900">Stripe-Konto verbinden</div><div class="text-xs text-indigo-700">Du wirst zu Stripe weitergeleitet. Falls du noch kein Konto hast, kannst du dort eins erstellen.</div></div></div>'
+          stripeHtml += '<div class="flex items-start gap-3"><span class="w-6 h-6 bg-indigo-200 text-indigo-700 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">2</span><div><div class="text-sm font-medium text-gray-700">Unternehmensdaten eingeben</div><div class="text-xs text-gray-500">Stripe fragt Geschäftsadresse, Bankverbindung und Steuerdaten ab.</div></div></div>'
+          stripeHtml += '<div class="flex items-start gap-3"><span class="w-6 h-6 bg-indigo-200 text-indigo-700 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">3</span><div><div class="text-sm font-medium text-gray-700">Fertig — Zahlungen empfangen</div><div class="text-xs text-gray-500">Eltern können ab sofort bei der Buchung online bezahlen.</div></div></div>'
+          stripeHtml += '</div></div>'
+          if (stripe.testMode) {
+            stripeHtml += '<div class="flex items-center gap-2 text-xs text-yellow-700 bg-yellow-50 border border-yellow-200 px-3 py-2 rounded-lg mb-4"><span>&#9888;</span> Testmodus — Es werden keine echten Zahlungen verarbeitet. Nutze Stripe-Testkarten (z.B. 4242 4242 4242 4242).</div>'
+          }
+          stripeHtml += '<button onclick="connectStripe()" class="w-full bg-indigo-600 text-white px-4 py-3 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2">'
+          stripeHtml += '<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M13.976 9.15c-2.172-.806-3.356-1.426-3.356-2.409 0-.831.683-1.305 1.901-1.305 2.227 0 4.515.858 6.09 1.631l.89-5.494C18.252.975 15.697 0 12.165 0 9.667 0 7.589.654 6.104 1.872 4.56 3.147 3.757 4.992 3.757 7.218c0 4.039 2.467 5.76 6.476 7.219 2.585.92 3.445 1.574 3.445 2.583 0 .98-.84 1.545-2.354 1.545-1.875 0-4.965-.921-6.99-2.109l-.9 5.555C5.175 22.99 8.385 24 11.714 24c2.641 0 4.843-.624 6.328-1.813 1.664-1.305 2.525-3.236 2.525-5.732 0-4.128-2.524-5.851-6.591-7.305z"/></svg>'
+          stripeHtml += 'Mit Stripe verbinden</button>'
+          stripeHtml += '<div class="text-xs text-gray-400 text-center mt-2">Kostenlos verbinden — Stripe berechnet nur Transaktionsgebuehren (1,5% + 0,25 EUR pro Zahlung)</div>'
+        }
+        stripeHtml += '</div>'
+
+        // --- PayPal Card ---
+        let paypalHtml = '<div class="bg-white rounded-xl border border-brand-200 p-6">'
+        paypalHtml += '<div class="flex items-center justify-between mb-4">'
+        paypalHtml += '<div class="flex items-center gap-3">'
+        paypalHtml += '<div class="w-11 h-11 bg-blue-100 rounded-xl flex items-center justify-center"><svg class="w-6 h-6 text-blue-600" fill="currentColor" viewBox="0 0 24 24"><path d="M7.076 21.337H2.47a.641.641 0 0 1-.633-.74L4.944.901C5.026.382 5.474 0 5.998 0h7.46c2.57 0 4.578.543 5.69 1.81 1.01 1.15 1.304 2.42 1.012 4.287-.023.143-.047.288-.077.437-.983 5.05-4.349 6.797-8.647 6.797h-2.19c-.524 0-.968.382-1.05.9l-1.12 7.106zm14.146-14.42a3.35 3.35 0 0 0-.607-.541c-.013.076-.026.175-.041.254-.93 4.778-4.005 7.201-9.138 7.201h-2.19a.563.563 0 0 0-.556.479l-1.187 7.527h-.506l-.24 1.516a.56.56 0 0 0 .554.647h3.882c.46 0 .85-.334.922-.788l.038-.2.73-4.627.047-.256a.925.925 0 0 1 .922-.788h.58c3.76 0 6.705-1.528 7.565-5.946.36-1.847.174-3.388-.777-4.478z"/></svg></div>'
+        paypalHtml += '<div><div class="text-sm font-semibold text-gray-900">PayPal</div>'
+        paypalHtml += '<div class="text-xs text-gray-500">PayPal-Konto, Lastschrift via PayPal</div></div></div>'
+        if (payment.paypal_connected) {
+          paypalHtml += '<span class="inline-flex items-center gap-1.5 bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-semibold"><span class="w-2 h-2 bg-green-500 rounded-full"></span>Verbunden</span>'
+        } else {
+          paypalHtml += '<button onclick="document.getElementById(\'ppSetupForm\').classList.toggle(\'hidden\')" class="border border-blue-600 text-blue-600 px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-blue-50">Einrichten</button>'
+        }
+        paypalHtml += '</div>'
+        if (!payment.paypal_connected) {
+          paypalHtml += '<div id="ppSetupForm" class="hidden space-y-3">'
+          paypalHtml += '<div><label class="block text-sm font-medium text-gray-700 mb-1">PayPal Client ID</label><input id="ppClientId2" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Client ID aus dem PayPal Developer Portal"></div>'
+          paypalHtml += '<div><label class="block text-sm font-medium text-gray-700 mb-1">PayPal Secret</label><input id="ppSecret2" type="password" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" placeholder="Secret aus dem PayPal Developer Portal"></div>'
+          paypalHtml += '<button onclick="savePayPalFromPaymentsTab()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-700">PayPal verbinden</button>'
+          paypalHtml += '</div>'
+        }
+        paypalHtml += '</div>'
+
+        // --- Summary Card ---
+        let summaryHtml = '<div class="bg-white rounded-xl border border-brand-200 p-6">'
+        summaryHtml += '<h3 class="font-semibold text-gray-900 mb-4">Zahlungsuebersicht</h3>'
+        summaryHtml += '<div class="space-y-3">'
+        summaryHtml += '<div class="flex items-center justify-between py-2 border-b border-gray-100">'
+        summaryHtml += '<span class="text-sm text-gray-600">Online-Zahlungen (Stripe)</span>'
+        summaryHtml += (stripe.connected ? '<span class="text-sm font-medium text-green-600">Aktiv</span>' : '<span class="text-sm font-medium text-gray-400">Inaktiv</span>')
+        summaryHtml += '</div>'
+        summaryHtml += '<div class="flex items-center justify-between py-2 border-b border-gray-100">'
+        summaryHtml += '<span class="text-sm text-gray-600">PayPal</span>'
+        summaryHtml += (payment.paypal_connected ? '<span class="text-sm font-medium text-green-600">Aktiv</span>' : '<span class="text-sm font-medium text-gray-400">Inaktiv</span>')
+        summaryHtml += '</div>'
+        summaryHtml += '<div class="flex items-center justify-between py-2">'
+        summaryHtml += '<span class="text-sm text-gray-600">Vor-Ort-Zahlungen</span>'
+        summaryHtml += '<span class="text-sm font-medium text-green-600">Immer verfuegbar</span>'
+        summaryHtml += '</div></div></div>'
+
+        content.innerHTML = stripeHtml + paypalHtml + summaryHtml
+      } catch(e) {
+        document.getElementById('paymentsLoading').innerHTML = '<p class="text-red-500">Fehler beim Laden des Zahlungsstatus.</p>'
+      }
+    }
+
+    async function savePayPalFromPaymentsTab() {
+      const clientId = document.getElementById('ppClientId2')?.value?.trim()
+      const secret = document.getElementById('ppSecret2')?.value?.trim()
+      if (!clientId || !secret) { showToast('Bitte Client ID und Secret eingeben', 'error'); return }
+      try {
+        await api('/providers/' + currentProvider.id + '/paypal-config', 'PUT', { clientId, secret })
+        showToast('PayPal verbunden!', 'success')
+        settingsTab = 'payments'; renderSettings()
+      } catch(e) { showToast('Fehler: ' + (e.message || 'Verbindung fehlgeschlagen'), 'error') }
     }
 
     function renderFinanceTab(p, s) {
@@ -7258,72 +7614,7 @@
         } catch (err) { showToast('Fehler beim Speichern der Raumanzahl: ' + err.message, 'error'); return }
       }
 
-      // Save opening hours to provider via API
-      const openingHours = collectOpeningHours()
-      try {
-        await api('/providers/' + currentProvider.id, 'PUT', { opening_hours: openingHours })
-        currentProvider.openingHours = openingHours
-        s.openingHours = openingHours
-        saveProviderSettings(s)
-      } catch (err) { showToast('Fehler beim Speichern der Öffnungszeiten: ' + err.message, 'error'); return }
-
       showToast('Unternehmensdaten gespeichert!', 'success')
-    }
-
-    function collectOpeningHours() {
-      const days = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday']
-      const oh = {}
-      let hasAny = false
-      for (const day of days) {
-        const cb = document.getElementById('oh_open_' + day)
-        if (cb && cb.checked) {
-          hasAny = true
-          oh[day] = {
-            open: document.getElementById('oh_from_' + day)?.value || '08:00',
-            close: document.getElementById('oh_to_' + day)?.value || '18:00',
-          }
-        } else {
-          oh[day] = null
-        }
-      }
-      return hasAny ? oh : null
-    }
-
-    function toggleOpeningHoursDay(day) {
-      const cb = document.getElementById('oh_open_' + day)
-      const from = document.getElementById('oh_from_' + day)
-      const to = document.getElementById('oh_to_' + day)
-      if (cb && from && to) {
-        from.disabled = !cb.checked
-        to.disabled = !cb.checked
-        from.classList.toggle('opacity-40', !cb.checked)
-        to.classList.toggle('opacity-40', !cb.checked)
-      }
-    }
-
-    function prefillOpeningHours(preset) {
-      const days = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday']
-      const weekdays = ['monday','tuesday','wednesday','thursday','friday']
-      for (const day of days) {
-        const cb = document.getElementById('oh_open_' + day)
-        const from = document.getElementById('oh_from_' + day)
-        const to = document.getElementById('oh_to_' + day)
-        if (!cb || !from || !to) continue
-        if (preset === 'weekdays') {
-          cb.checked = weekdays.includes(day)
-          from.value = '08:00'
-          to.value = '18:00'
-        } else if (preset === 'all') {
-          cb.checked = true
-          from.value = '08:00'
-          to.value = '18:00'
-        } else if (preset === 'clear') {
-          cb.checked = false
-          from.value = '08:00'
-          to.value = '18:00'
-        }
-        toggleOpeningHoursDay(day)
-      }
     }
 
     async function saveFinanceSettings() {
