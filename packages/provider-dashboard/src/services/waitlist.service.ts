@@ -21,6 +21,20 @@ const OFFER_EXPIRY_HOURS = 48 // Frist zur Annahme
 
 export const WaitlistService = {
 
+  // Auto-expire offered entries that have passed their deadline
+  _autoExpireOffers(): void {
+    const now = new Date()
+    for (const entry of store.state.waitlistEntries.values()) {
+      if (
+        entry.status === 'offered' &&
+        entry.expiresAt &&
+        now > entry.expiresAt
+      ) {
+        entry.status = 'expired'
+      }
+    }
+  },
+
   add(input: AddToWaitlistInput): WaitlistEntry | { error: string } {
     // Duplikat-Check: Scope auf courseBlockId wenn vorhanden, sonst Activity-Level
     const scopeEntries = input.courseBlockId
@@ -73,6 +87,7 @@ export const WaitlistService = {
   },
 
   listByActivity(activityId: ID): WaitlistEntry[] {
+    this._autoExpireOffers()
     const ids = store.getFromIndex(store.indexes.waitlistByActivity, activityId)
     return Array.from(ids)
       .map((id) => store.state.waitlistEntries.get(id)!)
@@ -166,6 +181,7 @@ export const WaitlistService = {
   },
 
   listByCourseBlock(courseBlockId: ID): WaitlistEntry[] {
+    this._autoExpireOffers()
     const ids = store.getFromIndex(store.indexes.waitlistByCourseBlock, courseBlockId)
     return Array.from(ids)
       .map((id) => store.state.waitlistEntries.get(id)!)
