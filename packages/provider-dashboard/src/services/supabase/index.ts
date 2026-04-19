@@ -23,7 +23,9 @@ export { SupabaseWaitlistService } from './waitlist.service'
 export { SupabaseExportService } from './export.service'
 export { SupabaseCrmService } from './crm.service'
 export { SupabaseNotificationService } from './notification.service'
+export { SupabaseConsentService } from './consent.service'
 
+export { SupabaseReviewService } from './review.service'
 export { SupabaseTeamService } from './team.service'
 export { SupabaseAttendanceService } from './attendance.service'
 

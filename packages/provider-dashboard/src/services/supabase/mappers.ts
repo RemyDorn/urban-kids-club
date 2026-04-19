@@ -9,6 +9,7 @@ import type {
   SepaMandate, Season, Holiday, Notification, AuditLogEntry,
   WaitlistEntry, ExportRequest, ContactNote, AutomationFlow,
   MessageTemplate, MarketingCampaign, TrialLesson, Message,
+  Review, ConsentRecord,
   ProviderDocument, TeamMember, TeamPermissions, TeamRole,
   Address, ContactInfo, AgeRange, PricingOption, Schedule,
   PlatformListing, ChildInfo, InvoiceLineItem,
@@ -1154,6 +1155,33 @@ export function messageToDb(m: Partial<Message> & { id?: ID }): Row {
 }
 
 // ============================================================
+// Review
+// ============================================================
+
+export function reviewFromDb(r: Row): Review {
+  return {
+    id: r.id,
+    activityId: r.activity_id,
+    providerId: r.provider_id,
+    parentId: r.parent_id,
+    rating: r.rating ?? 0,
+    comment: r.comment ?? undefined,
+    createdAt: toDate(r.created_at),
+  }
+}
+
+export function reviewToDb(rev: Partial<Review> & { id?: ID }): Row {
+  const row: Row = {}
+  if (rev.id !== undefined) row.id = rev.id
+  if (rev.activityId !== undefined) row.activity_id = rev.activityId
+  if (rev.providerId !== undefined) row.provider_id = rev.providerId
+  if (rev.parentId !== undefined) row.parent_id = rev.parentId
+  if (rev.rating !== undefined) row.rating = rev.rating
+  if (rev.comment !== undefined) row.comment = rev.comment
+  return row
+}
+
+// ============================================================
 // ProviderDocument
 // ============================================================
 
@@ -1235,5 +1263,37 @@ export function teamMemberToDb(t: Partial<TeamMember> & { id?: ID }): Row {
   if (t.specializations !== undefined) row.specializations = t.specializations
   if (t.avatar !== undefined) row.avatar = t.avatar
   if (t.active !== undefined) row.active = t.active
+  return row
+}
+
+// ============================================================
+// ConsentRecord (DSGVO-Einwilligungen)
+// ============================================================
+
+export function consentFromDb(r: Row): ConsentRecord {
+  return {
+    id: r.id,
+    parentId: r.parent_id,
+    childName: r.child_name ?? '',
+    providerId: r.provider_id,
+    documentType: r.document_type ?? 'custom',
+    consentGiven: r.consent_given ?? true,
+    consentedAt: toDate(r.consented_at),
+    ipAddress: r.ip_address ?? undefined,
+    revokedAt: toDateOrUndef(r.revoked_at),
+  }
+}
+
+export function consentToDb(c: Partial<ConsentRecord> & { id?: ID }): Row {
+  const row: Row = {}
+  if (c.id !== undefined) row.id = c.id
+  if (c.parentId !== undefined) row.parent_id = c.parentId
+  if (c.childName !== undefined) row.child_name = c.childName
+  if (c.providerId !== undefined) row.provider_id = c.providerId
+  if (c.documentType !== undefined) row.document_type = c.documentType
+  if (c.consentGiven !== undefined) row.consent_given = c.consentGiven
+  if (c.consentedAt !== undefined) row.consented_at = toIso(c.consentedAt)
+  if (c.ipAddress !== undefined) row.ip_address = c.ipAddress
+  if (c.revokedAt !== undefined) row.revoked_at = toIso(c.revokedAt)
   return row
 }

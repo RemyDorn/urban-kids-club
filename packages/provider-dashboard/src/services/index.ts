@@ -89,7 +89,10 @@ export { SupabaseRoomService as RoomService } from './supabase/room.service'
 import { TeamService as MemTeamService } from './team.service'
 import { SupabaseTeamService } from './supabase/team.service'
 export const TeamService = USE_SUPABASE ? SupabaseTeamService : MemTeamService as any
-export { ReviewService } from './review.service'
+
+import { ReviewService as MemReviewService } from './review.service'
+import { SupabaseReviewService } from './supabase/review.service'
+export const ReviewService = USE_SUPABASE ? SupabaseReviewService : MemReviewService as any
 
 import { MessageService as MemMessageService } from './message.service'
 import { SupabaseMessageService } from './supabase/message.service'
@@ -99,10 +102,11 @@ import { TrialService as MemTrialService } from './trial.service'
 import { SupabaseTrialService } from './supabase/trial.service'
 export const TrialService = USE_SUPABASE ? SupabaseTrialService : MemTrialService as any
 
-import { DocumentService as MemDocumentService, ConsentService } from './document.service'
+import { DocumentService as MemDocumentService, ConsentService as MemConsentService } from './document.service'
 import { SupabaseDocumentService } from './supabase/document.service'
+import { SupabaseConsentService } from './supabase/consent.service'
 export const DocumentService = USE_SUPABASE ? SupabaseDocumentService : MemDocumentService as any
-export { ConsentService }
+export const ConsentService = USE_SUPABASE ? SupabaseConsentService : MemConsentService as any
 
 export { EInvoiceService } from './einvoice.service'
 export { BuTVoucherService } from './but-voucher.service'
