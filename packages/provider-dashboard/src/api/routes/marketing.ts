@@ -3,7 +3,7 @@
 // ============================================================
 
 import { Router } from '../router'
-import { requireAuth } from '../../lib/auth-middleware'
+import { requireAuth, checkPermission } from '../../lib/auth-middleware'
 import { MarketingService } from '../../services'
 
 export function registerMarketingRoutes(router: Router) {
@@ -21,6 +21,7 @@ export function registerMarketingRoutes(router: Router) {
   router.post('/api/providers/:providerId/marketing/flows', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
+    if (!checkPermission(auth, res, 'marketing', 'edit')) return
     const { name, trigger, channel } = req.body ?? {}
     if (!name || !trigger || !channel) return res.status(400).json({ error: 'name, trigger und channel sind Pflichtfelder' })
     try {

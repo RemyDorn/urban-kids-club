@@ -4,7 +4,7 @@
 
 import { Router } from '../router'
 import { validate, CreateProviderSchema, UpdateProviderSchema, CreateLocationSchema, CreateTeamMemberSchema } from '../../lib/schemas'
-import { requireAuth } from '../../lib/auth-middleware'
+import { requireAuth, checkPermission } from '../../lib/auth-middleware'
 import { getServiceClient } from '../../lib/supabase'
 import { ProviderService, LocationService, TeamService } from '../../services'
 import { rateLimit, getClientIp } from './helpers'
@@ -123,6 +123,7 @@ export function registerProviderRoutes(router: Router) {
   router.post('/api/providers/:providerId/team', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
+    if (!checkPermission(auth, res, 'team', 'invite')) return
     // Validate with Zod schema
     const parsed = validate(CreateTeamMemberSchema, { ...req.body, providerId: auth.providerId })
     if ('error' in parsed) return res.error(400, parsed.error)
@@ -135,15 +136,17 @@ export function registerProviderRoutes(router: Router) {
   router.put('/api/team/:id', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
+    if (!checkPermission(auth, res, 'team', 'edit')) return
     // Whitelist allowed update fields
-    const { name, email, phone, role, specializations, status } = req.body as any
+    const { name, email, phone, role, specializations, status, permissions: perms } = req.body as any
     const updates: Record<string, unknown> = {}
     if (name) updates.name = String(name).slice(0, 100)
     if (email) updates.email = String(email).slice(0, 200)
     if (phone) updates.phone = String(phone).slice(0, 30)
-    if (role && ['owner', 'admin', 'instructor', 'assistant'].includes(role)) updates.role = role
+    if (role && ['owner', 'admin', 'manager', 'staff', 'instructor', 'assistant'].includes(role)) updates.role = role
     if (specializations) updates.specializations = specializations
     if (status && ['active', 'inactive'].includes(status)) updates.status = status
+    if (perms && typeof perms === 'object') updates.permissions = perms
     const member = await TeamService.update(req.params.id, updates, auth.providerId)
     if (!member) return res.error(404, 'Teammitglied nicht gefunden')
     res.json({ data: member })
@@ -152,6 +155,7 @@ export function registerProviderRoutes(router: Router) {
   router.delete('/api/team/:id', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
+    if (!checkPermission(auth, res, 'team', 'edit')) return
     await TeamService.delete(req.params.id, auth.providerId)
     res.json({ success: true })
   })
@@ -159,6 +163,7 @@ export function registerProviderRoutes(router: Router) {
   router.post('/api/team/:id/invite', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
+    if (!checkPermission(auth, res, 'team', 'invite')) return
     const result = await TeamService.invite(req.params.id, auth.providerId)
     if ('error' in result) return res.error(400, result.error)
     res.json({ data: result })
@@ -226,7 +231,14 @@ export function registerProviderRoutes(router: Router) {
   router.get('/api/roles', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const { ALL_PERMISSIONS, ROLE_PRESETS } = await import('../../services/supabase/team.service')
-    res.json({ data: { permissions: ALL_PERMISSIONS, presets: ROLE_PRESETS } })
+    const { DEFAULT_ROLE_PERMISSIONS } = await import('../../types')
+    res.json({ data: { defaults: DEFAULT_ROLE_PERMISSIONS, roles: ['owner', 'admin', 'manager', 'staff'] } })
+  })
+
+  // Get current user's role and permissions
+  router.get('/api/me', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    res.json({ data: { userId: auth.userId, email: auth.email, providerId: auth.providerId, role: auth.role, permissions: auth.permissions } })
   })
 }

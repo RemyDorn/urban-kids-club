@@ -4,7 +4,7 @@
 
 import { Router } from '../router'
 import { validate, CreateInvoiceSchema, GenerateEInvoiceSchema, CreatePaymentSchema, CreateSepaMandateSchema } from '../../lib/schemas'
-import { requireAuth } from '../../lib/auth-middleware'
+import { requireAuth, checkPermission } from '../../lib/auth-middleware'
 import { getServiceClient } from '../../lib/supabase'
 import { InvoiceService, EInvoiceService, PaymentService, SepaMandateService } from '../../services'
 import { safeParseInt, escHtml } from './helpers'
@@ -27,6 +27,7 @@ export function registerInvoiceRoutes(router: Router) {
   router.post('/api/invoices', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
+    if (!checkPermission(auth, res, 'invoices', 'create')) return
     const parsed = validate(CreateInvoiceSchema, req.body)
     if ('error' in parsed) return res.error(400, parsed.error)
     const result = await InvoiceService.create({ ...parsed.data as any, providerId: auth.providerId })
@@ -46,6 +47,7 @@ export function registerInvoiceRoutes(router: Router) {
   router.post('/api/invoices/:id/send', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
+    if (!checkPermission(auth, res, 'invoices', 'send')) return
     const invoice = await InvoiceService.send(req.params.id, auth.providerId)
     if (!invoice) return res.error(400, 'Rechnung konnte nicht versendet werden')
     res.json({ data: invoice })

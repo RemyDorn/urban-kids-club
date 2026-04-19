@@ -77,7 +77,68 @@ export interface Location {
 
 // --- Team ---
 
-export type TeamRole = 'owner' | 'admin' | 'instructor' | 'assistant'
+export type TeamRole = 'owner' | 'admin' | 'manager' | 'staff'
+
+// --- Permissions (Role-Based Access Control) ---
+
+export type PermissionArea = 'courses' | 'bookings' | 'customers' | 'invoices' | 'team' | 'settings' | 'marketing' | 'embed' | 'reports' | 'documents'
+export type PermissionAction = 'view' | 'create' | 'edit' | 'delete' | 'send' | 'confirm' | 'cancel' | 'move' | 'invite' | 'contact' | 'upload'
+
+export interface TeamPermissions {
+  [area: string]: string[]  // area -> list of allowed actions
+}
+
+// Default permissions for each role
+export const DEFAULT_ROLE_PERMISSIONS: Record<TeamRole, TeamPermissions> = {
+  owner: {
+    courses: ['view', 'create', 'edit', 'move', 'delete'],
+    bookings: ['view', 'confirm', 'cancel'],
+    customers: ['view', 'contact'],
+    invoices: ['view', 'create', 'send'],
+    team: ['view', 'invite', 'edit'],
+    settings: ['view', 'edit'],
+    marketing: ['view', 'edit'],
+    embed: ['view', 'edit'],
+    reports: ['view'],
+    documents: ['view', 'upload'],
+  },
+  admin: {
+    courses: ['view', 'create', 'edit', 'move', 'delete'],
+    bookings: ['view', 'confirm', 'cancel'],
+    customers: ['view', 'contact'],
+    invoices: ['view', 'create', 'send'],
+    team: ['view', 'invite', 'edit'],
+    settings: ['view', 'edit'],
+    marketing: ['view', 'edit'],
+    embed: ['view', 'edit'],
+    reports: ['view'],
+    documents: ['view', 'upload'],
+  },
+  manager: {
+    courses: ['view', 'create', 'edit', 'move'],
+    bookings: ['view', 'confirm', 'cancel'],
+    customers: ['view', 'contact'],
+    invoices: ['view', 'create'],
+    team: ['view'],
+    settings: ['view'],
+    marketing: ['view'],
+    embed: ['view'],
+    reports: ['view'],
+    documents: ['view', 'upload'],
+  },
+  staff: {
+    courses: ['view'],
+    bookings: ['view'],
+    customers: ['view'],
+    invoices: ['view'],
+    team: ['view'],
+    settings: [],
+    marketing: [],
+    embed: [],
+    reports: ['view'],
+    documents: ['view'],
+  },
+}
 
 export interface TeamMember {
   id: ID
@@ -86,6 +147,7 @@ export interface TeamMember {
   email: string
   phone?: string
   role: TeamRole
+  permissions?: TeamPermissions
   specializations?: string[]
   avatar?: string
   active: boolean

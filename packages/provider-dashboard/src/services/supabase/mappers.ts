@@ -9,11 +9,12 @@ import type {
   SepaMandate, Season, Holiday, Notification, AuditLogEntry,
   WaitlistEntry, ExportRequest, ContactNote, AutomationFlow,
   MessageTemplate, MarketingCampaign, TrialLesson, Message,
-  ProviderDocument,
+  ProviderDocument, TeamMember, TeamPermissions, TeamRole,
   Address, ContactInfo, AgeRange, PricingOption, Schedule,
   PlatformListing, ChildInfo, InvoiceLineItem,
   ID,
 } from '../../types'
+import { DEFAULT_ROLE_PERMISSIONS } from '../../types'
 
 // --- Helpers ---
 
@@ -1188,5 +1189,51 @@ export function documentToDb(d: Partial<ProviderDocument> & { id?: ID }): Row {
   if (d.verifiedBy !== undefined) row.verified_by = d.verifiedBy
   if (d.verifiedAt !== undefined) row.verified_at = toIso(d.verifiedAt)
   if (d.notes !== undefined) row.notes = d.notes
+  return row
+}
+
+// ============================================================
+// TeamMember (with permissions JSONB)
+// ============================================================
+
+export function teamMemberFromDb(r: Row): TeamMember {
+  const role = (r.role || 'staff') as TeamRole
+  // permissions is stored as JSONB — can be the new area-based object or legacy flat array
+  let permissions: TeamPermissions | undefined = undefined
+  if (r.permissions && typeof r.permissions === 'object' && !Array.isArray(r.permissions)) {
+    permissions = r.permissions as TeamPermissions
+  } else {
+    // Use default permissions for the role
+    permissions = DEFAULT_ROLE_PERMISSIONS[role] || DEFAULT_ROLE_PERMISSIONS.staff
+  }
+  return {
+    id: r.id,
+    providerId: r.provider_id,
+    name: r.name ?? '',
+    email: r.email ?? '',
+    phone: r.phone ?? undefined,
+    role,
+    permissions,
+    specializations: r.specializations ?? [],
+    avatar: r.avatar ?? undefined,
+    active: r.active ?? true,
+    assignedActivityIds: r.assigned_activity_ids ?? undefined,
+    documents: r.documents ?? undefined,
+    absences: r.absences ?? undefined,
+  }
+}
+
+export function teamMemberToDb(t: Partial<TeamMember> & { id?: ID }): Row {
+  const row: Row = {}
+  if (t.id !== undefined) row.id = t.id
+  if (t.providerId !== undefined) row.provider_id = t.providerId
+  if (t.name !== undefined) row.name = t.name
+  if (t.email !== undefined) row.email = t.email
+  if (t.phone !== undefined) row.phone = t.phone
+  if (t.role !== undefined) row.role = t.role
+  if (t.permissions !== undefined) row.permissions = t.permissions
+  if (t.specializations !== undefined) row.specializations = t.specializations
+  if (t.avatar !== undefined) row.avatar = t.avatar
+  if (t.active !== undefined) row.active = t.active
   return row
 }

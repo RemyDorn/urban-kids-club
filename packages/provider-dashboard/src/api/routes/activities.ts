@@ -4,7 +4,7 @@
 
 import { Router } from '../router'
 import { validate, CreateActivitySchema } from '../../lib/schemas'
-import { requireAuth } from '../../lib/auth-middleware'
+import { requireAuth, checkPermission } from '../../lib/auth-middleware'
 import { getServiceClient } from '../../lib/supabase'
 import { ProviderService, ActivityService } from '../../services'
 import { checkOpeningHours, checkRoomAvailability } from './helpers'
@@ -45,6 +45,7 @@ export function registerActivityRoutes(router: Router) {
   router.post('/api/activities', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
+    if (!checkPermission(auth, res, 'courses', 'create')) return
     const parsed = validate(CreateActivitySchema, req.body)
     if ('error' in parsed) return res.error(400, parsed.error)
 
@@ -175,6 +176,7 @@ export function registerActivityRoutes(router: Router) {
   router.post('/api/activities/:id/archive', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
+    if (!checkPermission(auth, res, 'courses', 'delete')) return
     const activity = await ActivityService.archive(req.params.id, auth.providerId)
     if (!activity) return res.error(404, 'Aktivität nicht gefunden')
     res.json({ data: activity })

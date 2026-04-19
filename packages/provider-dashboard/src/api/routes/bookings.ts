@@ -4,7 +4,7 @@
 
 import { Router } from '../router'
 import { validate, CreateBookingSchema, CheckInSchema } from '../../lib/schemas'
-import { requireAuth } from '../../lib/auth-middleware'
+import { requireAuth, checkPermission } from '../../lib/auth-middleware'
 import { getServiceClient } from '../../lib/supabase'
 import { BookingService, AttendanceService, ActivityService } from '../../services'
 
@@ -58,6 +58,7 @@ export function registerBookingRoutes(router: Router) {
   router.post('/api/bookings/:id/cancel', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
+    if (!checkPermission(auth, res, 'bookings', 'cancel')) return
     const db = getServiceClient()
 
     // Fetch booking details before cancelling (for refund + email)
