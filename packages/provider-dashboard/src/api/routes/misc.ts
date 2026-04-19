@@ -5,7 +5,7 @@
 
 import { Router } from '../router'
 import { validate, CreateReviewSchema, SendMessageSchema, CreateExportSchema } from '../../lib/schemas'
-import { requireAuth } from '../../lib/auth-middleware'
+import { requireAuth, invalidateAuthCache } from '../../lib/auth-middleware'
 import { getServiceClient } from '../../lib/supabase'
 import {
   ReviewService, MessageService, NotificationService, CalendarService,
@@ -543,5 +543,26 @@ export function registerMiscRoutes(router: Router) {
     if (!auth) return
     const overview = await AttendanceService.getTodayOverview(auth.providerId)
     res.json({ data: overview })
+  })
+
+  // ============================================================
+  // AUTH CACHE INVALIDATION
+  // ============================================================
+
+  router.post('/api/auth/invalidate-cache', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    // Only owner/admin can invalidate cache
+    if (auth.role !== 'owner' && auth.role !== 'admin') {
+      return res.error(403, 'Nur Owner/Admin können den Auth-Cache leeren')
+    }
+    const { email } = req.body as { email?: string }
+    if (email) {
+      invalidateAuthCache(email)
+    } else {
+      // Invalidate own cache
+      invalidateAuthCache(auth.email)
+    }
+    res.json({ success: true })
   })
 }

@@ -7,6 +7,7 @@
 
 import { store } from '../domain/store'
 import { generateId } from './id'
+import { encrypt, decrypt, maskIban } from '../lib/encryption'
 import type { PaymentRecord, PaymentMethod, SepaMandate, SepaStatus, Currency, ID } from '../types'
 
 // --- SEPA Mandate ---
@@ -36,16 +37,17 @@ export const SepaMandateService = {
     const id = generateId('sepa')
     const now = new Date()
 
-    // IBAN maskieren für Anzeige
+    // IBAN maskieren für Anzeige, verschlüsseln für Speicherung
     const cleanedIban = input.iban.replace(/\s/g, '').toUpperCase()
-    const ibanMasked = cleanedIban.slice(0, 4) + ' **** **** **** ' + cleanedIban.slice(-4)
+    const ibanMasked = maskIban(cleanedIban)
+    const encryptedIban = encrypt(cleanedIban)
 
     const mandate: SepaMandate = {
       id,
       providerId: input.providerId,
       parentId: input.parentId,
       mandateReference: nextMandateReference(input.providerId),
-      iban: cleanedIban,  // HINWEIS: In Produktion verschlüsseln (AES-256-GCM)!
+      iban: encryptedIban,
       ibanMasked,
       bic: input.bic,
       accountHolder: input.accountHolder,

@@ -4,7 +4,7 @@
 
 import { Router } from '../router'
 import { validate, CreateProviderSchema, UpdateProviderSchema, CreateLocationSchema, CreateTeamMemberSchema } from '../../lib/schemas'
-import { requireAuth, checkPermission } from '../../lib/auth-middleware'
+import { requireAuth, checkPermission, invalidateAuthCache } from '../../lib/auth-middleware'
 import { getServiceClient } from '../../lib/supabase'
 import { ProviderService, LocationService, TeamService } from '../../services'
 import { rateLimit, getClientIp } from './helpers'
@@ -149,6 +149,10 @@ export function registerProviderRoutes(router: Router) {
     if (perms && typeof perms === 'object') updates.permissions = perms
     const member = await TeamService.update(req.params.id, updates, auth.providerId)
     if (!member) return res.error(404, 'Teammitglied nicht gefunden')
+    // Invalidate auth cache when permissions or role change
+    if ((role || perms) && member.email) {
+      invalidateAuthCache(member.email)
+    }
     res.json({ data: member })
   })
 
@@ -156,7 +160,14 @@ export function registerProviderRoutes(router: Router) {
     const auth = await requireAuth(req, res)
     if (!auth) return
     if (!checkPermission(auth, res, 'team', 'edit')) return
+    // Get member email before deleting to invalidate auth cache
+    const members = await TeamService.list(auth.providerId)
+    const memberToDelete = members.find((m: any) => m.id === req.params.id)
     await TeamService.delete(req.params.id, auth.providerId)
+    // Invalidate auth cache for deleted team member
+    if (memberToDelete?.email) {
+      invalidateAuthCache(memberToDelete.email)
+    }
     res.json({ success: true })
   })
 

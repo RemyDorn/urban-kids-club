@@ -4,6 +4,7 @@
 
 import { getServiceClient } from '../../lib/supabase'
 import { paymentFromDb, paymentToDb, sepaMandateFromDb, sepaMandateToDb } from './mappers'
+import { encrypt, decrypt, maskIban } from '../../lib/encryption'
 import type { PaymentRecord, PaymentMethod, SepaMandate, Currency, ID } from '../../types'
 
 // --- PaymentService ---
@@ -115,7 +116,8 @@ export const SupabaseSepaMandateService = {
   async create(input: Omit<SepaMandate, 'id' | 'createdAt' | 'signedAt' | 'status' | 'mandateReference' | 'ibanMasked'>& { iban: string }): Promise<SepaMandate> {
     const sb = getServiceClient()
     const cleanIban = input.iban.replace(/\s/g, '').toUpperCase()
-    const ibanMasked = cleanIban.slice(0, 4) + ' **** **** **** ' + cleanIban.slice(-4)
+    const ibanMasked = maskIban(cleanIban)
+    const encryptedIban = encrypt(cleanIban)
 
     // Generate mandate reference
     const { data: existing } = await sb.from('sepa_mandates')
@@ -130,7 +132,7 @@ export const SupabaseSepaMandateService = {
 
     const row = sepaMandateToDb({
       ...input,
-      iban: cleanIban,
+      iban: encryptedIban,
       ibanMasked,
       mandateReference,
       signedAt: new Date(),

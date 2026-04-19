@@ -119,9 +119,14 @@ export const ReviewService = {
     return distribution
   },
 
-  delete(id: ID): boolean {
+  delete(id: ID, parentId?: ID): boolean {
     const review = store.state.reviews.get(id)
     if (!review) return false
+
+    // If parentId is provided, verify ownership before deleting
+    if (parentId && review.parentId !== parentId) {
+      throw new Error('Keine Berechtigung: Bewertung gehört einem anderen Elternteil')
+    }
 
     store.removeFromIndex(store.indexes.reviewsByProvider, review.providerId, id)
     store.removeFromIndex(store.indexes.reviewsByActivity, review.activityId, id)

@@ -16,6 +16,7 @@ import type {
   ID,
 } from '../../types'
 import { DEFAULT_ROLE_PERMISSIONS } from '../../types'
+import { decrypt } from '../../lib/encryption'
 
 // --- Helpers ---
 
@@ -714,12 +715,17 @@ export function paymentToDb(p: Partial<PaymentRecord> & { id?: ID }): Row {
 // ============================================================
 
 export function sepaMandateFromDb(r: Row): SepaMandate {
+  // Decrypt IBAN if it's in encrypted format (contains colons from AES-256-GCM)
+  let iban = r.iban_encrypted ?? r.iban ?? ''
+  if (iban && iban.includes(':')) {
+    try { iban = decrypt(iban) } catch { /* legacy unencrypted data — keep as-is */ }
+  }
   return {
     id: r.id,
     providerId: r.provider_id,
     parentId: r.parent_id,
     mandateReference: r.mandate_reference ?? '',
-    iban: r.iban_encrypted ?? r.iban ?? '',
+    iban,
     ibanMasked: r.iban_masked ?? '',
     bic: r.bic ?? undefined,
     accountHolder: r.account_holder ?? '',

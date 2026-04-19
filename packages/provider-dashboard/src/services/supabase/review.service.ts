@@ -111,8 +111,16 @@ export const SupabaseReviewService = {
     return distribution
   },
 
-  async delete(id: ID): Promise<boolean> {
+  async delete(id: ID, parentId?: ID): Promise<boolean> {
     const sb = getServiceClient()
+    // If parentId is provided, verify ownership before deleting
+    if (parentId) {
+      const { data: review } = await sb.from('reviews').select('parent_id').eq('id', id).maybeSingle()
+      if (!review) return false
+      if (review.parent_id !== parentId) {
+        throw new Error('Keine Berechtigung: Bewertung gehört einem anderen Elternteil')
+      }
+    }
     const { error } = await sb.from('reviews').delete().eq('id', id)
     if (error) throw error
     return true
