@@ -131,6 +131,24 @@ export class AuthError extends Error {
   }
 }
 
+/**
+ * Invalidate the auth cache for a specific email.
+ * Call this when team member permissions or roles change, or when a team member is deleted.
+ */
+export function invalidateAuthCache(email: string): void {
+  providerCache.delete(email)
+}
+
+/**
+ * Invalidate all auth cache entries for a given provider.
+ * Useful when bulk permission changes occur.
+ */
+export function invalidateProviderCache(providerId: string): void {
+  for (const [key, val] of providerCache) {
+    if (val.providerId === providerId) providerCache.delete(key)
+  }
+}
+
 export async function requireAuth(req: ParsedRequest, res: ApiResponse): Promise<AuthContext | null> {
   try {
     const auth = await authenticateRequest(req)

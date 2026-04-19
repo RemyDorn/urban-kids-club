@@ -6,12 +6,32 @@ import { createServer } from 'node:http'
 import { readFileSync, readdirSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import zlib from 'node:zlib'
 import { Router } from './router'
 import { registerRoutes } from './routes'
+import { logger } from '../lib/logger'
 
 const PORT = parseInt(process.env.PORT ?? '3000')
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const USE_SUPABASE = process.env.USE_SUPABASE === 'true'
+
+// ============================================================
+// Job tracking & retry logic
+// ============================================================
+export let lastJobRun: string | null = null
+
+async function runWithRetry(name: string, fn: () => Promise<void>, maxRetries = 3) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      await fn()
+      lastJobRun = new Date().toISOString()
+      return
+    } catch (e) {
+      logger.error('Job', `${name} attempt ${attempt}/${maxRetries} failed`, { error: String(e) })
+      if (attempt === maxRetries) logger.error('Job', `${name} FAILED after ${maxRetries} attempts`)
+    }
+  }
+}
 
 // ============================================================
 // Persistence: Nur im In-Memory-Modus
@@ -26,42 +46,48 @@ if (!USE_SUPABASE) {
   hasPersistedData = loadResult.success && loadResult.entries > 0
 
   if (hasPersistedData) {
-    console.log(`[Server] ${loadResult.entries} Einträge aus Disk geladen – überspringe Demo-Daten.`)
+    logger.info('Server', `${loadResult.entries} Einträge aus Disk geladen – überspringe Demo-Daten.`)
   } else {
     // Nur Demo-Daten laden wenn keine persistierten Daten vorhanden
     seedDemoData()
-    console.log('[Server] Demo-Daten geladen (keine persistierten Daten gefunden).')
+    logger.info('Server', 'Demo-Daten geladen (keine persistierten Daten gefunden).')
   }
 
   // Auto-Save starten (alle 30 Sek oder via SAVE_INTERVAL env)
   startAutoSave()
 } else {
-  console.log('[Server] Supabase-Modus – Persistence deaktiviert')
+  logger.info('Server', 'Supabase-Modus – Persistence deaktiviert')
 }
 
-// Dashboard HTML laden
+// Dashboard HTML laden + pre-compress for gzip
 let dashboardHtml: string
+let dashboardGzip: Buffer
 try {
   dashboardHtml = readFileSync(resolve(__dirname, '../frontend/dashboard.html'), 'utf-8')
 } catch {
   dashboardHtml = '<html><body><h1>Frontend not found</h1></body></html>'
 }
+dashboardGzip = zlib.gzipSync(Buffer.from(dashboardHtml))
 
-// Admin HTML laden
+// Admin HTML laden + pre-compress
 let adminHtml: string
+let adminGzip: Buffer
 try {
   adminHtml = readFileSync(resolve(__dirname, '../frontend/admin.html'), 'utf-8')
 } catch {
   adminHtml = '<html><body><h1>Admin not found</h1></body></html>'
 }
+adminGzip = zlib.gzipSync(Buffer.from(adminHtml))
 
-// Portal HTML laden
+// Portal HTML laden + pre-compress
 let portalHtml: string
+let portalGzip: Buffer
 try {
   portalHtml = readFileSync(resolve(__dirname, '../frontend/portal.html'), 'utf-8')
 } catch {
   portalHtml = '<html><body><h1>Portal not found</h1></body></html>'
 }
+portalGzip = zlib.gzipSync(Buffer.from(portalHtml))
 
 // Widget HTML laden
 let parentWidgetHtml: string
@@ -736,21 +762,31 @@ const server = createServer((req, res) => {
     }
   }
 
-  // Frontend: Root-URL → Dashboard HTML ausliefern
+  // Frontend: Root-URL → Dashboard HTML ausliefern (gzip if supported)
   if (path === '/' || path === '/index.html') {
     res.setHeader('Content-Type', 'text/html; charset=utf-8')
-    res.setHeader('Cache-Control', 'no-cache') // always revalidate HTML
+    res.setHeader('Cache-Control', 'no-cache')
     res.statusCode = 200
-    res.end(dashboardHtml)
+    if (req.headers['accept-encoding']?.includes('gzip')) {
+      res.setHeader('Content-Encoding', 'gzip')
+      res.end(dashboardGzip)
+    } else {
+      res.end(dashboardHtml)
+    }
     return
   }
 
-  // Admin Dashboard
+  // Admin Dashboard (gzip if supported)
   if (path === '/admin' || path === '/admin/') {
     res.setHeader('Content-Type', 'text/html; charset=utf-8')
     res.setHeader('Cache-Control', 'no-cache')
     res.statusCode = 200
-    res.end(adminHtml)
+    if (req.headers['accept-encoding']?.includes('gzip')) {
+      res.setHeader('Content-Encoding', 'gzip')
+      res.end(adminGzip)
+    } else {
+      res.end(adminHtml)
+    }
     return
   }
 
@@ -766,12 +802,17 @@ const server = createServer((req, res) => {
     return
   }
 
-  // Parent Portal
+  // Parent Portal (gzip if supported)
   if (path === '/portal' || path === '/portal/' || path.startsWith('/portal/?')) {
     res.setHeader('Content-Type', 'text/html; charset=utf-8')
     res.setHeader('Cache-Control', 'no-cache')
     res.statusCode = 200
-    res.end(portalHtml)
+    if (req.headers['accept-encoding']?.includes('gzip')) {
+      res.setHeader('Content-Encoding', 'gzip')
+      res.end(portalGzip)
+    } else {
+      res.end(portalHtml)
+    }
     return
   }
 

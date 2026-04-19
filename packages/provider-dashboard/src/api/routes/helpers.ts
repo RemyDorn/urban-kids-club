@@ -157,6 +157,33 @@ export async function checkRoomAvailability(providerId: string, schedule: any, e
   return null
 }
 
+// ============================================================
+// Response Cache — simple in-memory TTL cache for read endpoints
+// ============================================================
+const responseCache = new Map<string, { data: any; expires: number }>()
+
+export async function cachedResponse(key: string, ttlMs: number, fetcher: () => Promise<any>): Promise<any> {
+  const cached = responseCache.get(key)
+  if (cached && cached.expires > Date.now()) return cached.data
+  const data = await fetcher()
+  responseCache.set(key, { data, expires: Date.now() + ttlMs })
+  // Evict expired entries if cache grows large
+  if (responseCache.size > 1000) {
+    const now = Date.now()
+    for (const [k, v] of responseCache) {
+      if (v.expires < now) responseCache.delete(k)
+    }
+  }
+  return data
+}
+
+// Invalidate cache entries matching a prefix (call after mutations)
+export function invalidateCache(prefix: string): void {
+  for (const key of responseCache.keys()) {
+    if (key.startsWith(prefix)) responseCache.delete(key)
+  }
+}
+
 // Admin email list
 export const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || 'remy.dostal@gmail.com').split(',').map(e => e.trim())
 
