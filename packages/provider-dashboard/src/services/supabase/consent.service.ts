@@ -103,59 +103,21 @@ export const SupabaseConsentService = {
 
   // DSGVO: Alle Daten eines Elternteils loeschen (Recht auf Loeschung)
   // Buchungen und Rechnungen werden anonymisiert (GoBD: 10 Jahre Aufbewahrungspflicht)
-  async deleteParentData(parentId: ID): Promise<{ deletedRecords: number; anonymizedRecords: number }> {
+  // Uses a single DB transaction via RPC to ensure atomicity — no partial deletes
+  async deleteParentData(parentId: ID, providerId: ID): Promise<{ deletedRecords: number; anonymizedRecords: number }> {
     const sb = getServiceClient()
-    let deletedRecords = 0
-    let anonymizedRecords = 0
 
-    // Delete consents
-    const { data: deletedConsents } = await sb.from('consents')
-      .delete().eq('parent_id', parentId).select('id')
-    deletedRecords += (deletedConsents ?? []).length
+    const { data: result, error } = await sb.rpc('gdpr_delete_parent', {
+      p_parent_id: parentId,
+      p_provider_id: providerId,
+    })
 
-    // Delete messages
-    const { data: deletedMessages } = await sb.from('messages')
-      .delete().eq('parent_id', parentId).select('id')
-    deletedRecords += (deletedMessages ?? []).length
+    if (error) throw error
+    if (!result?.success) throw new Error('GDPR-Löschung fehlgeschlagen')
 
-    // Delete notifications
-    const { data: deletedNotifs } = await sb.from('notifications')
-      .delete().eq('recipient_id', parentId).select('id')
-    deletedRecords += (deletedNotifs ?? []).length
-
-    // Anonymize bookings (GoBD: keep financial data, remove personal data)
-    const { data: bookings } = await sb.from('provider_bookings')
-      .select('id').eq('parent_id', parentId)
-    if (bookings && bookings.length > 0) {
-      const bookingIds = bookings.map(b => b.id)
-      await sb.from('provider_bookings')
-        .update({
-          child_info: {
-            name: '[GELOESCHT]',
-            age: 0,
-            emergencyContact: '[GELOESCHT]',
-            emergencyPhone: '[GELOESCHT]',
-          },
-          notes: null,
-        })
-        .in('id', bookingIds)
-      anonymizedRecords += bookingIds.length
-    }
-
-    // Count anonymized invoices (keep for GoBD, just count them)
-    const { data: invoices } = await sb.from('invoices')
-      .select('id').eq('parent_id', parentId)
-    anonymizedRecords += (invoices ?? []).length
-
-    // Delete contact notes
-    const { data: deletedNotes } = await sb.from('contact_notes')
-      .delete().eq('parent_id', parentId).select('id')
-    deletedRecords += (deletedNotes ?? []).length
-
-    // Delete parent record
-    const { data: deletedParent } = await sb.from('parents')
-      .delete().eq('id', parentId).select('id')
-    deletedRecords += (deletedParent ?? []).length
+    const deletedRecords = (result.deletedConsents || 0) + (result.deletedMessages || 0)
+      + (result.deletedNotes || 0) + (result.deletedNotifications || 0)
+    const anonymizedRecords = result.anonymizedBookings || 0
 
     return { deletedRecords, anonymizedRecords }
   },

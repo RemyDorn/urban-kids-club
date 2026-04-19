@@ -234,10 +234,12 @@ export class CheckoutService {
       return booking
     }
 
-    // Normal checkout: atomic capacity check
-    const { data: rpcResult, error: rpcError } = await db.rpc('create_booking_atomic', {
+    // Normal checkout: atomic capacity check via DB function
+    // Uses SELECT ... FOR UPDATE to lock the block row, preventing TOCTOU race conditions
+    const { data: rpcResult, error: rpcError } = await db.rpc('atomic_create_booking', {
       p_provider_id: params.providerId,
       p_activity_id: params.activityId,
+      p_block_id: activeBlock.id,
       p_parent_id: parent.id,
       p_child_info: childInfo,
       p_payment_method: params.paymentMethod,
@@ -305,80 +307,9 @@ export class CheckoutService {
       })
     } catch(e) { /* non-blocking */ }
 
-    // 4. Auto-enroll in the active block (only if a block exists)
-    if (activeBlock) try {
-      // Check if provider has makeup system enabled
-      const { data: providerSettings } = await db.from('providers')
-        .select('makeup_enabled').eq('id', params.providerId).single()
-      const makeupEnabled = providerSettings?.makeup_enabled ?? false
-
-      {
-        // If makeup disabled: all slots are fixed. If enabled: reserve makeup_capacity slots.
-        const fixedSlots = makeupEnabled
-          ? activeBlock.capacity - (activeBlock.makeup_capacity || 2)
-          : activeBlock.capacity
-        const { count: enrolledCount } = await db.from('block_enrollments')
-          .select('*', { count: 'exact', head: true })
-          .eq('block_id', activeBlock.id)
-          .eq('status', 'active')
-
-        const currentCount = enrolledCount ?? 0
-        const childId = `${params.childFirstName}-${params.childLastName}-${params.childBirthYear}`
-        const childAge = new Date().getFullYear() - params.childBirthYear
-
-        if (currentCount < fixedSlots) {
-          // Auto-enroll: fixed slot available
-          await db.from('block_enrollments').insert({
-            block_id: activeBlock.id,
-            activity_type: 'course',
-            provider_id: params.providerId,
-            parent_id: parent.id,
-            child_id: childId,
-            child_name: `${params.childFirstName} ${params.childLastName}`,
-            child_age: childAge,
-            booking_id: booking.id,
-            status: 'active',
-            price_paid: params.amount > 0 ? params.amount / 100 : 0,
-            currency: params.currency || 'EUR',
-            credits_earned: 0,
-            credits_used: 0,
-          })
-          console.log(`[Checkout] Auto-enrolled ${params.childFirstName} in block ${activeBlock.id} (${currentCount + 1}/${fixedSlots} fixed slots)`)
-        } else if (currentCount < activeBlock.capacity) {
-          // Makeup slots territory — booking stays confirmed, provider decides manually
-          console.log(`[Checkout] Block ${activeBlock.id} fixed slots full (${currentCount}/${fixedSlots}). Booking ${booking.id} needs manual enrollment (makeup slot).`)
-        } else {
-          // Block completely full — add to waitlist
-          // Use Date.now() for position to avoid race condition with parallel requests
-          const waitlistPosition = Date.now()
-
-          await db.from('waitlist_entries').insert({
-            activity_id: params.activityId,
-            parent_id: parent.id,
-            child_info: { firstName: params.childFirstName, lastName: params.childLastName, birthYear: params.childBirthYear },
-            position: waitlistPosition,
-            priority: 'normal',
-            status: 'waiting',
-          })
-          console.log(`[Checkout] Block ${activeBlock.id} voll (${currentCount}/${activeBlock.capacity}). ${params.childFirstName} auf Warteliste (Position ${waitlistPosition}).`)
-
-          // Notify provider: block is full
-          await db.from('notifications').insert({
-            recipient_type: 'provider',
-            recipient_id: params.providerId,
-            type: 'block_full',
-            channel: 'in_app',
-            title: 'Kursblock ist voll!',
-            body: `Der Block für "${params.activityId}" ist ausgebucht. Es gibt Interessenten auf der Warteliste. Möchten Sie einen neuen Block erstellen?`,
-            data: { blockId: activeBlock.id, activityId: params.activityId, waitlistCount: 1 },
-          })
-          console.log(`[Checkout] Provider ${params.providerId} notified: block full, waitlist entry created.`)
-        }
-      }
-    } catch (enrollErr) {
-      // Non-blocking: booking is already created, enrollment failure shouldn't break checkout
-      console.error('[Checkout] Auto-enrollment failed:', enrollErr)
-    }
+    // 4. Enrollment is handled atomically by the atomic_create_booking RPC
+    // (booking + enrollment created in a single transaction with capacity lock)
+    console.log(`[Checkout] Atomic booking+enrollment created for ${params.childFirstName} in block ${activeBlock.id}`)
 
     // 4. Send confirmation email (non-blocking)
     try {
