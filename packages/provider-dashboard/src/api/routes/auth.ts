@@ -100,30 +100,34 @@ export function registerAuthRoutes(router: Router) {
       user_metadata: { provider_id: provider.id }
     })
 
-    // 5. Auto-add owner as team member
-    await (db.from('team_members').insert({
-      provider_id: provider.id,
-      name: contactName,
-      email: email,
-      phone: phone || '',
-      role: 'owner',
-      active: true,
-      user_id: authData.user.id,
-    }) as any).catch((e: any) => console.error('[Register] Team member auto-create failed:', e))
+    // 5. Auto-add owner as team member (non-critical)
+    try {
+      await db.from('team_members').insert({
+        provider_id: provider.id,
+        name: contactName,
+        email: email,
+        phone: phone || '',
+        role: 'owner',
+        active: true,
+        user_id: authData.user.id,
+      })
+    } catch (e) { console.error('[Register] Team member auto-create failed:', e) }
 
-    // 6. Create lead entry for admin pipeline tracking
-    await (db.from('provider_leads').insert({
-      company_name: companyName,
-      contact_name: contactName,
-      email: email,
-      phone: phone,
-      address_street: street,
-      address_zip: zip,
-      address_city: city,
-      description: `Selbst-Registrierung über Provider Dashboard. Anzeigename: ${displayName}, Rechtsform: ${legalForm}`,
-      status: 'active',
-      converted_provider_id: provider.id,
-    }) as any).catch(() => {}) // Non-critical, don't fail registration
+    // 6. Create lead entry for admin pipeline tracking (non-critical)
+    try {
+      await db.from('provider_leads').insert({
+        company_name: companyName,
+        contact_name: contactName,
+        email: email,
+        phone: phone,
+        address_street: street,
+        address_zip: zip,
+        address_city: city,
+        description: `Selbst-Registrierung über Provider Dashboard. Anzeigename: ${displayName}, Rechtsform: ${legalForm}`,
+        status: 'active',
+        converted_provider_id: provider.id,
+      })
+    } catch (_) { /* Non-critical */ }
 
     res.json({ success: true, provider })
   })
