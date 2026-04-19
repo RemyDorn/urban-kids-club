@@ -3,11 +3,12 @@
 // ============================================================
 
 import { getServiceClient } from '../../lib/supabase'
-import type { ID } from '../../types'
+import type { ID, TeamPermissions, TeamRole } from '../../types'
+import { DEFAULT_ROLE_PERMISSIONS } from '../../types'
 
 const TABLE = 'team_members'
 
-// Available permissions
+// Legacy flat permissions (kept for backward compatibility)
 export const ALL_PERMISSIONS = [
   'view_calendar', 'edit_calendar',
   'view_bookings', 'manage_bookings',
@@ -36,7 +37,7 @@ export interface TeamMember {
   email: string
   phone: string | null
   role: string
-  permissions: Permission[]
+  permissions: TeamPermissions | Permission[]
   specializations: string[]
   avatar: string | null
   active: boolean
@@ -48,14 +49,20 @@ export interface TeamMember {
 }
 
 function fromDb(r: Record<string, any>): TeamMember {
+  const role = (r.role || 'staff') as TeamRole
+  // Support both area-based object and legacy flat array formats
+  let permissions: TeamPermissions | Permission[] = r.permissions
+  if (!permissions) {
+    permissions = DEFAULT_ROLE_PERMISSIONS[role] || DEFAULT_ROLE_PERMISSIONS.staff
+  }
   return {
     id: r.id,
     providerId: r.provider_id,
     name: r.name,
     email: r.email,
     phone: r.phone ?? null,
-    role: r.role ?? 'instructor',
-    permissions: r.permissions ?? ['view_calendar', 'checkin'],
+    role,
+    permissions,
     specializations: r.specializations ?? [],
     avatar: r.avatar ?? null,
     active: r.active ?? true,
@@ -88,10 +95,12 @@ export const SupabaseTeamService = {
 
   async create(input: {
     providerId: ID; name: string; email: string; phone?: string;
-    role: string; permissions?: Permission[]; specializations?: string[]
+    role: string; permissions?: TeamPermissions | Permission[]; specializations?: string[]
   }): Promise<TeamMember> {
     const sb = getServiceClient()
-    const permissions = input.permissions || ROLE_PRESETS[input.role] || ['view_calendar', 'checkin']
+    const role = (input.role || 'staff') as TeamRole
+    // Accept area-based object, legacy flat array, or default from role
+    const permissions = input.permissions || DEFAULT_ROLE_PERMISSIONS[role] || DEFAULT_ROLE_PERMISSIONS.staff
     const { data, error } = await sb.from(TABLE).insert({
       provider_id: input.providerId,
       name: input.name,
@@ -107,7 +116,7 @@ export const SupabaseTeamService = {
 
   async update(id: ID, input: Partial<{
     name: string; email: string; phone: string; role: string;
-    permissions: Permission[]; specializations: string[]; active: boolean
+    permissions: TeamPermissions | Permission[]; specializations: string[]; active: boolean
   }>, providerId?: ID): Promise<TeamMember | undefined> {
     const sb = getServiceClient()
     const update: Record<string, unknown> = {}
@@ -117,8 +126,9 @@ export const SupabaseTeamService = {
     if (input.role !== undefined) {
       update.role = input.role
       // Auto-set permissions if role changed and no explicit permissions given
-      if (!input.permissions && ROLE_PRESETS[input.role]) {
-        update.permissions = ROLE_PRESETS[input.role]
+      if (!input.permissions) {
+        const r = input.role as TeamRole
+        update.permissions = DEFAULT_ROLE_PERMISSIONS[r] || DEFAULT_ROLE_PERMISSIONS.staff
       }
     }
     if (input.permissions !== undefined) update.permissions = input.permissions
@@ -181,12 +191,53 @@ export const SupabaseTeamService = {
     return { token }
   },
 
-  // Get permissions for a user (by auth user_id)
-  async getPermissionsForUser(userId: string): Promise<{ providerId: string; permissions: Permission[] } | null> {
+  // Convenience: deactivate a team member
+  async deactivate(id: ID, providerId?: ID): Promise<TeamMember | undefined> {
+    return this.update(id, { active: false }, providerId)
+  },
+
+  // Convenience: activate a team member
+  async activate(id: ID, providerId?: ID): Promise<TeamMember | undefined> {
+    return this.update(id, { active: true }, providerId)
+  },
+
+  // All activities assigned to a team member (instructor)
+  async getAssignedActivities(memberId: ID): Promise<string[]> {
     const sb = getServiceClient()
-    const { data } = await sb.from(TABLE).select('provider_id, permissions, active')
+    const { data, error } = await sb.from('activities').select('id')
+      .eq('instructor_id', memberId)
+    if (error) throw error
+    return (data ?? []).map((r: any) => r.id)
+  },
+
+  // Workload: how many courses / weekly slots does a team member have?
+  async getWorkload(memberId: ID): Promise<{ activityCount: number; weeklySlots: number }> {
+    const sb = getServiceClient()
+    const { data, error } = await sb.from('activities').select('id, schedule, status')
+      .eq('instructor_id', memberId).eq('status', 'published')
+    if (error) throw error
+
+    const activities = data ?? []
+    let weeklySlots = 0
+    for (const a of activities) {
+      const sched = a.schedule as any
+      if (sched?.type === 'recurring' && Array.isArray(sched.slots)) {
+        weeklySlots += sched.slots.length
+      } else {
+        weeklySlots += 1
+      }
+    }
+    return { activityCount: activities.length, weeklySlots }
+  },
+
+  // Get permissions for a user (by auth user_id)
+  async getPermissionsForUser(userId: string): Promise<{ providerId: string; role: string; permissions: TeamPermissions | Permission[] } | null> {
+    const sb = getServiceClient()
+    const { data } = await sb.from(TABLE).select('provider_id, role, permissions, active')
       .eq('user_id', userId).eq('active', true).maybeSingle()
     if (!data) return null
-    return { providerId: data.provider_id, permissions: data.permissions ?? [] }
+    const role = (data.role || 'staff') as TeamRole
+    const permissions = data.permissions || DEFAULT_ROLE_PERMISSIONS[role] || DEFAULT_ROLE_PERMISSIONS.staff
+    return { providerId: data.provider_id, role, permissions }
   },
 }

@@ -24,5 +24,8 @@ export { SupabaseExportService } from './export.service'
 export { SupabaseCrmService } from './crm.service'
 export { SupabaseNotificationService } from './notification.service'
 
+export { SupabaseTeamService } from './team.service'
+export { SupabaseAttendanceService } from './attendance.service'
+
 // Re-export mappers for consumers that need direct DB conversion
 export * from './mappers'
