@@ -14,6 +14,7 @@ export interface CreateWidgetInput {
   type: WidgetConfig['type']
   theme?: 'light' | 'dark' | 'auto'
   primaryColor?: string
+  logoUrl?: string
   activityIds?: ID[]
   showPrices?: boolean
   showAvailability?: boolean
@@ -31,6 +32,7 @@ export const WidgetService = {
       type: input.type,
       theme: input.theme ?? 'auto',
       primaryColor: input.primaryColor,
+      logoUrl: input.logoUrl,
       activityIds: input.activityIds,
       showPrices: input.showPrices ?? true,
       showAvailability: input.showAvailability ?? true,
@@ -66,6 +68,7 @@ export const WidgetService = {
     if (input.type) widget.type = input.type
     if (input.theme) widget.theme = input.theme
     if (input.primaryColor !== undefined) widget.primaryColor = input.primaryColor
+    if (input.logoUrl !== undefined) widget.logoUrl = input.logoUrl
     if (input.activityIds !== undefined) widget.activityIds = input.activityIds
     if (input.showPrices !== undefined) widget.showPrices = input.showPrices
     if (input.showAvailability !== undefined) widget.showAvailability = input.showAvailability
@@ -85,6 +88,7 @@ export const WidgetService = {
     params.set('type', widget.type)
     params.set('theme', widget.theme)
     if (widget.primaryColor) params.set('color', widget.primaryColor)
+    if (widget.logoUrl) params.set('logoUrl', widget.logoUrl)
     if (widget.showPrices) params.set('prices', '1')
     if (widget.showAvailability) params.set('availability', '1')
     if (widget.showReviews) params.set('reviews', '1')

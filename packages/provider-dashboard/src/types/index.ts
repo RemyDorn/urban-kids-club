@@ -574,6 +574,7 @@ export interface WidgetConfig {
   type: 'booking_button' | 'course_list' | 'calendar' | 'review_badge' | 'course_blocks' | 'parent_dashboard'
   theme: 'light' | 'dark' | 'auto'
   primaryColor?: string
+  logoUrl?: string
   activityIds?: ID[]        // Beschränkung auf bestimmte Kurse
   showPrices: boolean
   showAvailability: boolean

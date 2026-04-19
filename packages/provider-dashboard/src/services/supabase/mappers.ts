@@ -580,6 +580,7 @@ export function widgetConfigFromDb(r: Row): WidgetConfig {
     type: r.type ?? 'booking_button',
     theme: r.theme ?? 'light',
     primaryColor: r.primary_color ?? undefined,
+    logoUrl: r.logo_url ?? undefined,
     activityIds: r.activity_ids ?? undefined,
     showPrices: r.show_prices ?? true,
     showAvailability: r.show_availability ?? true,
@@ -596,6 +597,7 @@ export function widgetConfigToDb(w: Partial<WidgetConfig> & { id?: ID }): Row {
   if (w.type !== undefined) row.type = w.type
   if (w.theme !== undefined) row.theme = w.theme
   if (w.primaryColor !== undefined) row.primary_color = w.primaryColor
+  if (w.logoUrl !== undefined) row.logo_url = w.logoUrl
   if (w.activityIds !== undefined) row.activity_ids = w.activityIds
   if (w.showPrices !== undefined) row.show_prices = w.showPrices
   if (w.showAvailability !== undefined) row.show_availability = w.showAvailability

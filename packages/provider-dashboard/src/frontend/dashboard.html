@@ -1670,15 +1670,20 @@
               offered.map(function(e) {
                 var name = e.child?.firstName ? (e.child.firstName + ' ' + (e.child.lastName || '')) : (e.child?.name || 'Unbekannt')
                 var isExpired = e.expiresAt && new Date(e.expiresAt) < now
-                var expiry = e.expiresAt ? new Date(e.expiresAt).toLocaleString('de-DE', {hour:'2-digit',minute:'2-digit'}) + ' Uhr' : ''
                 if (isExpired) {
+                  var expiredAgo = Math.floor((now - new Date(e.expiresAt)) / (1000 * 60 * 60))
+                  var expiredLabel = expiredAgo < 1 ? 'Gerade abgelaufen' : 'Abgelaufen vor ' + expiredAgo + 'h'
                   return '<div class="flex justify-between items-center text-xs py-2 px-3 bg-red-50 border border-red-200 rounded-lg">' +
                     '<div class="cursor-pointer" onclick="showParentProfile(\'' + e.parentId + '\')"><span class="font-medium text-red-900">' + escapeHtml(name) + '</span>' + blockLabel(e) + '</div>' +
-                    '<span class="text-red-500 font-medium">Abgelaufen</span></div>'
+                    '<div class="flex items-center gap-2"><span class="inline-flex items-center px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-medium">Abgelaufen</span><span class="text-red-400 text-xs">' + expiredLabel + '</span><button onclick="acceptWaitlistEntry(\'' + e.id + '\', \'' + (activity?.id || '') + '\')" class="px-2 py-1 bg-amber-100 text-amber-700 rounded text-xs font-medium hover:bg-amber-200">Erneut anbieten</button></div></div>'
                 }
+                var remainMs = new Date(e.expiresAt).getTime() - now.getTime()
+                var remainH = Math.floor(remainMs / (1000 * 60 * 60))
+                var remainM = Math.floor((remainMs % (1000 * 60 * 60)) / (1000 * 60))
+                var countdown = remainH > 0 ? 'Noch ' + remainH + 'h ' + remainM + 'min' : 'Noch ' + remainM + ' Min'
                 return '<div class="flex justify-between items-center text-xs py-2 px-3 bg-white border border-blue-100 rounded-lg">' +
                   '<div class="cursor-pointer" onclick="showParentProfile(\'' + e.parentId + '\')"><span class="font-medium text-blue-900">' + escapeHtml(name) + '</span>' + blockLabel(e) + '</div>' +
-                  '<div class="flex items-center gap-2"><span class="text-blue-500">Bestätigen bis ' + expiry + '</span><button onclick="acceptWaitlistEntry(\'' + e.id + '\', \'' + (activity?.id || '') + '\')" class="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium hover:bg-blue-200">Erneut senden</button></div>' +
+                  '<div class="flex items-center gap-2"><span class="text-blue-500">' + countdown + '</span><button onclick="acceptWaitlistEntry(\'' + e.id + '\', \'' + (activity?.id || '') + '\')" class="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium hover:bg-blue-200">Erneut senden</button></div>' +
                   '</div>'
               }).join('') + '</div></div>'
           }
@@ -1687,9 +1692,11 @@
             html += '<div class="border border-red-200 bg-red-50 rounded-lg p-3 mb-2"><div class="text-xs font-semibold text-red-800 mb-2">Abgelaufen (' + expired.length + ')</div><div class="space-y-1">' +
               expired.map(function(e) {
                 var name = e.child?.firstName ? (e.child.firstName + ' ' + (e.child.lastName || '')) : (e.child?.name || 'Unbekannt')
+                var expiredAgo = e.expiresAt ? Math.floor((now - new Date(e.expiresAt)) / (1000 * 60 * 60)) : 0
+                var expiredLabel = expiredAgo < 1 ? 'Gerade abgelaufen' : 'Abgelaufen vor ' + expiredAgo + 'h'
                 return '<div class="flex justify-between items-center text-xs py-2 px-3 bg-white border border-red-100 rounded-lg">' +
                   '<div class="cursor-pointer" onclick="showParentProfile(\'' + e.parentId + '\')"><span class="font-medium text-red-900">' + escapeHtml(name) + '</span>' + blockLabel(e) + '</div>' +
-                  '<div class="flex items-center gap-2"><span class="text-red-400">Nicht bestätigt</span><button onclick="acceptWaitlistEntry(\'' + e.id + '\', \'' + (activity?.id || '') + '\')" class="px-2 py-1 bg-amber-100 text-amber-700 rounded text-xs font-medium hover:bg-amber-200">Erneut anbieten</button></div>' +
+                  '<div class="flex items-center gap-2"><span class="inline-flex items-center px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-medium">Abgelaufen</span><span class="text-red-400 text-xs">' + expiredLabel + '</span><button onclick="acceptWaitlistEntry(\'' + e.id + '\', \'' + (activity?.id || '') + '\')" class="px-2 py-1 bg-amber-100 text-amber-700 rounded text-xs font-medium hover:bg-amber-200">Erneut anbieten</button></div>' +
                   '</div>'
               }).join('') + '</div></div>'
           }
@@ -3060,7 +3067,9 @@
 
       // Group waitlist by course and block
       const waitingEntries = wlData.filter(e => e.status === 'waiting')
-      const offeredEntries = wlData.filter(e => e.status === 'offered')
+      const nowWl = new Date()
+      const offeredEntries = wlData.filter(e => e.status === 'offered' && (!e.expiresAt || new Date(e.expiresAt) > nowWl))
+      const expiredEntries = wlData.filter(e => e.status === 'expired' || (e.status === 'offered' && e.expiresAt && new Date(e.expiresAt) <= nowWl))
 
       // Group by course, then sub-group by block within course
       const waitlistByCourseAndBlock = {}
@@ -3082,14 +3091,28 @@
       }
 
       let waitlistSectionHtml = ''
-      if (waitingEntries.length || offeredEntries.length) {
+      if (waitingEntries.length || offeredEntries.length || expiredEntries.length) {
         waitlistSectionHtml = '<div class="mb-6 space-y-3">'
         if (offeredEntries.length) {
           waitlistSectionHtml += '<div class="bg-blue-50 border border-blue-200 rounded-xl p-4"><div class="font-semibold text-blue-900 text-sm mb-2">Ausstehend (' + offeredEntries.length + ')</div><div class="space-y-2">' +
             offeredEntries.map(e => {
               const name = e.child?.firstName ? (e.child.firstName + ' ' + (e.child.lastName || '')) : 'Unbekannt'
               const blockHint = e.courseBlockId ? ' · ' + escapeHtml(getBlockLabel(e.courseBlockId)) : ''
-              return '<div class="flex justify-between items-center bg-white rounded-lg px-4 py-3 border border-blue-100"><div class="cursor-pointer" onclick="showParentProfile(\'' + e.parentId + '\')"><div class="font-medium text-sm">' + escapeHtml(name) + '</div><div class="text-xs text-gray-500">' + escapeHtml(e.courseTitle) + blockHint + '</div></div><span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-medium">Angebot gesendet</span></div>'
+              const remainMs = e.expiresAt ? new Date(e.expiresAt).getTime() - nowWl.getTime() : 0
+              const remainH = Math.floor(remainMs / (1000 * 60 * 60))
+              const remainM = Math.floor((remainMs % (1000 * 60 * 60)) / (1000 * 60))
+              const countdown = remainMs > 0 ? (remainH > 0 ? 'Noch ' + remainH + 'h ' + remainM + 'min' : 'Noch ' + remainM + ' Min') : ''
+              return '<div class="flex justify-between items-center bg-white rounded-lg px-4 py-3 border border-blue-100"><div class="cursor-pointer" onclick="showParentProfile(\'' + e.parentId + '\')"><div class="font-medium text-sm">' + escapeHtml(name) + '</div><div class="text-xs text-gray-500">' + escapeHtml(e.courseTitle) + blockHint + '</div></div><div class="flex items-center gap-2"><span class="text-xs text-blue-500">' + countdown + '</span><span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-medium">Angebot gesendet</span></div></div>'
+            }).join('') + '</div></div>'
+        }
+        if (expiredEntries.length) {
+          waitlistSectionHtml += '<div class="bg-red-50 border border-red-200 rounded-xl p-4"><div class="font-semibold text-red-900 text-sm mb-2">Abgelaufen (' + expiredEntries.length + ')</div><div class="space-y-2">' +
+            expiredEntries.map(e => {
+              const name = e.child?.firstName ? (e.child.firstName + ' ' + (e.child.lastName || '')) : 'Unbekannt'
+              const blockHint = e.courseBlockId ? ' · ' + escapeHtml(getBlockLabel(e.courseBlockId)) : ''
+              const expiredAgo = e.expiresAt ? Math.floor((nowWl - new Date(e.expiresAt)) / (1000 * 60 * 60)) : 0
+              const expiredLabel = expiredAgo < 1 ? 'Gerade abgelaufen' : 'Abgelaufen vor ' + expiredAgo + 'h'
+              return '<div class="flex justify-between items-center bg-white rounded-lg px-4 py-3 border border-red-100"><div class="cursor-pointer" onclick="showParentProfile(\'' + e.parentId + '\')"><div class="font-medium text-sm">' + escapeHtml(name) + '</div><div class="text-xs text-gray-500">' + escapeHtml(e.courseTitle) + blockHint + '</div></div><div class="flex items-center gap-2"><span class="inline-flex items-center px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-medium">Abgelaufen</span><span class="text-xs text-red-400">' + expiredLabel + '</span><button onclick="acceptWaitlistEntry(\'' + e.id + '\', \'' + e.courseId + '\')" class="px-2 py-1 bg-amber-100 text-amber-700 rounded text-xs font-medium hover:bg-amber-200">Erneut anbieten</button></div></div>'
             }).join('') + '</div></div>'
         }
         Object.entries(waitlistByCourseAndBlock).forEach(([course, data]) => {
@@ -3267,7 +3290,7 @@
         for (const a of (actRes.data || [])) {
           try {
             const w = await api('/activities/' + a.id + '/waitlist')
-            const entries = (w.data || w || []).filter(e => e.status === 'waiting' || e.status === 'offered')
+            const entries = (w.data || w || []).filter(e => e.status === 'waiting' || e.status === 'offered' || e.status === 'expired')
             entries.forEach(e => allWaitlist.push({ ...e, courseTitle: a.title }))
           } catch(e) {}
         }
@@ -5445,6 +5468,11 @@
               </select>
             </div>
           </div>
+          <div class="mb-4">
+            <label class="block text-xs font-medium text-gray-700 mb-1">Logo-URL (wird im Widget angezeigt)</label>
+            <input type="url" id="wLogoUrl" value="${currentProvider.widget_logo_url || ''}" placeholder="https://example.com/logo.png" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+            <p class="text-xs text-gray-400 mt-1">Optionaler Link zu deinem Logo (PNG, JPG, SVG). Maximal 200px breit, 48px hoch.</p>
+          </div>
           <div class="flex items-center gap-4 mb-4">
             <label class="flex items-center gap-2 text-sm">
               <input type="checkbox" id="wShowLogo" ${currentProvider.widget_show_logo !== false ? 'checked' : ''} class="rounded border-gray-300">
@@ -5456,6 +5484,13 @@
             <div id="brandPreview" class="flex-1 h-10 rounded-lg border border-gray-200 flex items-center justify-center text-sm font-medium" style="background:${currentProvider.widget_primary_color || '#D4956A'};color:white;border-radius:${currentProvider.widget_border_radius || 16}px;font-family:${currentProvider.widget_font || 'Inter'},sans-serif">
               Vorschau-Button
             </div>
+          </div>
+          ${currentProvider.widget_logo_url ? `
+          <div class="mt-3 p-3 bg-gray-50 rounded-lg flex items-center gap-3">
+            <img src="${escapeHtml(currentProvider.widget_logo_url)}" alt="Logo-Vorschau" style="max-height:48px;max-width:200px;object-fit:contain" onerror="this.parentElement.innerHTML='<span class=\\'text-xs text-red-500\\'>Logo konnte nicht geladen werden</span>'">
+            <span class="text-xs text-gray-500">Logo-Vorschau</span>
+          </div>
+          ` : ''}
           </div>
         </div>
         <div class="space-y-4">
@@ -5541,12 +5576,14 @@
           widget_accent_color: document.getElementById('wAccentColor').value,
           widget_font: document.getElementById('wFont').value,
           widget_border_radius: document.getElementById('wRadius').value,
+          widget_logo_url: document.getElementById('wLogoUrl').value.trim(),
           widget_show_logo: document.getElementById('wShowLogo').checked,
         })
         currentProvider.widget_primary_color = document.getElementById('wBrandColor').value
         currentProvider.widget_accent_color = document.getElementById('wAccentColor').value
         currentProvider.widget_font = document.getElementById('wFont').value
         currentProvider.widget_border_radius = document.getElementById('wRadius').value
+        currentProvider.widget_logo_url = document.getElementById('wLogoUrl').value.trim()
         currentProvider.widget_show_logo = document.getElementById('wShowLogo').checked
         showToast('Widget-Design gespeichert!', 'success')
       } catch(e) { showToast('Fehler beim Speichern', 'error') }

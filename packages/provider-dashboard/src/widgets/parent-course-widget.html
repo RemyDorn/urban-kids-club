@@ -927,9 +927,9 @@ function renderBlockCard(block) {
         <div style="margin-top:16px; display:flex; justify-content:space-between; align-items:center;">
           <div>${spotsText}</div>
           ${spotsLeft > 0 && block.status !== 'completed'
-            ? `<button class="btn btn-primary btn-sm" onclick="startBooking('${block.id}')">Jetzt buchen</button>`
+            ? `<button class="btn btn-primary btn-sm" onclick="startBooking('${escAttr(block.id)}')">Jetzt buchen</button>`
             : spotsLeft <= 0
-              ? `<button class="btn btn-secondary btn-sm" onclick="joinWaitlist('${block.id}')">Auf Warteliste</button>`
+              ? `<button class="btn btn-secondary btn-sm" onclick="joinWaitlist('${escAttr(block.id)}')">Auf Warteliste</button>`
               : ''
           }
         </div>
@@ -956,14 +956,53 @@ async function loadMyCourses() {
   container.innerHTML = '<div class="loading"><div class="spinner"></div></div>'
 
   try {
+    // Load waitlist entries for this parent
+    let waitlistOfferHtml = ''
+    try {
+      const wlRes = await api(`/waitlist/parent/${currentParentId}`)
+      const wlEntries = (wlRes.data || wlRes || [])
+      const now = new Date()
+      const activeOffers = wlEntries.filter(e => e.status === 'offered' && e.expiresAt && new Date(e.expiresAt) > now)
+      const expiredOffers = wlEntries.filter(e => e.status === 'expired' || (e.status === 'offered' && e.expiresAt && new Date(e.expiresAt) <= now))
+
+      if (activeOffers.length) {
+        waitlistOfferHtml += activeOffers.map(e => {
+          const remainMs = new Date(e.expiresAt).getTime() - now.getTime()
+          const remainH = Math.floor(remainMs / (1000 * 60 * 60))
+          const remainM = Math.floor((remainMs % (1000 * 60 * 60)) / (1000 * 60))
+          const countdown = remainH > 0 ? 'Noch ' + remainH + 'h ' + remainM + 'min zur Bestätigung' : 'Noch ' + remainM + ' Min zur Bestätigung'
+          const childName = e.child?.firstName ? (e.child.firstName + ' ' + (e.child.lastName || '')) : (e.child?.name || '')
+          return `<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:12px;padding:14px;margin-bottom:12px">
+            <div style="font-weight:600;font-size:14px;color:#1E40AF;margin-bottom:4px">Platz verfügbar!</div>
+            <div style="font-size:13px;color:#1E3A8A">${esc(childName)}</div>
+            <div style="font-size:12px;color:#3B82F6;margin-top:6px">${countdown}</div>
+          </div>`
+        }).join('')
+      }
+      if (expiredOffers.length) {
+        waitlistOfferHtml += expiredOffers.map(e => {
+          const childName = e.child?.firstName ? (e.child.firstName + ' ' + (e.child.lastName || '')) : (e.child?.name || '')
+          return `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:12px;padding:14px;margin-bottom:12px">
+            <div style="font-weight:600;font-size:14px;color:#991B1B;margin-bottom:4px">Angebot abgelaufen</div>
+            <div style="font-size:13px;color:#7F1D1D">${esc(childName)}</div>
+            <div style="font-size:12px;color:#EF4444;margin-top:6px">Das Angebot ist leider abgelaufen.</div>
+          </div>`
+        }).join('')
+      }
+    } catch (_) {}
+
     const enrollments = await api(`/enrollments/parent/${currentParentId}`)
 
-    if (enrollments.length === 0) {
+    if (enrollments.length === 0 && !waitlistOfferHtml) {
       container.innerHTML = `
         <div class="empty-state">
           <div class="empty-state-icon">📋</div>
           <div class="empty-state-text">Du hast noch keine Kurse gebucht.</div>
         </div>`
+      return
+    }
+    if (enrollments.length === 0) {
+      container.innerHTML = waitlistOfferHtml
       return
     }
 
@@ -985,7 +1024,7 @@ async function loadMyCourses() {
       return { enrollment: enr, block, sessions, attendances }
     }))
 
-    container.innerHTML = enriched.map(({ enrollment, block, sessions, attendances }) => {
+    container.innerHTML = waitlistOfferHtml + enriched.map(({ enrollment, block, sessions, attendances }) => {
       if (!block) return ''
 
       const statusBadge = {
@@ -1034,7 +1073,7 @@ async function loadMyCourses() {
             </div>
             <div style="display:flex;align-items:center;gap:8px">
               <span class="session-status ${statusClass}">${statusLabel}</span>
-              ${canCancel ? `<button class="cancel-link" onclick="cancelAttendance('${att.id}', '${enrollment.childName}', '${sess.date}')">Absagen</button>` : ''}
+              ${canCancel ? `<button class="cancel-link" onclick="cancelAttendance('${escAttr(att.id)}', '${escAttr(enrollment.childName)}', '${escAttr(sess.date)}')">Absagen</button>` : ''}
             </div>
           </li>`
       }).join('')
@@ -1054,7 +1093,7 @@ async function loadMyCourses() {
             </div>
           </div>
           <div class="card-body">
-            <button class="expand-toggle" onclick="toggleSessions('${blockId}', this)">
+            <button class="expand-toggle" onclick="toggleSessions('${escAttr(blockId)}', this)">
               <span class="arrow">▶</span> ${sessions.length} Termine anzeigen
             </button>
             <div class="sessions-collapse" id="${blockId}">
@@ -1133,7 +1172,7 @@ async function loadCredits() {
               </div>
               <div class="credit-actions">
                 <span class="badge badge-available">Verfügbar</span>
-                <button class="btn btn-primary btn-sm" onclick="openMakeupModal('${credit.id}')">
+                <button class="btn btn-primary btn-sm" onclick="openMakeupModal('${escAttr(credit.id)}')">
                   Nachholen
                 </button>
               </div>
@@ -1159,7 +1198,7 @@ async function loadCredits() {
               </div>
               <div class="credit-actions">
                 <span class="badge badge-upcoming">Gebucht</span>
-                <button class="cancel-link" onclick="cancelMakeup('${m.id}')">Stornieren</button>
+                <button class="cancel-link" onclick="cancelMakeup('${escAttr(m.id)}')">Stornieren</button>
               </div>
             </div>
           `).join('')}
@@ -1241,7 +1280,7 @@ async function openMakeupModal(creditId) {
       </p>
       <div class="slot-grid">
         ${slots.map(slot => `
-          <div class="slot-option" data-slot="${slot.sessionId}" onclick="selectSlot('${slot.sessionId}', this)">
+          <div class="slot-option" data-slot="${esc(slot.sessionId)}" onclick="selectSlot('${escAttr(slot.sessionId)}', this)">
             <div>
               <div class="slot-date">${formatDate(slot.date)} um ${slot.startTime} Uhr</div>
               <div class="slot-course">${esc(slot.blockLabel || slot.activityType)}</div>
@@ -1623,9 +1662,22 @@ function isFutureDate(dateStr) {
 }
 
 function esc(str) {
-  const div = document.createElement('div')
-  div.textContent = str || ''
-  return div.innerHTML
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+function escAttr(str) {
+  // For use inside JS string literals in onclick handlers etc.
+  return String(str || '')
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/"/g, '\\"')
+    .replace(/</g, '\\x3c')
+    .replace(/>/g, '\\x3e')
 }
 
 function showToast(msg, isError = false) {
@@ -1639,7 +1691,7 @@ function showToast(msg, isError = false) {
 function showConfirmDialog(message, onConfirm) {
   const overlay = document.createElement('div')
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:1000;display:flex;align-items:center;justify-content:center'
-  overlay.innerHTML = '<div style="background:#fff;border-radius:16px;padding:24px;max-width:340px;width:90%;box-shadow:0 20px 40px rgba(0,0,0,.2)"><p style="font-size:14px;color:#374151;margin-bottom:20px;white-space:pre-line">' + message.replace(/</g,'&lt;') + '</p><div style="display:flex;gap:10px"><button id="cfmCancel" style="flex:1;padding:10px;border:1px solid #e5e7eb;border-radius:10px;background:#fff;color:#374151;font-size:13px;cursor:pointer">Abbrechen</button><button id="cfmOk" style="flex:1;padding:10px;border:none;border-radius:10px;background:var(--primary);color:#fff;font-size:13px;cursor:pointer;font-weight:600">Bestätigen</button></div></div>'
+  overlay.innerHTML = '<div style="background:#fff;border-radius:16px;padding:24px;max-width:340px;width:90%;box-shadow:0 20px 40px rgba(0,0,0,.2)"><p style="font-size:14px;color:#374151;margin-bottom:20px;white-space:pre-line">' + esc(message) + '</p><div style="display:flex;gap:10px"><button id="cfmCancel" style="flex:1;padding:10px;border:1px solid #e5e7eb;border-radius:10px;background:#fff;color:#374151;font-size:13px;cursor:pointer">Abbrechen</button><button id="cfmOk" style="flex:1;padding:10px;border:none;border-radius:10px;background:var(--primary);color:#fff;font-size:13px;cursor:pointer;font-weight:600">Bestätigen</button></div></div>'
   document.body.appendChild(overlay)
   overlay.querySelector('#cfmCancel').onclick = () => overlay.remove()
   overlay.querySelector('#cfmOk').onclick = () => { overlay.remove(); onConfirm() }
@@ -1653,7 +1705,38 @@ document.addEventListener('DOMContentLoaded', () => {
   // Theme von URL lesen
   const params = new URLSearchParams(window.location.search)
   if (params.get('theme') === 'dark') document.documentElement.dataset.theme = 'dark'
-  if (params.get('color')) document.documentElement.style.setProperty('--primary', params.get('color'))
+
+  // Custom primary color from URL param with hex validation
+  if (params.get('color')) {
+    const color = params.get('color')
+    if (/^#([0-9A-Fa-f]{3}){1,2}$/.test(color)) {
+      document.documentElement.style.setProperty('--primary', color)
+      const hex = color.replace('#', '')
+      const r = Math.max(0, parseInt(hex.substr(0,2), 16) - 20)
+      const g = Math.max(0, parseInt(hex.substr(2,2), 16) - 20)
+      const b = Math.max(0, parseInt(hex.substr(4,2), 16) - 20)
+      document.documentElement.style.setProperty('--primary-hover', '#' + r.toString(16).padStart(2,'0') + g.toString(16).padStart(2,'0') + b.toString(16).padStart(2,'0'))
+    }
+  }
+
+  // Custom logo from URL param
+  if (params.get('logoUrl')) {
+    const logoUrl = params.get('logoUrl')
+    if (/^https?:\/\//.test(logoUrl)) {
+      const container = document.querySelector('.widget-container')
+      if (container) {
+        const logoWrap = document.createElement('div')
+        logoWrap.style.cssText = 'text-align:center;margin-bottom:12px;'
+        const img = document.createElement('img')
+        img.src = logoUrl
+        img.alt = 'Provider Logo'
+        img.style.cssText = 'max-height:48px;max-width:200px;object-fit:contain'
+        logoWrap.appendChild(img)
+        container.insertBefore(logoWrap, container.firstChild)
+      }
+    }
+  }
+
   if (params.get('parentId')) currentParentId = params.get('parentId')
   if (params.get('provider')) window.UKC_PROVIDER_SLUG = params.get('provider')
 
