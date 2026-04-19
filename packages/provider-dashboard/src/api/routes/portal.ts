@@ -216,6 +216,138 @@ export function registerPortalRoutes(router: Router) {
     res.json({ data: parent })
   })
 
+  // ── iCal Feed for parent's booked sessions ───────────────
+  // Public endpoint using parent ID as token (calendar apps can't send auth headers)
+  // URL format: /api/portal/calendar/:parentId.ics
+  router.get('/api/portal/calendar/:parentId.ics', async (req, res) => {
+    const parentId = req.params.parentId
+    if (!parentId) return res.error(400, 'Parent ID fehlt')
+
+    const sb = getServiceClient()
+    const { data: parent } = await sb.from('parents').select('id, name, email').eq('id', parentId).maybeSingle()
+    if (!parent) return res.error(404, 'Nicht gefunden')
+
+    // Get all active bookings for this parent
+    const { data: bookings } = await sb.from('provider_bookings')
+      .select('id, activity_id, provider_id, child_info, status')
+      .eq('parent_id', parentId).in('status', ['confirmed', 'pending'])
+
+    if (!bookings?.length) {
+      const emptyIcal = 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Urban Kids Club//Eltern-Portal//DE\r\nCALSCALE:GREGORIAN\r\nX-WR-CALNAME:Meine Kurse\r\nX-WR-TIMEZONE:Europe/Berlin\r\nEND:VCALENDAR\r\n'
+      const raw = (req as any).raw
+      if (raw?.res) {
+        raw.res.writeHead(200, { 'Content-Type': 'text/calendar; charset=utf-8', 'Content-Disposition': 'attachment; filename="meine-kurse.ics"' })
+        raw.res.end(emptyIcal)
+      } else {
+        res.json({ data: emptyIcal })
+      }
+      return
+    }
+
+    // Load activities + providers + block sessions
+    const actIds = [...new Set(bookings.map((b: any) => b.activity_id))]
+    const provIds = [...new Set(bookings.map((b: any) => b.provider_id))]
+    const { data: acts } = await sb.from('activities').select('id, title, schedule, duration_minutes, category').in('id', actIds)
+    const { data: provs } = await sb.from('providers').select('id, company_name').in('id', provIds)
+    const actMap = new Map((acts ?? []).map((a: any) => [a.id, a]))
+    const provMap = new Map((provs ?? []).map((p: any) => [p.id, p.company_name]))
+
+    // Get block sessions for enrolled courses
+    const { data: enrollments } = await sb.from('block_enrollments')
+      .select('id, block_id, activity_id')
+      .eq('parent_id', parentId)
+    const blockIds = [...new Set((enrollments ?? []).map((e: any) => e.block_id))]
+    const { data: blockSessions } = blockIds.length
+      ? await sb.from('block_sessions').select('id, block_id, date, start_time, end_time, status').in('block_id', blockIds).order('date')
+      : { data: [] }
+    const enrollmentByActivity = new Map((enrollments ?? []).map((e: any) => [e.activity_id, e.block_id]))
+    const sessionsByBlock = new Map<string, any[]>()
+    for (const s of blockSessions ?? []) {
+      if (!sessionsByBlock.has(s.block_id)) sessionsByBlock.set(s.block_id, [])
+      sessionsByBlock.get(s.block_id)!.push(s)
+    }
+
+    const dayToNum: Record<string, number> = { SU: 0, MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6 }
+    const now = new Date()
+    const weeks = 12
+
+    let ical = 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Urban Kids Club//Eltern-Portal//DE\r\nCALSCALE:GREGORIAN\r\nX-WR-CALNAME:Meine Kurse\r\nX-WR-TIMEZONE:Europe/Berlin\r\nMETHOD:PUBLISH\r\n'
+
+    const fmtDt = (dt: Date) => dt.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
+    const escIcal = (s: string) => s.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n')
+
+    for (const booking of bookings) {
+      const act = actMap.get(booking.activity_id)
+      if (!act) continue
+      const provName = provMap.get(booking.provider_id) || ''
+      const ci = booking.child_info as any
+      const childName = ci?.firstName ? `${ci.firstName} ${ci.lastName || ''}`.trim() : ''
+      const desc = childName ? `${childName} – ${provName}` : provName
+
+      // If booking has block sessions, use those specific dates
+      const blockId = enrollmentByActivity.get(booking.activity_id)
+      if (blockId && sessionsByBlock.has(blockId)) {
+        for (const s of sessionsByBlock.get(blockId)!) {
+          if (s.status === 'cancelled') continue
+          const [sh, sm] = (s.start_time || '00:00').split(':').map(Number)
+          const [eh, em] = (s.end_time || '01:00').split(':').map(Number)
+          const dtStart = new Date(s.date + 'T00:00:00'); dtStart.setHours(sh, sm, 0, 0)
+          const dtEnd = new Date(s.date + 'T00:00:00'); dtEnd.setHours(eh, em, 0, 0)
+
+          ical += 'BEGIN:VEVENT\r\n'
+          ical += `UID:${booking.id}-${s.date}@urbankids.club\r\n`
+          ical += `DTSTART;TZID=Europe/Berlin:${fmtDt(dtStart).slice(0, -1)}\r\n`
+          ical += `DTEND;TZID=Europe/Berlin:${fmtDt(dtEnd).slice(0, -1)}\r\n`
+          ical += `SUMMARY:${escIcal(act.title)}\r\n`
+          ical += `DESCRIPTION:${escIcal(desc)}\r\n`
+          ical += 'END:VEVENT\r\n'
+        }
+        continue
+      }
+
+      // Otherwise generate from recurring schedule
+      const sched = act.schedule as any
+      const slots = Array.isArray(sched) ? sched : (sched?.slots ?? [])
+      const startDate = sched?.startDate ? new Date(sched.startDate) : now
+      const endDate = sched?.endDate ? new Date(sched.endDate) : new Date(now.getTime() + weeks * 7 * 86400000)
+
+      for (const slot of slots) {
+        const targetDay = dayToNum[slot.day?.toUpperCase()]
+        if (targetDay === undefined) continue
+
+        let d = new Date(startDate)
+        while (d.getDay() !== targetDay && d <= endDate) d.setDate(d.getDate() + 1)
+
+        while (d <= endDate) {
+          const [sh, sm] = (slot.startTime || '00:00').split(':').map(Number)
+          const [eh, em] = (slot.endTime || '01:00').split(':').map(Number)
+          const dtStart = new Date(d); dtStart.setHours(sh, sm, 0, 0)
+          const dtEnd = new Date(d); dtEnd.setHours(eh, em, 0, 0)
+
+          ical += 'BEGIN:VEVENT\r\n'
+          ical += `UID:${booking.id}-${d.toISOString().slice(0, 10)}@urbankids.club\r\n`
+          ical += `DTSTART;TZID=Europe/Berlin:${fmtDt(dtStart).slice(0, -1)}\r\n`
+          ical += `DTEND;TZID=Europe/Berlin:${fmtDt(dtEnd).slice(0, -1)}\r\n`
+          ical += `SUMMARY:${escIcal(act.title)}\r\n`
+          ical += `DESCRIPTION:${escIcal(desc)}\r\n`
+          ical += 'END:VEVENT\r\n'
+
+          d.setDate(d.getDate() + 7)
+        }
+      }
+    }
+
+    ical += 'END:VCALENDAR\r\n'
+
+    const raw = (req as any).raw
+    if (raw?.res) {
+      raw.res.writeHead(200, { 'Content-Type': 'text/calendar; charset=utf-8', 'Content-Disposition': 'attachment; filename="meine-kurse.ics"' })
+      raw.res.end(ical)
+    } else {
+      res.json({ data: ical })
+    }
+  })
+
   // Get parent's bookings across all providers
   router.get('/api/portal/bookings', async (req, res) => {
     const auth = await requireParentAuth(req, res)
