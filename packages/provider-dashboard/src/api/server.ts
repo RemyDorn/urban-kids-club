@@ -175,7 +175,8 @@ body{font-family:'Inter',system-ui,sans-serif;background:transparent;color:#1f29
 .book-modal .btn-cancel{padding:10px 16px;border:1px solid #e2e8f0;border-radius:10px;background:#fff;color:#64748b;font-size:13px;cursor:pointer}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
 .powered{text-align:center;padding:8px;font-size:10px;color:#c4b5ab}
-.powered a{color:#94a3b8;text-decoration:none}
+.powered a{color:#94a3b8;text-decoration:none;transition:color 0.2s}
+.powered a:hover{color:#6B7280}
 </style>
 </head><body>
 <div id="app"><div style="text-align:center;padding:60px;color:#94a3b8;font-size:13px">Wird geladen...</div></div>
@@ -260,7 +261,7 @@ function render(){
     }else{slotsHtml+='<div class="empty-state">Keine Kurse an diesem Tag.</div>'}
     slotsHtml+='</div>'
   }
-  app.innerHTML='<div class="cal-wrap"><div class="cal-header"><button onclick="window._navMonth(-1)">‹</button><h2>'+ML[curMonth]+' '+curYear+'</h2><button onclick="window._navMonth(1)">›</button></div><div class="cal-days">'+DL.map(d=>'<span>'+d+'</span>').join('')+'</div><div class="cal-grid">'+cells+'</div>'+slotsHtml+'<div class="powered">Powered by <a href="https://urbankids.club" target="_blank">Urban Kids Club</a></div></div>'
+  app.innerHTML='<div class="cal-wrap"><div class="cal-header"><button onclick="window._navMonth(-1)">‹</button><h2>'+ML[curMonth]+' '+curYear+'</h2><button onclick="window._navMonth(1)">›</button></div><div class="cal-days">'+DL.map(d=>'<span>'+d+'</span>').join('')+'</div><div class="cal-grid">'+cells+'</div>'+slotsHtml+'<div class="powered">Powered by <a href="https://urbankidsclub.de" target="_blank" rel="noopener">Urban Kids Club</a></div></div>'
 }
 window._navMonth=function(dir){curMonth+=dir;if(curMonth>11){curMonth=0;curYear++}if(curMonth<0){curMonth=11;curYear--};selDate=null;render()}
 window._selectDay=function(ds){selDate=selDate===ds?null:ds;render()}
@@ -488,7 +489,7 @@ if(params.get('font')){document.body.style.fontFamily=params.get('font')+',syste
     const{data}=await r.json()
     const published=data.filter(a=>a.status==='published')
     if(!published.length){app.innerHTML='<div class="empty">Aktuell keine Kurse.</div>';return}
-    app.innerHTML=published.map(a=>'<div class="course"><div class="course-title">'+esc(a.title)+'</div><div class="course-meta"><span class="badge">'+esc(a.category)+'</span> '+(a.ageRange?.min||'?')+'-'+(a.ageRange?.max||'?')+' Jahre · '+(a.duration||'?')+' Min.'+(a.pricing?.[0]?.amount?' · '+a.pricing[0].amount+'€':'')+'</div>'+(a.description?'<p style="font-size:13px;color:#3C2225;margin-top:8px">'+esc(a.description.substring(0,150))+(a.description.length>150?'...':'')+'</p>':'')+'</div>').join('')
+    app.innerHTML=published.map(a=>'<div class="course"><div class="course-title">'+esc(a.title)+'</div><div class="course-meta"><span class="badge">'+esc(a.category)+'</span> '+(a.ageRange?.min||'?')+'-'+(a.ageRange?.max||'?')+' Jahre · '+(a.duration||'?')+' Min.'+(a.pricing?.[0]?.amount?' · '+a.pricing[0].amount+'€':'')+'</div>'+(a.description?'<p style="font-size:13px;color:#3C2225;margin-top:8px">'+esc(a.description.substring(0,150))+(a.description.length>150?'...':'')+'</p>':'')+'</div>').join('')+'<div style="text-align:center;padding:8px 0;font-size:10px"><a href="https://urbankidsclub.de" target="_blank" rel="noopener" style="color:#94a3b8;text-decoration:none;transition:color 0.2s" onmouseover="this.style.color=\'#6B7280\'" onmouseout="this.style.color=\'#94a3b8\'">Powered by Urban Kids Club</a></div>'
   }catch(e){app.innerHTML='<div class="empty">Fehler beim Laden.</div>'}
 })()
 </script></body></html>`
@@ -679,7 +680,7 @@ async function doCheckin(){
   }
 }
 
-function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
 </script>
 </body></html>`
 }
