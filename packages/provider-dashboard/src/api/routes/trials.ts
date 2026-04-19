@@ -84,4 +84,34 @@ export function registerTrialRoutes(router: Router) {
     const stats = await TrialService.getConversionStats(auth.providerId)
     res.json({ data: stats })
   })
+
+  // Follow-up status for all trials of a provider
+  router.get('/api/providers/:providerId/trials/followup-status', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    const trials = await TrialService.listByProvider(auth.providerId)
+    const statuses = trials
+      .filter(t => t.status === 'completed' || t.status === 'converted')
+      .map(t => {
+        const fu = (t as any).followUpEmails || {}
+        let status: 'pending' | 'in_progress' | 'completed' | 'skipped' = 'pending'
+        if (t.status === 'converted') {
+          status = 'skipped'
+        } else if (fu.lastChanceSentAt) {
+          status = 'completed'
+        } else if (fu.feedbackSentAt || fu.reminderSentAt) {
+          status = 'in_progress'
+        }
+        return {
+          trialId: t.id,
+          childName: t.child?.name,
+          activityId: t.activityId,
+          status,
+          feedbackSentAt: fu.feedbackSentAt || null,
+          reminderSentAt: fu.reminderSentAt || null,
+          lastChanceSentAt: fu.lastChanceSentAt || null,
+        }
+      })
+    res.json({ data: statuses })
+  })
 }

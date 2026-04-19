@@ -857,5 +857,18 @@ server.listen(PORT, '0.0.0.0', () => {
       } catch (e) { /* silent */ }
     }, 30 * 60 * 1000) // check every 30 minutes
     console.log('  [Reminder] Course reminder job active (daily at 17:00 DE)')
+
+    // Process trial follow-up emails every hour
+    setInterval(async () => {
+      try {
+        const resp = await fetch(`http://localhost:${PORT}/api/admin/jobs/process-trial-followups`, { method: 'POST' })
+        const data = await resp.json() as any
+        const d = data.data
+        if (d && (d.totalFeedbackSent > 0 || d.totalReminderSent > 0 || d.totalLastChanceSent > 0)) {
+          console.log(`[TrialFollowup] Feedback: ${d.totalFeedbackSent}, Reminder: ${d.totalReminderSent}, LastChance: ${d.totalLastChanceSent}`)
+        }
+      } catch (e) { /* silent */ }
+    }, 60 * 60 * 1000) // every hour
+    console.log('  [TrialFollowup] Trial follow-up job running every hour')
   }
 })

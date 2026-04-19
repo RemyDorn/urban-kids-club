@@ -4,9 +4,10 @@
 
 import { store } from '../domain/store'
 import { generateId } from './id'
+import { createAuditEntry } from './helpers'
 import type {
   AutomationFlow, AutomationTrigger, AutomationChannel, AutomationStatus,
-  MessageTemplate, MarketingCampaign, ID,
+  MessageTemplate, MarketingCampaign, ID, TrialLesson,
 } from '../types'
 
 // --- Default-Templates (vorgefertigt) ---
@@ -199,4 +200,264 @@ export const MarketingService = {
     },
     update(_id: ID, _input: any): MarketingCampaign | undefined { return undefined },
   },
+
+  // --- Template Execution Engine ---
+
+  /**
+   * Replace {{variable}} placeholders in a template body with actual values.
+   */
+  replaceVariables(body: string, variables: Record<string, string>): string {
+    return body.replace(/\{\{(\w+)\}\}/g, (match, key) => {
+      return variables[key] ?? match
+    })
+  },
+
+  /**
+   * Execute a template: resolve variables, send via email, log in audit trail.
+   * Returns array of send results.
+   */
+  async executeTemplate(
+    templateId: ID,
+    providerId: ID,
+    recipients: { id: ID; email: string; name: string }[],
+    variables: Record<string, string>,
+  ): Promise<{ sent: number; failed: number; results: { recipientId: ID; success: boolean; error?: string }[] }> {
+    const templates = this.templates.list(providerId)
+    const template = templates.find(t => t.id === templateId)
+    if (!template) return { sent: 0, failed: 0, results: [{ recipientId: '', success: false, error: 'Template nicht gefunden' }] }
+
+    // Dynamic import to avoid circular dependency
+    const { EmailService } = await import('../lib/email')
+
+    const results: { recipientId: ID; success: boolean; error?: string }[] = []
+    let sent = 0
+    let failed = 0
+
+    for (const recipient of recipients) {
+      const recipientVars = { ...variables, parentName: recipient.name }
+      const body = this.replaceVariables(template.body, recipientVars)
+      const subject = template.subject
+        ? this.replaceVariables(template.subject, recipientVars)
+        : template.name
+
+      try {
+        const result = await EmailService.send({
+          to: recipient.email,
+          subject,
+          html: `<div style="font-family: 'Inter', 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; color: #3C2225; padding: 24px;">
+            <div style="white-space: pre-wrap; line-height: 1.6;">${body}</div>
+            <hr style="border: none; border-top: 1px solid #F2E6E2; margin: 24px 0;">
+            <p style="color: #94a3b8; font-size: 12px; text-align: center;">Powered by Urban Kids Club</p>
+          </div>`,
+          text: body.replace(/<[^>]*>/g, ''),
+        }, false)
+
+        if (result.success) {
+          sent++
+          results.push({ recipientId: recipient.id, success: true })
+        } else {
+          failed++
+          results.push({ recipientId: recipient.id, success: false, error: result.error })
+        }
+      } catch (err: any) {
+        failed++
+        results.push({ recipientId: recipient.id, success: false, error: err?.message || 'Unbekannter Fehler' })
+      }
+    }
+
+    // Log in audit trail
+    createAuditEntry({
+      providerId,
+      userId: providerId,
+      userType: 'provider',
+      action: 'marketing.template_executed',
+      entityType: 'template',
+      entityId: templateId,
+      changes: {
+        sent: { old: null, new: sent },
+        failed: { old: null, new: failed },
+        recipients: { old: null, new: recipients.length },
+      },
+    })
+
+    // Update flow stats if a flow uses this template
+    const flows = this.flows.list(providerId)
+    for (const flow of flows) {
+      if (flow.templateId === templateId && flow.status === 'active') {
+        flow.stats.sent += sent
+      }
+    }
+
+    // Track send in memSendLog
+    const existing = memSendLog.get(templateId) || { templateId, totalSent: 0, lastSentAt: new Date() }
+    existing.totalSent += sent
+    existing.lastSentAt = new Date()
+    memSendLog.set(templateId, existing)
+
+    return { sent, failed, results }
+  },
+
+  /**
+   * Get send counts per template for a provider.
+   */
+  getSendCounts(providerId: ID): { templateId: ID; totalSent: number; lastSentAt: Date | null }[] {
+    const templates = this.templates.list(providerId)
+    return templates.map(t => {
+      const log = memSendLog.get(t.id)
+      return {
+        templateId: t.id,
+        totalSent: log?.totalSent ?? 0,
+        lastSentAt: log?.lastSentAt ?? null,
+      }
+    })
+  },
+
+  /**
+   * Process trial follow-up emails for a provider.
+   * Checks completed trials and sends follow-up sequence based on timing:
+   * - 24h after completion: "Wie hat es gefallen?" feedback email
+   * - 3 days after completion (no booking): "Jetzt buchen" reminder
+   * - 7 days after completion (no booking): "Letzte Chance" with optional coupon
+   */
+  async processTrialFollowups(providerId: ID): Promise<{
+    feedbackSent: number
+    reminderSent: number
+    lastChanceSent: number
+  }> {
+    const now = new Date()
+    const stats = { feedbackSent: 0, reminderSent: 0, lastChanceSent: 0 }
+
+    // Check if marketing flows for trial_completed are active
+    const flows = this.flows.list(providerId)
+    const trialFlow = flows.find(f => f.trigger === 'trial_completed' && f.status === 'active')
+    const conversionFlow = flows.find(f => f.trigger === 'trial_no_conversion' && f.status === 'active')
+    if (!trialFlow && !conversionFlow) return stats
+
+    // Get all completed (not yet converted) trials
+    const completedTrials: TrialLesson[] = []
+    for (const trial of store.state.trialLessons.values()) {
+      if (trial.providerId !== providerId) continue
+      if (trial.status !== 'completed') continue
+      completedTrials.push(trial)
+    }
+
+    const { EmailService } = await import('../lib/email')
+
+    for (const trial of completedTrials) {
+      const completedAt = trial.updatedAt
+      const hoursSinceCompletion = (now.getTime() - completedAt.getTime()) / (1000 * 60 * 60)
+      const followUp = trial.followUpEmails || {}
+
+      // Look up parent email
+      const parent = store.state.parents?.get(trial.parentId) as any
+      if (!parent?.contact?.email && !parent?.email) continue
+      const parentEmail = parent?.contact?.email || parent?.email || ''
+      const parentName = parent?.name || parent?.contact?.name || 'Eltern'
+
+      // Look up activity
+      const activity = store.state.activities.get(trial.activityId)
+      if (!activity) continue
+
+      // Look up provider
+      const provider = store.state.providers.get(providerId)
+      const providerName = provider?.name || ''
+
+      // 1. Feedback email (24h after completion)
+      if (trialFlow && !followUp.feedbackSentAt && hoursSinceCompletion >= 24) {
+        try {
+          await EmailService.sendTrialFollowUp(parentEmail, {
+            parentName,
+            childName: trial.child?.name || 'Ihr Kind',
+            courseName: activity.title,
+            providerName,
+          })
+          followUp.feedbackSentAt = now
+          trial.followUpEmails = followUp
+          stats.feedbackSent++
+        } catch (e) {
+          console.error('[TrialFollowup] Feedback email failed:', e)
+        }
+      }
+
+      // 2. Reminder email (3 days after completion, no booking)
+      if (conversionFlow && !followUp.reminderSentAt && followUp.feedbackSentAt && hoursSinceCompletion >= 72) {
+        try {
+          const origin = process.env.APP_PUBLIC_URL || 'https://dev.urbankids.club'
+          const bookingUrl = `${origin}/widget/${provider?.slug || ''}`
+          await EmailService.send({
+            to: parentEmail,
+            subject: `Platz sichern: ${activity.title} wartet auf ${trial.child?.name || 'euch'}!`,
+            html: `
+              <div style="font-family: 'Inter', 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; color: #3C2225;">
+                <div style="background: linear-gradient(135deg, #D4956A, #c4854a); padding: 32px; border-radius: 16px 16px 0 0; text-align: center;">
+                  <div style="font-size: 48px; margin-bottom: 8px;">📋</div>
+                  <h1 style="color: white; margin: 0; font-size: 24px; font-weight: 700;">Jetzt Platz sichern!</h1>
+                </div>
+                <div style="padding: 32px; background: #FFF9F5; border-radius: 0 0 16px 16px;">
+                  <p style="font-size: 16px;">Hey ${parentName},</p>
+                  <p>${trial.child?.name || 'Ihr Kind'} war bei der Probestunde <strong>"${activity.title}"</strong> dabei. Die Kurse sind beliebt und die Plätze begrenzt!</p>
+                  <div style="text-align: center; margin: 28px 0;">
+                    <a href="${bookingUrl}" style="display: inline-block; background: #D4956A; color: white; padding: 14px 32px; border-radius: 12px; text-decoration: none; font-weight: 600; font-size: 16px;">Jetzt buchen</a>
+                  </div>
+                  <p style="color: #8B7355; font-size: 14px;">Bei Fragen sind wir jederzeit erreichbar!</p>
+                  <hr style="border: none; border-top: 1px solid #F2E6E2; margin: 24px 0;">
+                  <p style="color: #94a3b8; font-size: 12px; text-align: center;">Powered by Urban Kids Club</p>
+                </div>
+              </div>
+            `,
+            text: `Hey ${parentName}, ${trial.child?.name || 'Ihr Kind'} war bei "${activity.title}" dabei. Jetzt Platz sichern: ${bookingUrl}`,
+          }, false)
+          followUp.reminderSentAt = now
+          trial.followUpEmails = followUp
+          stats.reminderSent++
+        } catch (e) {
+          console.error('[TrialFollowup] Reminder email failed:', e)
+        }
+      }
+
+      // 3. Last chance email (7 days after completion, no booking)
+      if (conversionFlow && !followUp.lastChanceSentAt && followUp.reminderSentAt && hoursSinceCompletion >= 168) {
+        try {
+          const origin = process.env.APP_PUBLIC_URL || 'https://dev.urbankids.club'
+          const bookingUrl = `${origin}/widget/${provider?.slug || ''}`
+          await EmailService.send({
+            to: parentEmail,
+            subject: `Letzte Chance: Platz für ${trial.child?.name || 'euch'} in "${activity.title}" sichern`,
+            html: `
+              <div style="font-family: 'Inter', 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; color: #3C2225;">
+                <div style="background: linear-gradient(135deg, #e74c3c, #c0392b); padding: 32px; border-radius: 16px 16px 0 0; text-align: center;">
+                  <div style="font-size: 48px; margin-bottom: 8px;">⏰</div>
+                  <h1 style="color: white; margin: 0; font-size: 24px; font-weight: 700;">Letzte Chance!</h1>
+                </div>
+                <div style="padding: 32px; background: #FFF9F5; border-radius: 0 0 16px 16px;">
+                  <p style="font-size: 16px;">Hey ${parentName},</p>
+                  <p>Die Plätze in <strong>"${activity.title}"</strong> sind fast voll. Wenn ${trial.child?.name || 'Ihr Kind'} die Probestunde gefallen hat, solltest du jetzt zuschlagen!</p>
+                  <div style="background: #fdf4ed; padding: 16px; border-radius: 12px; border: 2px dashed #D4956A; margin: 20px 0; text-align: center;">
+                    <div style="font-size: 14px; color: #8B7355;">Nur noch wenige Plätze frei</div>
+                  </div>
+                  <div style="text-align: center; margin: 28px 0;">
+                    <a href="${bookingUrl}" style="display: inline-block; background: #e74c3c; color: white; padding: 14px 32px; border-radius: 12px; text-decoration: none; font-weight: 600; font-size: 16px;">Letzten Platz sichern</a>
+                  </div>
+                  <p style="color: #8B7355; font-size: 14px;">Kein Interesse mehr? Kein Problem — wir haben viele weitere Kurse!</p>
+                  <hr style="border: none; border-top: 1px solid #F2E6E2; margin: 24px 0;">
+                  <p style="color: #94a3b8; font-size: 12px; text-align: center;">Powered by Urban Kids Club</p>
+                </div>
+              </div>
+            `,
+            text: `Hey ${parentName}, letzte Chance! Platz in "${activity.title}" sichern: ${bookingUrl}`,
+          }, false)
+          followUp.lastChanceSentAt = now
+          trial.followUpEmails = followUp
+          stats.lastChanceSent++
+        } catch (e) {
+          console.error('[TrialFollowup] Last chance email failed:', e)
+        }
+      }
+    }
+
+    return stats
+  },
 }
+
+// In-memory send log for template execution tracking
+const memSendLog = new Map<string, { templateId: ID; totalSent: number; lastSentAt: Date }>()

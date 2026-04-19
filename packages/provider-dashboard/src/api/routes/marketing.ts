@@ -157,4 +157,45 @@ export function registerMarketingRoutes(router: Router) {
       res.json({ success: true })
     } catch (e: any) { res.status(500).json({ error: e.message ?? 'Interner Fehler' }) }
   })
+
+  // --- Template Execution ---
+  router.post('/api/providers/:providerId/marketing/templates/:templateId/execute', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    if (!checkPermission(auth, res, 'marketing', 'edit')) return
+    const { recipients, variables } = req.body ?? {}
+    if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
+      return res.status(400).json({ error: 'recipients (Array mit id, email, name) ist Pflichtfeld' })
+    }
+    try {
+      const result = await MarketingService.executeTemplate(
+        req.params.templateId,
+        auth.providerId,
+        recipients,
+        variables || {},
+      )
+      res.json({ data: result })
+    } catch (e: any) { res.status(500).json({ error: e.message ?? 'Interner Fehler' }) }
+  })
+
+  // --- Send Counts per Template ---
+  router.get('/api/providers/:providerId/marketing/send-counts', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    try {
+      const counts = await MarketingService.getSendCounts(auth.providerId)
+      res.json({ data: counts })
+    } catch (e: any) { res.status(500).json({ error: e.message ?? 'Interner Fehler' }) }
+  })
+
+  // --- Trial Follow-up Processing (manual trigger) ---
+  router.post('/api/providers/:providerId/marketing/process-trial-followups', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    if (!checkPermission(auth, res, 'marketing', 'edit')) return
+    try {
+      const result = await MarketingService.processTrialFollowups(auth.providerId)
+      res.json({ data: result })
+    } catch (e: any) { res.status(500).json({ error: e.message ?? 'Interner Fehler' }) }
+  })
 }

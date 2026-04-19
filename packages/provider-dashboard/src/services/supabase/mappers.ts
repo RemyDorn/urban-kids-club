@@ -1101,6 +1101,11 @@ export function trialFromDb(r: Row): TrialLesson {
     convertedToBookingId: r.converted_to_booking_id ?? undefined,
     feedback: r.feedback ?? undefined,
     parentFeedback: r.parent_feedback ?? undefined,
+    followUpEmails: r.follow_up_emails ? {
+      feedbackSentAt: r.follow_up_emails.feedbackSentAt ? toDate(r.follow_up_emails.feedbackSentAt) : undefined,
+      reminderSentAt: r.follow_up_emails.reminderSentAt ? toDate(r.follow_up_emails.reminderSentAt) : undefined,
+      lastChanceSentAt: r.follow_up_emails.lastChanceSentAt ? toDate(r.follow_up_emails.lastChanceSentAt) : undefined,
+    } : undefined,
     createdAt: toDate(r.created_at),
     updatedAt: toDate(r.updated_at),
   }
@@ -1119,6 +1124,7 @@ export function trialToDb(t: Partial<TrialLesson> & { id?: ID }): Row {
   if (t.convertedToBookingId !== undefined) row.converted_to_booking_id = t.convertedToBookingId
   if (t.feedback !== undefined) row.feedback = t.feedback
   if (t.parentFeedback !== undefined) row.parent_feedback = t.parentFeedback
+  if (t.followUpEmails !== undefined) row.follow_up_emails = t.followUpEmails
   return row
 }
 
