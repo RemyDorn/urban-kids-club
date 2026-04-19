@@ -592,7 +592,7 @@ export function registerPublicRoutes(router: Router) {
     const { data: policy } = await db.from('cancellation_policies').select('*').eq('provider_id', activity.provider_id).single()
     res.json({
       activity: { id: activity.id, title: activity.title, category: activity.category, pricing: activity.pricing, paymentOnline: activity.payment_online, paymentOnsite: activity.payment_onsite },
-      provider: { stripeConnected: provider?.stripe_connected || !!process.env.STRIPE_SECRET_KEY, paypalConnected: provider?.paypal_connected || false },
+      provider: { stripeConnected: provider?.stripe_connected || !!process.env.STRIPE_SECRET_KEY, paypalConnected: provider?.paypal_connected || !!process.env.PAYPAL_CLIENT_ID },
       cancellation: policy || { fee_type: 'fixed', fee_value: 0, deadline_hours: 48, custom_text: '' },
     })
   })

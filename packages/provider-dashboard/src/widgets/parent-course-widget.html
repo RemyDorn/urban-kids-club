@@ -8,7 +8,7 @@
   /* ============================================================
      Parent Course Widget – Socialy / Urban Kids Club
      Einbettbar via iframe auf Squarespace oder jeder Website.
-     3 Views: Kursblock-Übersicht | Meine Kurse & Credits | Nachhol-Buchung
+     3 Views: Kursblock-Übersicht | Meine Kurse & Credits | Add-Up Buchung
      ============================================================ */
 
   :root {
@@ -328,7 +328,7 @@
     cursor: not-allowed;
   }
 
-  /* === Makeup Booking Modal === */
+  /* === Add-Up Booking Modal === */
   .modal-overlay {
     display: none;
     position: fixed;
@@ -990,18 +990,18 @@
   </div>
 
   <!-- ============================================================ -->
-  <!-- TAB 3: Guthaben & Nachhol-Buchung -->
+  <!-- TAB 3: Guthaben & Add-Up Buchung -->
   <!-- ============================================================ -->
   <div class="tab-panel" id="tab-credits">
     <div id="credits-content"></div>
   </div>
 </div>
 
-<!-- Makeup Booking Modal -->
+<!-- Add-Up Booking Modal -->
 <div class="modal-overlay" id="makeup-modal">
   <div class="modal">
     <div class="modal-header">
-      <span class="modal-title">Nachholtermin buchen</span>
+      <span class="modal-title">Add-Up Termin buchen</span>
       <button class="modal-close" onclick="closeMakeupModal()">&times;</button>
     </div>
     <div class="modal-body" id="makeup-modal-body">
@@ -1010,7 +1010,7 @@
     <div class="modal-footer" id="makeup-modal-footer" style="display:none">
       <button class="btn btn-secondary btn-sm" onclick="closeMakeupModal()">Abbrechen</button>
       <button class="btn btn-primary btn-sm" id="btn-confirm-makeup" disabled onclick="confirmMakeupBooking()">
-        Nachholtermin buchen
+        Add-Up Termin buchen
       </button>
     </div>
   </div>
@@ -1447,7 +1447,7 @@ async function loadMyCourses() {
             expected: ['Geplant', 'status-expected'],
           }
           ;[statusLabel, statusClass] = map[att.status] || ['', '']
-          if (att.isMakeup) statusLabel = '↩ Nachhol: ' + statusLabel
+          if (att.isMakeup) statusLabel = '↩ Add-Up: ' + statusLabel
         } else if (sess.status === 'scheduled') {
           statusLabel = 'Geplant'
           statusClass = 'status-scheduled'
@@ -1462,7 +1462,7 @@ async function loadMyCourses() {
           <li class="session-item">
             <div>
               <div class="session-date">${formatDate(sess.date)}</div>
-              <div class="session-time">${sess.startTime} – ${sess.endTime} Uhr</div>
+              <div class="session-time">${(sess.startTime||'').slice(0,5)} – ${(sess.endTime||'').slice(0,5)} Uhr</div>
             </div>
             <div style="display:flex;align-items:center;gap:8px">
               <span class="session-status ${statusClass}">${statusLabel}</span>
@@ -1501,7 +1501,7 @@ async function loadMyCourses() {
 }
 
 // ============================================================
-// TAB 3: Guthaben & Nachhol-Buchung
+// TAB 3: Guthaben & Add-Up Buchung
 // ============================================================
 async function loadCredits() {
   const container = document.getElementById('credits-content')
@@ -1510,7 +1510,7 @@ async function loadCredits() {
     container.innerHTML = `
       <div class="login-prompt">
         <div class="empty-state-icon" style="font-size:48px;opacity:0.5;margin-bottom:12px">🎟️</div>
-        <p>Melde dich an, um dein Guthaben und Nachholtermine zu sehen.</p>
+        <p>Melde dich an, um dein Guthaben und Add-Up Termine zu sehen.</p>
         <button class="btn btn-primary" onclick="openLogin()">Anmelden</button>
       </div>`
     return
@@ -1566,7 +1566,7 @@ async function loadCredits() {
               <div class="credit-actions">
                 <span class="badge badge-available">Verfügbar</span>
                 <button class="btn btn-primary btn-sm" onclick="openMakeupModal('${escAttr(credit.id)}')">
-                  Nachholen
+                  Add-Up buchen
                 </button>
               </div>
             </div>
@@ -1574,19 +1574,19 @@ async function loadCredits() {
         </div>`
     }
 
-    // Gebuchte Nachholtermine
+    // Gebuchte Add-Up Termine
     if (upcomingMakeups.length > 0) {
       html += `
         <div class="card">
           <div class="card-header">
-            <div class="card-title">Gebuchte Nachholtermine</div>
+            <div class="card-title">Gebuchte Add-Up Termine</div>
           </div>
           ${upcomingMakeups.map(m => `
             <div class="credit-card">
               <div class="credit-info">
                 <div class="credit-type">${esc(m.childName)}</div>
                 <div class="credit-detail">
-                  Nachholtermin am ${formatDate(m._targetDate || '')} um ${m._targetTime || ''} Uhr
+                  Add-Up Termin am ${formatDate(m._targetDate || '')} um ${m._targetTime || ''} Uhr
                 </div>
               </div>
               <div class="credit-actions">
@@ -1638,7 +1638,7 @@ async function loadCredits() {
 }
 
 // ============================================================
-// Makeup Modal – Verfügbare Slots laden
+// Add-Up Modal – Verfügbare Slots laden
 // ============================================================
 async function openMakeupModal(creditId) {
   selectedCreditId = creditId
@@ -1660,7 +1660,7 @@ async function openMakeupModal(creditId) {
       body.innerHTML = `
         <div class="empty-state" style="padding:20px 0">
           <div class="empty-state-icon" style="font-size:36px">😔</div>
-          <div class="empty-state-text">Aktuell keine verfügbaren Nachholtermine für diesen Kurstyp.</div>
+          <div class="empty-state-text">Aktuell keine verfügbaren Add-Up Termine für diesen Kurstyp.</div>
         </div>`
       return
     }
@@ -1669,7 +1669,7 @@ async function openMakeupModal(creditId) {
 
     body.innerHTML = `
       <p style="margin-bottom:12px;font-size:14px;color:var(--text-muted)">
-        Wähle einen freien Termin zum Nachholen:
+        Wähle einen freien Add-Up Termin:
       </p>
       <div class="slot-grid">
         ${slots.map(slot => `
@@ -1708,12 +1708,12 @@ async function confirmMakeupBooking() {
     })
 
     closeMakeupModal()
-    showToast('Nachholtermin erfolgreich gebucht!')
+    showToast('Add-Up Termin erfolgreich gebucht!')
     loadCredits()
   } catch (e) {
     showToast(e.message || 'Fehler bei der Buchung', true)
     btn.disabled = false
-    btn.textContent = 'Nachholtermin buchen'
+    btn.textContent = 'Add-Up Termin buchen'
   }
 }
 
@@ -1727,7 +1727,7 @@ function closeMakeupModal() {
 // Cancel Actions
 // ============================================================
 function cancelAttendance(attendanceId, childName, date) {
-  showConfirmDialog(`${childName} für den ${formatDate(date)} absagen?\n\nBei Absage mehr als 24h vorher erhältst du ein Guthaben zum Nachholen.`, async () => {
+  showConfirmDialog(`${childName} für den ${formatDate(date)} absagen?\n\nBei Absage mehr als 24h vorher erhältst du ein Guthaben für einen Add-Up Termin.`, async () => {
     try {
       await api(`/attendance/${attendanceId}/cancel`, { method: 'POST' })
       showToast('Termin wurde abgesagt.')
@@ -1739,10 +1739,10 @@ function cancelAttendance(attendanceId, childName, date) {
 }
 
 function cancelMakeup(makeupId) {
-  showConfirmDialog('Nachholtermin wirklich stornieren?\n\nDein Guthaben wird wiederhergestellt.', async () => {
+  showConfirmDialog('Add-Up Termin wirklich stornieren?\n\nDein Guthaben wird wiederhergestellt.', async () => {
     try {
       await api(`/makeup-bookings/${makeupId}`, { method: 'DELETE' })
-      showToast('Nachholtermin storniert. Guthaben wiederhergestellt.')
+      showToast('Add-Up Termin storniert. Guthaben wiederhergestellt.')
       loadCredits()
     } catch (e) {
       showToast(e.message || 'Fehler beim Stornieren', true)
@@ -2006,7 +2006,7 @@ async function submitCheckout() {
     showToast(e.message || 'Fehler bei der Buchung. Bitte versuche es erneut.', true)
     if (submitBtn) {
       submitBtn.disabled = false
-      submitBtn.textContent = 'Verbindlich buchen'
+      submitBtn.textContent = 'Erneut versuchen'
     }
   }
 }

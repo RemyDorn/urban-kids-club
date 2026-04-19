@@ -1309,16 +1309,22 @@
 
       let activities, occupancy, holidays
       try {
-        const results = await Promise.all([
+        const results = await Promise.allSettled([
           api(`/providers/${currentProvider.id}/activities`),
           api(`/providers/${currentProvider.id}/reports/occupancy`),
           api(`/providers/${currentProvider.id}/holidays`),
           api('/rooms'),
           api(`/providers/${currentProvider.id}/team`),
         ])
-        activities = results[0]; occupancy = results[1]; holidays = results[2]
-        _rooms = results[3].data || []
-        _calTeamMembers = results[4].data || []
+        // Activities are required — if they fail, calendar can't render
+        if (results[0].status === 'rejected') throw results[0].reason
+        activities = results[0].value
+        // Occupancy, holidays, rooms, team are optional — graceful degradation
+        occupancy = results[1].status === 'fulfilled' ? results[1].value : { data: [] }
+        holidays = results[2].status === 'fulfilled' ? results[2].value : { data: [] }
+        _rooms = results[3].status === 'fulfilled' ? (results[3].value.data || []) : []
+        _calTeamMembers = results[4].status === 'fulfilled' ? (results[4].value.data || []) : []
+        if (results[1].status === 'rejected') console.warn('Occupancy data failed, calendar will render without it:', results[1].reason)
       } catch (err) {
         console.error('Calendar data fetch error:', err)
         calContainer.innerHTML = '<div class="text-red-500 text-sm p-4">Kalender konnte nicht geladen werden.</div>'
@@ -2698,7 +2704,7 @@
       const [dash, stats, occupancy, activitiesRes, bookingsRes, waitlistRes] = await Promise.all([
         api(`/providers/${currentProvider.id}/dashboard`),
         api(`/providers/${currentProvider.id}/bookings/stats`),
-        api(`/providers/${currentProvider.id}/reports/occupancy`),
+        api(`/providers/${currentProvider.id}/reports/occupancy`).catch(function() { return { data: [] } }),
         api(`/providers/${currentProvider.id}/activities`),
         api(`/providers/${currentProvider.id}/bookings`).catch(function() { return { data: [] } }),
         api(`/providers/${currentProvider.id}/activities`).then(async actRes => {
@@ -4520,7 +4526,8 @@
                     <span class="px-2 py-0.5 rounded text-xs font-medium ${hasFZ ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}" title="Führungszeugnis">${hasFZ ? '✓' : '✗'} FZ</span>
                     <span class="px-2 py-0.5 rounded text-xs font-medium ${hasFirstAid ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}" title="Erste Hilfe">${hasFirstAid ? '✓' : '✗'} EH</span>
                   </div>
-                  ${m.userId ? '<span class="text-xs text-green-600 font-medium flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>Angemeldet</span>'
+                  ${m.role === 'owner' ? '<span class="text-xs text-green-600 font-medium flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>Inhaber</span>'
+                    : m.userId ? '<span class="text-xs text-green-600 font-medium flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>Angemeldet</span>'
                     : m.inviteSentAt ? `<div class="flex items-center gap-2"><span class="text-xs text-amber-600 font-medium flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>Einladung gesendet</span><button onclick="inviteTeamMember('${m.id}')" class="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded hover:bg-amber-200 font-medium">Erneut senden</button></div>`
                     : `<button onclick="inviteTeamMember('${m.id}')" class="text-xs bg-brand-100 text-brand-700 px-3 py-1 rounded-lg hover:bg-brand-200 font-medium">Einladen</button>`}
                   <button onclick="editTeamMember('${m.id}')" class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded hover:bg-gray-200 font-medium" title="Bearbeiten">Bearbeiten</button>
@@ -5626,7 +5633,7 @@
                     <div class="flex items-center gap-3">
                       <span class="font-mono text-xs ${isExtra ? 'text-orange-500' : 'text-gray-400'}">#${sess.sessionNumber}${isExtra ? ' (Extra)' : ''}</span>
                       <span class="font-medium">${fmtDateDE(sess.date)}</span>
-                      <span class="text-gray-400">${sess.startTime}–${sess.endTime}</span>
+                      <span class="text-gray-400">${(sess.startTime||'').slice(0,5)}–${(sess.endTime||'').slice(0,5)}</span>
                     </div>
                     <div class="flex items-center gap-2">
                       <span class="text-xs font-semibold ${sessStatusColors[sess.status] || ''}">${sessStatusLabels[sess.status] || sess.status}</span>
@@ -5776,13 +5783,13 @@
             <input type="hidden" name="totalSessions" value="8">
             <input type="hidden" name="pricePerBlock" value="140">
             <input type="hidden" name="capacity" value="10">
-            ${(currentProvider.makeup_enabled || currentProvider.makeupEnabled) ? `<div class="flex gap-3">
+            <div class="flex gap-3">
               <div class="flex-1">
-                <label class="block text-sm font-medium text-gray-700 mb-1">Nachholplätze</label>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Add-Up Plätze</label>
                 <input type="number" name="makeupCapacity" min="0" max="10" value="0" class="w-full border rounded-lg px-3 py-2 text-sm">
-                <p class="text-xs text-gray-400 mt-1">Plätze für Nachhol-Termine (0 = keine)</p>
+                <p class="text-xs text-gray-400 mt-1">Zusätzliche Plätze für Add-Up Termine (0 = keine)</p>
               </div>
-            </div>` : ''}
+            </div>
             <input type="hidden" name="maxCreditsPerEnrollment" value="2">
             <button type="button" id="btnCreateBlock" class="w-full bg-brand-500 text-white py-2.5 rounded-lg font-semibold hover:bg-brand-600 transition">Block erstellen</button>
           </div>
@@ -5816,7 +5823,7 @@
           <div>📋 ${d.sessions} Termine</div>
           <div>💰 ${d.price}€ pro Block</div>
           <div>👥 ${d.capacity} Plätze</div>
-          <div>🔄 Nachholplätze: konfigurierbar</div>
+          <div>🔄 Add-Up Plätze: konfigurierbar</div>
           ${endDateHint}
         </div>
       `
@@ -6175,7 +6182,7 @@
                 <div class="flex justify-between items-center">
                   <div>
                     <div class="font-medium text-sm">${escapeHtml(title)}</div>
-                    <div class="text-xs text-gray-500">${fmtDateDE(session.date)} · ${session.startTime}–${session.endTime} Uhr · Termin #${session.sessionNumber}</div>
+                    <div class="text-xs text-gray-500">${fmtDateDE(session.date)} · ${(session.startTime||'').slice(0,5)}–${(session.endTime||'').slice(0,5)} Uhr · Termin #${session.sessionNumber}</div>
                   </div>
                   <button onclick="openAttendanceForSession('${session.id}', '${block.id}')" class="bg-brand-500 text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-brand-600">Anwesenheit</button>
                 </div>
@@ -7476,8 +7483,8 @@
               <!-- Makeup Toggle -->
               <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                 <div>
-                  <div class="font-medium text-gray-900">Makeup- & Guthaben-System</div>
-                  <div class="text-sm text-gray-500 mt-1">Teilnehmer erhalten bei Ausfall ein Guthaben und können den Termin in einem anderen Block nachholen. Reserviert automatisch Makeup-Plätze pro Block.</div>
+                  <div class="font-medium text-gray-900">Add-Up & Guthaben-System</div>
+                  <div class="text-sm text-gray-500 mt-1">Teilnehmer erhalten bei Ausfall ein Guthaben und können den Termin in einem anderen Block nachholen. Reserviert automatisch Add-Up Plätze pro Block.</div>
                 </div>
                 <label class="relative inline-flex items-center cursor-pointer ml-4 flex-shrink-0">
                   <input type="checkbox" ${makeupEnabled ? 'checked' : ''} onchange="toggleMakeupSystem(this.checked)" class="sr-only peer">
@@ -7489,7 +7496,7 @@
               <div class="p-4 bg-brand-50/30 border border-brand-200 rounded-lg text-sm text-gray-700 space-y-2">
                 <div class="font-medium text-brand-700 mb-2">Wenn aktiviert:</div>
                 <ul class="space-y-1 text-gray-600">
-                  <li>• Jeder Kursblock reserviert die letzten Plätze als Makeup-Slots (konfigurierbar pro Block)</li>
+                  <li>• Jeder Kursblock reserviert die letzten Plätze als Add-Up Slots (konfigurierbar pro Block)</li>
                   <li>• Bei Absage eines Termins kannst du allen Teilnehmern automatisch ein Guthaben ausstellen</li>
                   <li>• Teilnehmer können das Guthaben in einem anderen Block einlösen</li>
                   <li>• Neue Buchungen über der festen Grenze müssen manuell freigegeben werden</li>

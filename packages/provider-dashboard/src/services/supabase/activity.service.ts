@@ -86,6 +86,16 @@ export const SupabaseActivityService = {
     if (providerId) query = query.eq('provider_id', providerId)
     const { data, error } = await query.select().maybeSingle()
     if (error) throw error
+
+    // Also cancel all active/upcoming course blocks for this activity
+    if (data) {
+      const { error: blockErr } = await sb.from('course_blocks')
+        .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+        .eq('activity_id', id)
+        .in('status', ['active', 'upcoming'])
+      if (blockErr) console.error('[Activity] Failed to cancel blocks on archive:', blockErr.message)
+    }
+
     return data ? activityFromDb(data) : undefined
   },
 

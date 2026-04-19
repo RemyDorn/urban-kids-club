@@ -97,7 +97,8 @@ export function registerActivityRoutes(router: Router) {
           let d = new Date(startDate)
           while (d.getDay() !== targetDay) d.setDate(d.getDate() + 1)
           let num = 1
-          while (d <= endD && num <= packageSize) {
+          // Generate exactly packageSize sessions (don't constrain by endD which may be too short)
+          while (num <= packageSize) {
             const [sh, sm] = slot.startTime.split(':').map(Number)
             const totalEndMin = sh * 60 + sm + duration
             const endH = Math.floor(totalEndMin / 60)
@@ -113,7 +114,12 @@ export function registerActivityRoutes(router: Router) {
             num++
             d.setDate(d.getDate() + 7)
           }
-          if (sessions.length) await sb.from('block_sessions').insert(sessions)
+          // Update block end_date to match actual last session
+          if (sessions.length) {
+            await sb.from('block_sessions').insert(sessions)
+            const lastSessionDate = sessions[sessions.length - 1].date
+            await sb.from('course_blocks').update({ end_date: lastSessionDate }).eq('id', block.id)
+          }
           console.log(`[AutoBlock] Created block with ${sessions.length} sessions for "${(activity as any).title}"`)
         }
       }

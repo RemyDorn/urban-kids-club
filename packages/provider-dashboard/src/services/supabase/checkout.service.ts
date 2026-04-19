@@ -237,18 +237,18 @@ export class CheckoutService {
     // Normal checkout: atomic capacity check via DB function
     // Uses SELECT ... FOR UPDATE to lock the block row, preventing TOCTOU race conditions
     const { data: rpcResult, error: rpcError } = await db.rpc('atomic_create_booking', {
-      p_provider_id: params.providerId,
       p_activity_id: params.activityId,
+      p_amount: params.paymentMethod !== 'onsite' ? params.amount / 100 : params.amount / 100,
       p_block_id: activeBlock.id,
-      p_parent_id: parent.id,
+      p_booked_date: params.bookedDate || null,
       p_child_info: childInfo,
-      p_payment_method: params.paymentMethod,
-      p_amount: params.paymentMethod !== 'onsite' ? params.amount / 100 : 0,
       p_currency: params.currency || 'EUR',
+      p_parent_id: parent.id,
+      p_payment_method: params.paymentMethod,
+      p_paypal_order_id: params.paypalOrderId || null,
+      p_provider_id: params.providerId,
       p_source: 'widget',
       p_stripe_session_id: params.stripeSessionId || null,
-      p_paypal_order_id: params.paypalOrderId || null,
-      p_booked_date: params.bookedDate || null,
     })
 
     if (rpcError) throw new Error(rpcError.message)
