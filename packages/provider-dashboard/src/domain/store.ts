@@ -87,6 +87,9 @@ export interface StoreState {
   sessionAttendances: Map<ID, SessionAttendanceRecord>
   sessionCredits: Map<ID, SessionCredit>
   makeupBookings: Map<ID, MakeupBooking>
+
+  // Dedup-Tracking: Versendete Kurs-Erinnerungen (Key: "bookingId-date")
+  sentCourseReminders: Set<string>
 }
 
 // --- Sekundärindizes für schnelle Lookups ---
@@ -222,6 +225,7 @@ class Store {
       sessionAttendances: new Map(),
       sessionCredits: new Map(),
       makeupBookings: new Map(),
+      sentCourseReminders: new Set(),
     }
 
     this.indexes = {

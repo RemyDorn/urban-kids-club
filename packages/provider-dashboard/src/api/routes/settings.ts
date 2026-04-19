@@ -236,4 +236,34 @@ export function registerSettingsRoutes(router: Router) {
     if (error) return res.error(500, error.message)
     res.json({ success: true })
   })
+
+  // ============================================================
+  // REMINDER EMAILS (Erinnerungs-E-Mails)
+  // ============================================================
+
+  router.get('/api/providers/:id/reminder-settings', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    if (auth.providerId !== req.params.id) return res.error(403, 'Zugriff verweigert')
+    const db = getServiceClient()
+    const { data } = await db.from('providers').select('reminder_emails_enabled').eq('id', auth.providerId).single()
+    // Default: true (enabled) if not explicitly set
+    res.json({ data: { reminderEmailsEnabled: data?.reminder_emails_enabled !== false } })
+  })
+
+  router.put('/api/providers/:id/reminder-settings', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    if (!checkPermission(auth, res, 'settings', 'edit')) return
+    if (auth.providerId !== req.params.id) return res.error(403, 'Zugriff verweigert')
+    const { reminderEmailsEnabled } = req.body as { reminderEmailsEnabled: boolean }
+    if (typeof reminderEmailsEnabled !== 'boolean') return res.error(400, 'reminderEmailsEnabled muss ein Boolean sein')
+    const db = getServiceClient()
+    const { error } = await db.from('providers').update({
+      reminder_emails_enabled: reminderEmailsEnabled,
+      updated_at: new Date().toISOString()
+    }).eq('id', auth.providerId)
+    if (error) return res.error(500, error.message)
+    res.json({ success: true, data: { reminderEmailsEnabled } })
+  })
 }

@@ -122,4 +122,4 @@ export const MarketingService = USE_SUPABASE ? SupabaseMarketingService : MemMar
 
 export { createNotification, createAuditEntry, calcDocumentStatus, getEntitiesFromIndex } from './helpers'
 export { Validators, WAITLIST_SIGNAL } from './validators'
-export { TrialConversionWorkflow, WaitlistConversionWorkflow, BackgroundJobs, CascadeDelete } from './workflows'
+export { TrialConversionWorkflow, WaitlistConversionWorkflow, BackgroundJobs, CascadeDelete, sendCourseReminders } from './workflows'

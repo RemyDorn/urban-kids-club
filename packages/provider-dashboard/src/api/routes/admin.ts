@@ -154,9 +154,9 @@ export function registerAdminRoutes(router: Router) {
     const { EmailService } = await import('../../lib/email')
     const tomorrowFormatted = tomorrow.toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })
 
-    // Batch-fetch all provider info upfront
+    // Batch-fetch all provider info upfront (including reminder setting)
     const providerIds = [...new Set(tomorrowActivities.map(a => a.providerId))]
-    const { data: providerRows } = await db.from('providers').select('id, company_name, address_street, address_city').in('id', providerIds)
+    const { data: providerRows } = await db.from('providers').select('id, company_name, address_street, address_city, reminder_emails_enabled').in('id', providerIds)
     const providerMap = new Map((providerRows ?? []).map((p: any) => [p.id, p]))
 
     // Batch-fetch all blocks for all tomorrow's activities in ONE query
@@ -223,6 +223,8 @@ export function registerAdminRoutes(router: Router) {
     const sentEmails = new Set<string>()
     for (const act of tomorrowActivities) {
       const provider = providerMap.get(act.providerId) as any
+      // Respect provider setting (default: true — send unless explicitly disabled)
+      if (provider?.reminder_emails_enabled === false) continue
       const location = provider?.address_street ? `${provider.address_street}, ${provider.address_city}` : undefined
       const pcMap = parentChildByActivity.get(act.id)
       if (!pcMap || pcMap.size === 0) continue
@@ -370,5 +372,16 @@ export function registerAdminRoutes(router: Router) {
       await db.auth.admin.updateUserById(authUser.id, { ban_duration: '876000h' }) // ban for 100 years
     }
     res.json({ success: true })
+  })
+
+  // Process trial follow-up emails (call via cron/setInterval every hour)
+  router.post('/api/admin/jobs/process-trial-followups', async (req, res) => {
+    const admin = await authenticateAdmin(req, res); if (!admin) return
+    try {
+      const result = await BackgroundJobs.processTrialFollowups()
+      res.json({ data: result })
+    } catch (e: any) {
+      res.status(500).json({ error: e.message ?? 'Interner Fehler' })
+    }
   })
 }

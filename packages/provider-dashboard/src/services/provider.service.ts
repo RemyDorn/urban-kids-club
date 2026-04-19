@@ -23,6 +23,7 @@ export interface UpdateProviderInput {
   contact?: ContactInfo
   categories?: string[]
   logo?: string
+  reminderEmailsEnabled?: boolean
 }
 
 function slugify(name: string): string {

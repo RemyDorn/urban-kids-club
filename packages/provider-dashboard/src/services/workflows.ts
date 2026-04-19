@@ -8,6 +8,8 @@
 import { store } from '../domain/store'
 import { generateId } from './id'
 import { createNotification, createAuditEntry } from './helpers'
+import { MarketingService } from './marketing.service'
+import { EmailService } from '../lib/email'
 import type { ID } from '../types'
 
 // ============================================================
@@ -268,14 +270,19 @@ export const BackgroundJobs = {
       }
     }
 
-    // 5. Kurs-Erinnerungen (morgen)
+    // 5. Kurs-Erinnerungen (morgen) – In-App + E-Mail
     for (const calEvent of store.state.calendarEvents.values()) {
       if (calEvent.type !== 'activity' || calEvent.date !== tomorrow || !calEvent.activityId) continue
+
+      const activity = store.state.activities.get(calEvent.activityId)
+      const provider = activity ? store.state.providers.get(activity.providerId) : undefined
 
       const bookingIds = store.getFromIndex(store.indexes.bookingsByActivity, calEvent.activityId)
       for (const bid of bookingIds) {
         const booking = store.state.bookings.get(bid)
         if (!booking || booking.status !== 'confirmed') continue
+
+        // In-App Notification (immer)
         bookingReminders++
         createNotification({
           recipientType: 'parent', recipientId: booking.parentId,
@@ -284,6 +291,31 @@ export const BackgroundJobs = {
           body: `"${booking.child.name}" hat morgen um ${calEvent.startTime} Kurs: "${calEvent.title}".`,
           data: { bookingId: bid, activityId: calEvent.activityId },
         })
+
+        // E-Mail Erinnerung (wenn Provider es aktiviert hat und noch nicht gesendet)
+        const reminderKey = `${bid}-${calEvent.date}`
+        const reminderEnabled = provider?.reminderEmailsEnabled !== false // Default: true
+        if (reminderEnabled && !store.state.sentCourseReminders.has(reminderKey)) {
+          const parent = store.state.parents.get(booking.parentId)
+          if (parent?.email) {
+            const location = activity?.locationId ? store.state.locations.get(activity.locationId) : undefined
+            // Format date: "YYYY-MM-DD" → "DD.MM.YYYY"
+            const [y, m, d] = calEvent.date.split('-')
+            const formattedDate = `${d}.${m}.${y}`
+
+            EmailService.sendCourseReminder(parent.email, {
+              parentName: parent.name.split(' ')[0],
+              childName: booking.child.name,
+              courseName: calEvent.title,
+              providerName: provider?.name ?? '',
+              courseDate: formattedDate,
+              courseTime: calEvent.startTime,
+              location: location?.name,
+            }).catch((err) => console.error(`[CourseReminder] E-Mail an ${parent.email} fehlgeschlagen:`, err))
+
+            store.state.sentCourseReminders.add(reminderKey)
+          }
+        }
       }
     }
 
@@ -348,10 +380,148 @@ export const BackgroundJobs = {
 
     return { sepaCollections, paymentReminders }
   },
+
+  /**
+   * STÜNDLICH aufrufen: Verarbeitet Trial-Follow-Up-E-Mails für alle aktiven Provider.
+   * Prüft abgeschlossene Probestunden und sendet Follow-Up-Sequenz:
+   * - 24h nach Probestunde: Feedback-Email
+   * - 3 Tage ohne Buchung: Buchungs-Erinnerung
+   * - 7 Tage ohne Buchung: Letzte Chance
+   */
+  async processTrialFollowups(): Promise<{
+    providersProcessed: number
+    totalFeedbackSent: number
+    totalReminderSent: number
+    totalLastChanceSent: number
+  }> {
+    let providersProcessed = 0
+    let totalFeedbackSent = 0
+    let totalReminderSent = 0
+    let totalLastChanceSent = 0
+
+    for (const provider of store.state.providers.values()) {
+      if (provider.status !== 'active') continue
+      providersProcessed++
+
+      try {
+        const result = await MarketingService.processTrialFollowups(provider.id)
+        totalFeedbackSent += result.feedbackSent
+        totalReminderSent += result.reminderSent
+        totalLastChanceSent += result.lastChanceSent
+      } catch (e) {
+        console.error(`[BackgroundJobs] Trial follow-up failed for provider ${provider.id}:`, e)
+      }
+    }
+
+    if (totalFeedbackSent + totalReminderSent + totalLastChanceSent > 0) {
+      console.log(`[BackgroundJobs] Trial follow-ups: ${totalFeedbackSent} feedback, ${totalReminderSent} reminder, ${totalLastChanceSent} last-chance emails sent`)
+    }
+
+    return { providersProcessed, totalFeedbackSent, totalReminderSent, totalLastChanceSent }
+  },
 }
 
 // ============================================================
-// 4. CASCADE DELETE – Konsistentes Löschen
+// 4. COURSE REMINDER EMAILS – Stündlich aufrufen
+// ============================================================
+
+/**
+ * Sends course reminder emails for sessions starting in the next 24-26 hours.
+ * Designed to be called every hour. Uses sentCourseReminders Set for deduplication.
+ * Respects provider.reminderEmailsEnabled setting (default: true).
+ */
+export async function sendCourseReminders(): Promise<{ sent: number; skipped: number; errors: number }> {
+  const now = Date.now()
+  const windowStart = now + 24 * 60 * 60 * 1000  // 24h from now
+  const windowEnd = now + 26 * 60 * 60 * 1000    // 26h from now
+
+  let sent = 0
+  let skipped = 0
+  let errors = 0
+
+  for (const calEvent of store.state.calendarEvents.values()) {
+    if (calEvent.type !== 'activity' || !calEvent.activityId) continue
+
+    // Parse event datetime
+    const eventDateTime = new Date(`${calEvent.date}T${calEvent.startTime}:00`).getTime()
+    if (isNaN(eventDateTime) || eventDateTime < windowStart || eventDateTime > windowEnd) continue
+
+    const activity = store.state.activities.get(calEvent.activityId)
+    if (!activity) continue
+    const provider = store.state.providers.get(activity.providerId)
+    if (!provider) continue
+
+    // Respect provider setting (default: true)
+    if (provider.reminderEmailsEnabled === false) {
+      skipped++
+      continue
+    }
+
+    const location = activity.locationId ? store.state.locations.get(activity.locationId) : undefined
+    const [y, m, d] = calEvent.date.split('-')
+    const formattedDate = `${d}.${m}.${y}`
+
+    const bookingIds = store.getFromIndex(store.indexes.bookingsByActivity, calEvent.activityId)
+    for (const bid of bookingIds) {
+      const booking = store.state.bookings.get(bid)
+      if (!booking || booking.status !== 'confirmed') continue
+
+      const reminderKey = `${bid}-${calEvent.date}`
+      if (store.state.sentCourseReminders.has(reminderKey)) {
+        skipped++
+        continue
+      }
+
+      const parent = store.state.parents.get(booking.parentId)
+      if (!parent?.email) {
+        skipped++
+        continue
+      }
+
+      try {
+        const result = await EmailService.sendCourseReminder(parent.email, {
+          parentName: parent.name.split(' ')[0],
+          childName: booking.child.name,
+          courseName: calEvent.title,
+          providerName: provider.name,
+          courseDate: formattedDate,
+          courseTime: calEvent.startTime,
+          location: location?.name,
+        })
+
+        if (result.success) {
+          store.state.sentCourseReminders.add(reminderKey)
+          sent++
+
+          // Also create in-app notification
+          createNotification({
+            recipientType: 'parent',
+            recipientId: booking.parentId,
+            type: 'booking_reminder',
+            title: 'Erinnerung: Kurs morgen',
+            body: `"${booking.child.name}" hat morgen um ${calEvent.startTime} Kurs: "${calEvent.title}".`,
+            data: { bookingId: bid, activityId: calEvent.activityId },
+          })
+        } else {
+          console.error(`[CourseReminder] E-Mail an ${parent.email} fehlgeschlagen:`, result.error)
+          errors++
+        }
+      } catch (err) {
+        console.error(`[CourseReminder] Unerwarteter Fehler für ${parent.email}:`, err)
+        errors++
+      }
+    }
+  }
+
+  if (sent > 0 || errors > 0) {
+    console.log(`[CourseReminder] Ergebnis: ${sent} gesendet, ${skipped} übersprungen, ${errors} Fehler`)
+  }
+
+  return { sent, skipped, errors }
+}
+
+// ============================================================
+// 5. CASCADE DELETE – Konsistentes Löschen
 // ============================================================
 
 export const CascadeDelete = {

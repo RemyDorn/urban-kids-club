@@ -176,6 +176,10 @@ export const openApiSpec = {
     '/api/admin/jobs/weekly': {
       post: { tags: ['Admin'], summary: 'Wöchentliche Background-Jobs auslösen', operationId: 'runWeeklyJobs', description: 'Prüft: Zahlungserinnerungen für unbezahlte Buchungen (>7 Tage)', responses: { '200': { description: 'Job-Ergebnis' } } },
     },
+    '/api/providers/{id}/reminder-settings': {
+      get: { tags: ['Settings'], summary: 'Erinnerungs-E-Mail-Einstellungen abrufen', operationId: 'getReminderSettings', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Reminder settings' } } },
+      put: { tags: ['Settings'], summary: 'Erinnerungs-E-Mails aktivieren/deaktivieren', operationId: 'updateReminderSettings', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { reminderEmailsEnabled: { type: 'boolean' } } } } } }, responses: { '200': { description: 'Setting updated' } } },
+    },
   },
   components: {
     schemas: {

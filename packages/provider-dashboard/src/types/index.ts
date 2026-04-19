@@ -58,6 +58,7 @@ export interface Provider {
   status: ProviderStatus
   subscription: SubscriptionPlan
   platformEnabled?: boolean
+  reminderEmailsEnabled?: boolean  // Erinnerungs-E-Mails 24h vor Kursbeginn (Default: true)
   roomCount?: number           // Anzahl Räume (Default: 1) – limitiert parallele Kurse
   openingHours?: OpeningHours
   createdAt: Date
@@ -443,6 +444,11 @@ export interface TrialLesson {
   convertedToBookingId?: ID // Falls aus Probestunde eine Buchung wurde
   feedback?: string         // Feedback vom Provider
   parentFeedback?: string   // Feedback vom Elternteil
+  followUpEmails?: {        // Tracking welche Follow-Up Emails gesendet wurden
+    feedbackSentAt?: Date   // "Wie hat es gefallen?" (24h nach Probestunde)
+    reminderSentAt?: Date   // "Jetzt buchen" (3 Tage ohne Buchung)
+    lastChanceSentAt?: Date // "Letzte Chance" (7 Tage ohne Buchung)
+  }
   createdAt: Date
   updatedAt: Date
 }
