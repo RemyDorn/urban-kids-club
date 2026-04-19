@@ -14,102 +14,49 @@ export function registerSettingsRoutes(router: Router) {
   // STRIPE CONNECT
   // ============================================================
 
-  // Dedicated status endpoint with test mode detection
+  // Stripe is platform-managed — always report as configured
   router.get('/api/stripe/status', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    const db = getServiceClient()
-    const { data } = await db.from('providers').select('stripe_account_id, stripe_connected').eq('id', auth.providerId).single()
-    const stripeKey = process.env.STRIPE_SECRET_KEY || ''
-    const isTestMode = stripeKey.startsWith('sk_test_')
-    const isConfigured = !!stripeKey
     res.json({
       data: {
-        connected: !!data?.stripe_connected,
-        accountId: data?.stripe_account_id || null,
-        testMode: isTestMode,
-        platformConfigured: isConfigured,
+        connected: true,
+        accountId: null,
+        testMode: false,
+        platformConfigured: true,
+        platformManaged: true,
       }
     })
   })
 
+  // Stripe Connect is platform-managed for MVP — individual providers don't need their own accounts
   router.post('/api/providers/:id/stripe-connect', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    if (!checkPermission(auth, res, 'settings', 'edit')) return
-    if (auth.providerId !== req.params.id) return res.error(403, 'Zugriff verweigert')
-    const { getConnectAuthUrl } = await import('../../lib/stripe')
-    const returnUrl = `${req.raw.headers.origin || 'https://app.urbankids.club'}/api/stripe/callback`
-    const url = getConnectAuthUrl(req.params.id, returnUrl)
-    res.json({ url })
-  })
-
-  router.get('/api/stripe/callback', async (req, res) => {
-    const code = req.query.code as string
-    const state = req.query.state as string
-    if (!code || !state) { res.error(400, 'Missing code or state'); return }
-    try {
-      const { verifyConnectState, completeConnect } = await import('../../lib/stripe')
-      const { providerId } = verifyConnectState(state)
-      const accountId = await completeConnect(code)
-      const db = getServiceClient()
-      await db.from('providers').update({
-        stripe_account_id: accountId,
-        stripe_connected: true,
-        updated_at: new Date().toISOString()
-      }).eq('id', providerId)
-      ;(res as any).writeHead(302, { Location: '/?page=settings&tab=payments&stripe=connected' })
-      ;(res as any).end()
-    } catch (err: any) {
-      res.error(500, 'Stripe-Verbindung fehlgeschlagen: ' + err.message)
-    }
+    res.json({ message: 'Stripe ist ueber die Urban Kids Club Plattform konfiguriert. Du musst kein eigenes Stripe-Konto verbinden.' })
   })
 
   // ============================================================
   // PAYPAL CONNECT
   // ============================================================
 
+  // PayPal is platform-managed for MVP — individual providers don't need their own credentials
   router.put('/api/providers/:id/paypal-config', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
-    if (!checkPermission(auth, res, 'settings', 'edit')) return
-    if (auth.providerId !== req.params.id) return res.error(403, 'Zugriff verweigert')
-    const { clientId, secret } = req.body as any
-    if (!clientId || !secret) return res.error(400, 'Client ID und Secret erforderlich')
-    // Encrypt PayPal secret before storage (never store plaintext)
-    const { createCipheriv, randomBytes: rndBytes } = await import('node:crypto')
-    const encKey = process.env.ENCRYPTION_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || ''
-    if (!encKey || Buffer.from(encKey, 'utf8').length < 32) {
-      return res.error(500, 'Verschlüsselung nicht konfiguriert — ENCRYPTION_KEY muss mindestens 32 Zeichen lang sein')
-    }
-    const keyBuf = Buffer.from(encKey, 'utf8').subarray(0, 32)
-    const iv = rndBytes(16)
-    const cipher = createCipheriv('aes-256-cbc', keyBuf, iv)
-    const encryptedSecret = 'enc:' + iv.toString('hex') + ':' + cipher.update(secret, 'utf8', 'hex') + cipher.final('hex')
-    const db = getServiceClient()
-    const { error } = await db.from('providers').update({
-      paypal_client_id: clientId,
-      paypal_secret: encryptedSecret,
-      paypal_connected: true,
-      updated_at: new Date().toISOString()
-    }).eq('id', auth.providerId)
-    if (error) return res.error(500, error.message)
-    res.json({ success: true })
+    res.json({ message: 'PayPal ist ueber die Urban Kids Club Plattform konfiguriert. Du musst keine eigenen PayPal-Zugangsdaten eingeben.' })
   })
 
   // ============================================================
   // PAYMENT CONFIG
   // ============================================================
 
+  // Payment config — Stripe and PayPal are platform-managed
   router.get('/api/providers/:id/payment-config', async (req, res) => {
     const auth = await requireAuth(req, res)
     if (!auth) return
     if (auth.providerId !== req.params.id) return res.error(403, 'Zugriff verweigert')
-    const db = getServiceClient()
-    const { data } = await db.from('providers').select('stripe_account_id, stripe_connected, paypal_client_id, paypal_connected').eq('id', auth.providerId).single()
-    // Stripe is available if provider has connected account OR platform has keys configured
-    const stripeAvailable = data?.stripe_connected || !!process.env.STRIPE_SECRET_KEY
-    res.json({ data: { ...data, stripe_connected: stripeAvailable, paypal_client_id: data?.paypal_client_id ? '***' + data.paypal_client_id.slice(-4) : null } })
+    res.json({ data: { stripe_connected: true, paypal_connected: true, platformManaged: true } })
   })
 
   // ============================================================

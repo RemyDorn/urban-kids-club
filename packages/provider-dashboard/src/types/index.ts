@@ -49,6 +49,8 @@ export type OpeningHours = {
 export interface Provider {
   id: ID
   name: string
+  displayName?: string         // Anzeigename / Markenname (z.B. "Socialy")
+  legalForm?: string           // Rechtsform (z.B. "gmbh", "einzelunternehmer")
   slug: string
   description: string
   logo?: string

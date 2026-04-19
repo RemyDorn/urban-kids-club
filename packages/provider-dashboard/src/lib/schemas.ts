@@ -44,6 +44,8 @@ export const CreateProviderSchema = z.object({
 
 export const UpdateProviderSchema = z.object({
   name: z.string().min(2).max(100).optional(),
+  display_name: z.string().max(100).nullable().optional(),
+  legal_form: z.string().max(50).nullable().optional(),
   description: z.string().max(2000).optional(),
   address: AddressSchema.optional(),
   contact: ContactInfoSchema.optional(),

@@ -43,6 +43,8 @@ export function providerFromDb(r: Row): Provider {
   return {
     id: r.id,
     name: r.company_name ?? '',
+    displayName: r.display_name ?? undefined,
+    legalForm: r.legal_form ?? undefined,
     slug: r.slug ?? '',
     description: r.description ?? '',
     logo: r.logo_url ?? undefined,
@@ -74,6 +76,10 @@ export function providerToDb(p: Partial<Provider> & { id?: ID }): Row {
   const row: Row = {}
   if (p.id !== undefined) row.id = p.id
   if (p.name !== undefined) row.company_name = p.name
+  if (p.displayName !== undefined) row.display_name = p.displayName
+  if ((p as any).display_name !== undefined) row.display_name = (p as any).display_name
+  if (p.legalForm !== undefined) row.legal_form = p.legalForm
+  if ((p as any).legal_form !== undefined) row.legal_form = (p as any).legal_form
   if (p.slug !== undefined) row.slug = p.slug
   if (p.description !== undefined) row.description = p.description
   if (p.logo !== undefined) row.logo_url = p.logo
