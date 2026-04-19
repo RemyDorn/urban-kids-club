@@ -58,6 +58,13 @@ export const UpdateProviderSchema = z.object({
   bank_iban: z.string().nullable().optional(),
   bank_bic: z.string().nullable().optional(),
   makeup_enabled: z.boolean().optional(),
+  room_count: z.number().int().min(1).max(50).optional(),
+  opening_hours: z.record(
+    z.union([
+      z.object({ open: z.string(), close: z.string() }),
+      z.null(),
+    ])
+  ).nullable().optional(),
 })
 
 // --- Activity ---

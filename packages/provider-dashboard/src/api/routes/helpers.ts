@@ -92,12 +92,15 @@ export async function checkOpeningHours(providerId: string, schedule: any): Prom
   if (!oh) return null // no opening hours set = no restriction
 
   const dayLabels: Record<string, string> = { MO: 'Montag', TU: 'Dienstag', WE: 'Mittwoch', TH: 'Donnerstag', FR: 'Freitag', SA: 'Samstag', SU: 'Sonntag' }
+  const dayCodeToKey: Record<string, string> = { MO: 'monday', TU: 'tuesday', WE: 'wednesday', TH: 'thursday', FR: 'friday', SA: 'saturday', SU: 'sunday' }
+  const toMin = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + (m || 0) }
+
   const slots = Array.isArray(schedule) ? schedule : (schedule.slots ?? [])
   for (const slot of slots) {
     const day = slot.day?.toUpperCase()
-    const dayHours = oh[day]
+    const key = dayCodeToKey[day] || day
+    const dayHours = oh[key]
     if (!dayHours) return `${dayLabels[day] || day} ist geschlossen. Kein Kurs an diesem Tag möglich.`
-    const toMin = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + (m || 0) }
     const slotStart = toMin(slot.startTime)
     const slotEnd = toMin(slot.endTime)
     const ohOpen = toMin(dayHours.open)
@@ -105,6 +108,54 @@ export async function checkOpeningHours(providerId: string, schedule: any): Prom
     if (slotStart < ohOpen) return `Kurs startet um ${slot.startTime}, aber ${dayLabels[day] || day} öffnet erst um ${dayHours.open} Uhr.`
     if (slotEnd > ohClose) return `Kurs endet um ${slot.endTime}, aber ${dayLabels[day] || day} schließt um ${dayHours.close} Uhr.`
   }
+  return null
+}
+
+// Helper: Check if provider has enough rooms for parallel activities
+export async function checkRoomAvailability(providerId: string, schedule: any, excludeActivityId?: string): Promise<string | null> {
+  if (!schedule) return null
+  const sb = getServiceClient()
+
+  // Get provider room count
+  const { data: prov } = await sb.from('providers').select('room_count').eq('id', providerId).maybeSingle()
+  const roomCount = prov?.room_count ?? 1
+
+  // Get all active/published activities for this provider (exclude cancelled/archived)
+  const { data: activities } = await sb.from('activities')
+    .select('id, schedule, status')
+    .eq('provider_id', providerId)
+    .not('status', 'in', '("cancelled","archived")')
+
+  if (!activities || activities.length === 0) return null
+
+  const toMin = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + (m || 0) }
+  const timesOverlap = (s1: string, e1: string, s2: string, e2: string) => toMin(s1) < toMin(e2) && toMin(s2) < toMin(e1)
+
+  // For recurring schedules, check each slot
+  const slots = schedule.slots ?? []
+  if (schedule.type === 'recurring' && slots.length > 0) {
+    for (const slot of slots) {
+      let overlapping = 0
+      for (const act of activities) {
+        if (excludeActivityId && act.id === excludeActivityId) continue
+        const actSched = act.schedule
+        if (!actSched) continue
+        if (actSched.type === 'recurring' && actSched.slots) {
+          for (const otherSlot of actSched.slots) {
+            if (otherSlot.day === slot.day && timesOverlap(slot.startTime, slot.endTime, otherSlot.startTime, otherSlot.endTime)) {
+              overlapping++
+              break
+            }
+          }
+        }
+      }
+      if (overlapping >= roomCount) {
+        const dayLabels: Record<string, string> = { MO: 'Montag', TU: 'Dienstag', WE: 'Mittwoch', TH: 'Donnerstag', FR: 'Freitag', SA: 'Samstag', SU: 'Sonntag' }
+        return `Alle Räume belegt: ${dayLabels[slot.day] || slot.day} ${slot.startTime}–${slot.endTime}. ${roomCount} von ${roomCount} Räumen sind bereits vergeben.`
+      }
+    }
+  }
+
   return null
 }
 

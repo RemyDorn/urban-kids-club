@@ -72,7 +72,7 @@ export const SupabaseProviderService = {
     return providerFromDb(data)
   },
 
-  async update(id: ID, input: Partial<Pick<Provider, 'name' | 'description' | 'address' | 'contact' | 'categories' | 'logo'>>): Promise<Provider | undefined> {
+  async update(id: ID, input: Partial<Pick<Provider, 'name' | 'description' | 'address' | 'contact' | 'categories' | 'logo' | 'roomCount'>>): Promise<Provider | undefined> {
     const sb = getServiceClient()
     const row = providerToDb(input as Partial<Provider>)
     row.updated_at = new Date().toISOString()

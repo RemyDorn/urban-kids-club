@@ -7,7 +7,7 @@ import { validate, CreateActivitySchema } from '../../lib/schemas'
 import { requireAuth } from '../../lib/auth-middleware'
 import { getServiceClient } from '../../lib/supabase'
 import { ProviderService, ActivityService } from '../../services'
-import { checkOpeningHours } from './helpers'
+import { checkOpeningHours, checkRoomAvailability } from './helpers'
 
 export function registerActivityRoutes(router: Router) {
 
@@ -51,6 +51,10 @@ export function registerActivityRoutes(router: Router) {
     // Check opening hours
     const ohError = await checkOpeningHours(auth.providerId, (parsed.data as any).schedule)
     if (ohError) return res.error(400, ohError)
+
+    // Check room availability
+    const roomError = await checkRoomAvailability(auth.providerId, (parsed.data as any).schedule)
+    if (roomError) return res.error(400, roomError)
 
     const activity = await ActivityService.create({ ...parsed.data as any, providerId: auth.providerId })
 
@@ -135,6 +139,16 @@ export function registerActivityRoutes(router: Router) {
       if (!provider?.platformEnabled) {
         return res.error(403, 'Plattform-Anbindung ist nicht freigeschaltet. Kontaktiere support@urbankids.club für mehr Informationen.')
       }
+    }
+    // Check opening hours if schedule is being updated
+    if (allowed.schedule) {
+      const ohError = await checkOpeningHours(auth.providerId, allowed.schedule as any)
+      if (ohError) return res.error(400, ohError)
+    }
+    // Check room availability if schedule is being updated
+    if (allowed.schedule) {
+      const roomError = await checkRoomAvailability(auth.providerId, allowed.schedule as any, req.params.id)
+      if (roomError) return res.error(400, roomError)
     }
     const activity = await ActivityService.update(req.params.id, allowed, auth.providerId)
     if (!activity) return res.error(404, 'Aktivität nicht gefunden')

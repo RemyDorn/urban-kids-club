@@ -60,6 +60,8 @@ export function providerFromDb(r: Row): Provider {
     status: r.status ?? 'onboarding',
     subscription: r.subscription ?? 'free',
     platformEnabled: r.platform_enabled ?? false,
+    roomCount: r.room_count ?? 1,
+    openingHours: r.opening_hours ?? undefined,
     createdAt: toDate(r.created_at),
     updatedAt: toDate(r.updated_at),
   }
@@ -88,6 +90,10 @@ export function providerToDb(p: Partial<Provider> & { id?: ID }): Row {
   if (p.status !== undefined) row.status = p.status
   if (p.subscription !== undefined) row.subscription = p.subscription
   if ((p as any).booking_redirect_url !== undefined) row.booking_redirect_url = (p as any).booking_redirect_url
+  if (p.roomCount !== undefined) row.room_count = p.roomCount
+  if ((p as any).room_count !== undefined) row.room_count = (p as any).room_count
+  if (p.openingHours !== undefined) row.opening_hours = p.openingHours
+  if ((p as any).opening_hours !== undefined) row.opening_hours = (p as any).opening_hours
   return row
 }
 

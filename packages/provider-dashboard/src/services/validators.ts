@@ -6,7 +6,7 @@
 // ============================================================
 
 import { store } from '../domain/store'
-import type { ID, ChildInfo, AgeRange, Schedule, Currency } from '../types'
+import type { ID, ChildInfo, AgeRange, Schedule, Currency, OpeningHours, DayOfWeek } from '../types'
 
 export interface ValidationResult {
   valid: boolean
@@ -258,6 +258,121 @@ export const Validators = {
   amountPositive(amount: number, label: string = 'Betrag'): ValidationResult {
     if (typeof amount !== 'number' || isNaN(amount)) return fail(`${label} muss eine Zahl sein`)
     return amount > 0 ? ok() : fail(`${label} muss positiv sein`)
+  },
+
+  // --- Öffnungszeiten ---
+
+  withinOpeningHours(providerId: ID, schedule: Schedule): ValidationResult {
+    const provider = store.state.providers.get(providerId)
+    if (!provider || !provider.openingHours) return ok() // no hours set = skip validation
+
+    const oh = provider.openingHours
+
+    // Map DayOfWeek codes to opening hours day keys
+    const dayCodeToKey: Record<DayOfWeek, keyof NonNullable<typeof oh>> = {
+      MO: 'monday', TU: 'tuesday', WE: 'wednesday', TH: 'thursday',
+      FR: 'friday', SA: 'saturday', SU: 'sunday',
+    }
+    const dayLabels: Record<DayOfWeek, string> = {
+      MO: 'Montag', TU: 'Dienstag', WE: 'Mittwoch', TH: 'Donnerstag',
+      FR: 'Freitag', SA: 'Samstag', SU: 'Sonntag',
+    }
+
+    const toMinutes = (t: string) => {
+      const [h, m] = t.split(':').map(Number)
+      return h * 60 + (m || 0)
+    }
+
+    const checkSlot = (day: DayOfWeek, startTime: string, endTime: string): string | null => {
+      const key = dayCodeToKey[day]
+      if (!key) return null
+      const dayHours = oh[key]
+      if (dayHours === null || dayHours === undefined) {
+        return `${dayLabels[day] || day} ist geschlossen. Kein Kurs an diesem Tag möglich.`
+      }
+      const slotStart = toMinutes(startTime)
+      const slotEnd = toMinutes(endTime)
+      const ohOpen = toMinutes(dayHours.open)
+      const ohClose = toMinutes(dayHours.close)
+      if (slotStart < ohOpen) return `Kurs startet um ${startTime}, aber ${dayLabels[day]} öffnet erst um ${dayHours.open} Uhr.`
+      if (slotEnd > ohClose) return `Kurs endet um ${endTime}, aber ${dayLabels[day]} schließt um ${dayHours.close} Uhr.`
+      return null
+    }
+
+    if (schedule.type === 'recurring') {
+      for (const slot of schedule.slots) {
+        const err = checkSlot(slot.day, slot.startTime, slot.endTime)
+        if (err) return fail(err)
+      }
+    } else if (schedule.type === 'single') {
+      const d = new Date(schedule.date)
+      const dayName = (['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'] as const)[d.getDay()]
+      const err = checkSlot(dayName as DayOfWeek, schedule.startTime, schedule.endTime)
+      if (err) return fail(err)
+    } else if (schedule.type === 'camp') {
+      // Check each day in camp range
+      const start = new Date(schedule.startDate)
+      const end = new Date(schedule.endDate)
+      const current = new Date(start)
+      const dayNames = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'] as const
+      while (current <= end) {
+        const dayName = dayNames[current.getDay()]
+        const err = checkSlot(dayName as DayOfWeek, schedule.dailyStartTime, schedule.dailyEndTime)
+        if (err) return fail(err)
+        current.setDate(current.getDate() + 1)
+      }
+    }
+
+    return ok()
+  },
+
+  // --- Raum-Verfügbarkeit (Provider-Level) ---
+
+  roomsAvailable(providerId: ID, schedule: Schedule, roomCount: number, excludeActivityId?: ID): ValidationResult {
+    const activityIds = store.getFromIndex(store.indexes.activitiesByProvider, providerId)
+    const activities = Array.from(activityIds)
+      .map((id) => store.state.activities.get(id))
+      .filter((a): a is NonNullable<typeof a> =>
+        a !== undefined &&
+        a.id !== excludeActivityId &&
+        a.status !== 'cancelled' &&
+        a.status !== 'archived'
+      )
+
+    // For each time slot in the new schedule, count how many existing activities overlap
+    if (schedule.type === 'recurring') {
+      for (const slot of schedule.slots) {
+        let overlapping = 0
+        for (const act of activities) {
+          if (act.schedule.type === 'recurring') {
+            for (const otherSlot of act.schedule.slots) {
+              if (otherSlot.day === slot.day && timesOverlap(slot.startTime, slot.endTime, otherSlot.startTime, otherSlot.endTime)) {
+                overlapping++
+                break
+              }
+            }
+          } else if (schedulesOverlap(schedule, act.schedule)) {
+            overlapping++
+          }
+        }
+        if (overlapping >= roomCount) {
+          return fail(`Alle Räume belegt zu diesem Zeitpunkt (${slot.day} ${slot.startTime}–${slot.endTime}). ${roomCount} von ${roomCount} Räumen sind bereits vergeben.`)
+        }
+      }
+    } else {
+      // For single/camp schedules, count all overlapping activities
+      let overlapping = 0
+      for (const act of activities) {
+        if (schedulesOverlap(schedule, act.schedule)) {
+          overlapping++
+        }
+      }
+      if (overlapping >= roomCount) {
+        return fail(`Alle Räume belegt zu diesem Zeitpunkt. ${roomCount} von ${roomCount} Räumen sind bereits vergeben.`)
+      }
+    }
+
+    return ok()
   },
 
   // --- Kombinations-Helfer ---

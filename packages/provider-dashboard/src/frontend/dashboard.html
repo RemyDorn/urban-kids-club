@@ -1339,7 +1339,8 @@
                   const occ = occMap[ev.activityId]
                   const occPct = occ ? Math.round(occ.occupancy * 100) : 0
                   const mInstrColor = getInstructorColor(act?.instructorId)
-                  return '<div class="text-xs rounded px-1 py-0.5 mb-0.5 truncate cursor-pointer" style="background:' + hexToRgba(clr, 0.15) + ';border-left:3px solid ' + clr + ';' + (mInstrColor ? 'border-right:3px solid ' + mInstrColor + ';' : '') + 'color:#374151;" onclick="showEventDetail(' + JSON.stringify(ev).replace(/"/g,'&quot;') + ',' + (act ? JSON.stringify({title:act.title,description:act.description||'',category:act.category,ageRange:act.ageRange,pricing:act.pricing,instructorId:act.instructorId}).replace(/"/g,'&quot;') : 'null') + ',' + (occ ? JSON.stringify(occ).replace(/"/g,'&quot;') : 'null') + ')">' + escapeHtml(ev.startTime) + ' ' + escapeHtml(ev.title) + '</div>'
+                  const mOccB=occ?.byDate?.[ev.date]??occ?.booked??0,mOccC=occ?.capacity??0,mOccT=mOccB+'/'+mOccC,mOccP=mOccC>0?Math.round((mOccB/mOccC)*100):0,mRoom=act?.roomId?(_rooms.find(r=>r.id===act.roomId)?.name||''):''
+                  return '<div class="text-xs rounded px-1 py-0.5 mb-0.5 truncate cursor-pointer cal-month-ev" data-tt-title="'+escapeHtml(ev.title).replace(/"/g,'&amp;quot;')+'" data-tt-time="'+ev.startTime+' \u2013 '+ev.endTime+'" data-tt-occ="'+mOccT+'" data-tt-pct="'+mOccP+'" data-tt-room="'+escapeHtml(mRoom).replace(/"/g,'&amp;quot;')+'" data-tt-clr="'+clr+'" data-tt-instr="'+(act?.instructorId||'')+'" style="background:' + hexToRgba(clr, 0.15) + ';border-left:3px solid ' + clr + ';' + (mInstrColor ? 'border-right:3px solid ' + mInstrColor + ';' : '') + 'color:#374151;" onclick="showEventDetail(' + JSON.stringify(ev).replace(/"/g,'&quot;') + ',' + (act ? JSON.stringify({title:act.title,description:act.description||'',category:act.category,ageRange:act.ageRange,pricing:act.pricing,instructorId:act.instructorId}).replace(/"/g,'&quot;') : 'null') + ',' + (occ ? JSON.stringify(occ).replace(/"/g,'&quot;') : 'null') + ')">' + escapeHtml(ev.startTime) + ' ' + escapeHtml(ev.title) + '</div>'
                 }).join('')
                 if (dayEvents.length > 3) cells += '<div class="text-xs text-gray-400">+' + (dayEvents.length-3) + ' weitere</div>'
                 cells += '</div>'
@@ -3122,10 +3123,15 @@
         }
       }
 
+      let saveResult
       if (editId) {
-        await api(`/activities/${editId}`, 'PUT', body)
+        saveResult = await api(`/activities/${editId}`, 'PUT', body)
       } else {
-        await api('/activities', 'POST', body)
+        saveResult = await api('/activities', 'POST', body)
+      }
+      if (saveResult?.error) {
+        showToast(saveResult.error, 'error')
+        return
       }
 
       // Assign room after activity is saved
@@ -6820,6 +6826,36 @@
             </div>
           </div>
 
+          <!-- Öffnungszeiten -->
+          <div class="bg-white rounded-xl border border-brand-200 p-6">
+            <h3 class="font-semibold text-gray-900 mb-4">Öffnungszeiten</h3>
+            <p class="text-sm text-gray-500 mb-4">Kurse können nur innerhalb der Öffnungszeiten erstellt werden. Ohne Öffnungszeiten gibt es keine Einschränkung.</p>
+            <div class="space-y-3">
+              ${['monday','tuesday','wednesday','thursday','friday','saturday','sunday'].map((day, i) => {
+                const labels = ['Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag','Sonntag']
+                const oh = currentProvider.openingHours || s.openingHours || {}
+                const dayData = oh[day]
+                const isOpen = dayData !== null && dayData !== undefined
+                const openTime = isOpen ? (dayData.open || '08:00') : '08:00'
+                const closeTime = isOpen ? (dayData.close || '18:00') : '18:00'
+                return `<div class="flex items-center gap-3">
+                  <label class="flex items-center gap-2 w-28 text-sm text-gray-700 cursor-pointer">
+                    <input type="checkbox" id="oh_open_${day}" ${isOpen ? 'checked' : ''} onchange="toggleOpeningHoursDay('${day}')" class="rounded border-gray-300 text-brand-500 focus:ring-brand-500">
+                    ${labels[i]}
+                  </label>
+                  <input type="time" id="oh_from_${day}" value="${openTime}" ${!isOpen ? 'disabled' : ''} class="border border-gray-200 rounded-lg px-2 py-1.5 text-sm ${!isOpen ? 'opacity-40' : ''}">
+                  <span class="text-sm text-gray-400">bis</span>
+                  <input type="time" id="oh_to_${day}" value="${closeTime}" ${!isOpen ? 'disabled' : ''} class="border border-gray-200 rounded-lg px-2 py-1.5 text-sm ${!isOpen ? 'opacity-40' : ''}">
+                </div>`
+              }).join('')}
+            </div>
+            <div class="mt-3 flex gap-2">
+              <button type="button" onclick="prefillOpeningHours('weekdays')" class="text-xs text-brand-600 hover:text-brand-700 underline">Mo-Fr 08:00-18:00</button>
+              <button type="button" onclick="prefillOpeningHours('all')" class="text-xs text-brand-600 hover:text-brand-700 underline">Alle Tage</button>
+              <button type="button" onclick="prefillOpeningHours('clear')" class="text-xs text-gray-500 hover:text-gray-700 underline">Alle schließen</button>
+            </div>
+          </div>
+
           <button onclick="saveCompanySettings()" class="bg-brand-500 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-brand-600">Unternehmensdaten speichern</button>
 
           <!-- Kids Club Plattform Info -->
@@ -7180,7 +7216,7 @@
       `
     }
 
-    function saveCompanySettings() {
+    async function saveCompanySettings() {
       const s = getProviderSettings()
       s.companyName = document.getElementById('sCompanyName')?.value
       s.legalForm = document.getElementById('sLegalForm')?.value
@@ -7198,7 +7234,82 @@
       s.gallery = [0,1,2,3,4].map(i => document.getElementById('sGallery' + i)?.value).filter(Boolean)
       s.brandColor = document.getElementById('sBrandColor')?.value
       saveProviderSettings(s)
+
+      // Save room count to provider via API
+      const roomCount = parseInt(document.getElementById('sRoomCount')?.value || '1')
+      if (roomCount >= 1 && roomCount <= 50) {
+        try {
+          await api('/providers/' + currentProvider.id, 'PUT', { room_count: roomCount })
+          currentProvider.roomCount = roomCount
+        } catch (err) { showToast('Fehler beim Speichern der Raumanzahl: ' + err.message, 'error'); return }
+      }
+
+      // Save opening hours to provider via API
+      const openingHours = collectOpeningHours()
+      try {
+        await api('/providers/' + currentProvider.id, 'PUT', { opening_hours: openingHours })
+        currentProvider.openingHours = openingHours
+        s.openingHours = openingHours
+        saveProviderSettings(s)
+      } catch (err) { showToast('Fehler beim Speichern der Öffnungszeiten: ' + err.message, 'error'); return }
+
       showToast('Unternehmensdaten gespeichert!', 'success')
+    }
+
+    function collectOpeningHours() {
+      const days = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday']
+      const oh = {}
+      let hasAny = false
+      for (const day of days) {
+        const cb = document.getElementById('oh_open_' + day)
+        if (cb && cb.checked) {
+          hasAny = true
+          oh[day] = {
+            open: document.getElementById('oh_from_' + day)?.value || '08:00',
+            close: document.getElementById('oh_to_' + day)?.value || '18:00',
+          }
+        } else {
+          oh[day] = null
+        }
+      }
+      return hasAny ? oh : null
+    }
+
+    function toggleOpeningHoursDay(day) {
+      const cb = document.getElementById('oh_open_' + day)
+      const from = document.getElementById('oh_from_' + day)
+      const to = document.getElementById('oh_to_' + day)
+      if (cb && from && to) {
+        from.disabled = !cb.checked
+        to.disabled = !cb.checked
+        from.classList.toggle('opacity-40', !cb.checked)
+        to.classList.toggle('opacity-40', !cb.checked)
+      }
+    }
+
+    function prefillOpeningHours(preset) {
+      const days = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday']
+      const weekdays = ['monday','tuesday','wednesday','thursday','friday']
+      for (const day of days) {
+        const cb = document.getElementById('oh_open_' + day)
+        const from = document.getElementById('oh_from_' + day)
+        const to = document.getElementById('oh_to_' + day)
+        if (!cb || !from || !to) continue
+        if (preset === 'weekdays') {
+          cb.checked = weekdays.includes(day)
+          from.value = '08:00'
+          to.value = '18:00'
+        } else if (preset === 'all') {
+          cb.checked = true
+          from.value = '08:00'
+          to.value = '18:00'
+        } else if (preset === 'clear') {
+          cb.checked = false
+          from.value = '08:00'
+          to.value = '18:00'
+        }
+        toggleOpeningHoursDay(day)
+      }
     }
 
     async function saveFinanceSettings() {

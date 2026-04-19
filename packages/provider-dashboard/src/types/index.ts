@@ -37,6 +37,15 @@ export type ProviderStatus = 'onboarding' | 'active' | 'suspended' | 'archived'
 
 export type SubscriptionPlan = 'free' | 'starter' | 'pro' | 'enterprise'
 
+export interface OpeningHoursDay {
+  open: string   // "HH:MM"
+  close: string  // "HH:MM"
+}
+
+export type OpeningHours = {
+  [day in 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday']?: OpeningHoursDay | null  // null = closed
+}
+
 export interface Provider {
   id: ID
   name: string
@@ -49,6 +58,8 @@ export interface Provider {
   status: ProviderStatus
   subscription: SubscriptionPlan
   platformEnabled?: boolean
+  roomCount?: number           // Anzahl Räume (Default: 1) – limitiert parallele Kurse
+  openingHours?: OpeningHours
   createdAt: Date
   updatedAt: Date
 }
