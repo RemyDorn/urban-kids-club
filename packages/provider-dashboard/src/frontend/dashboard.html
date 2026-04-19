@@ -58,6 +58,12 @@
     .cal-event { position: absolute; left: 2px; right: 2px; border-radius: 6px; padding: 4px 8px; font-size: 12px; overflow: hidden; cursor: pointer; transition: all 0.15s; border: 1.5px solid; box-sizing: border-box; }
     .cal-event.cal-event-overlap { right: auto; padding: 3px 4px; }
     .cal-event:hover { transform: scale(1.02); box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 10 !important; }
+    .cal-event[draggable="true"] { cursor: grab; }
+    .cal-event.dragging { opacity: 0.5; cursor: grabbing; }
+    .cal-day-col.drag-over { background: #fdf4ed !important; }
+    .cal-day-col.drag-invalid { background: #fee2e2 !important; cursor: no-drop; }
+    @keyframes calDropHighlight { 0% { box-shadow: 0 0 0 3px rgba(181,83,58,0.4); } 100% { box-shadow: none; } }
+    .cal-event.just-dropped { animation: calDropHighlight 1s ease-out; }
     .calendar-tooltip { position: fixed; background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); z-index: 9999; max-width: 250px; font-size: 13px; pointer-events: none; opacity: 0; transition: opacity 0.15s; }
     .calendar-tooltip.visible { opacity: 1; }
     .calendar-tooltip .tt-title { font-weight: 600; color: #1f2937; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
@@ -484,6 +490,14 @@
   </div>
 
   <script>
+    // =============================================================
+    // ===== MODULE: Global State & Constants ======================
+    // =============================================================
+    // Global variables: API, currentProvider, providers, currentSession,
+    //   currentUserRole, currentUserPermissions
+    // Constants: PERMISSION_AREAS, ACTION_LABELS, NAV_PERMISSION_MAP
+    // Functions: hasPermission, hasAreaAccess, applyPermissionVisibility
+
     const API = window.location.origin + '/api'
     let currentProvider = null
     let providers = []
@@ -553,6 +567,17 @@
         el.style.display = hasAreaAccess(area) ? '' : 'none'
       })
     }
+
+    // =============================================================
+    // ===== MODULE: Auth ==========================================
+    // =============================================================
+    // Supabase init, login/logout, registration, magic link,
+    // invite acceptance, provider approval check
+    // Functions: initSupabase, showLoginScreen, showDashboard,
+    //   showLoginError, showLoginSuccess, checkAuth,
+    //   showInviteAcceptScreen, verifyInviteToken, acceptInvite,
+    //   checkProviderApproved, showPendingScreen, handleLogin,
+    //   handleMagicLink, toggleRegister, handleRegister, logout
 
     // --- Supabase Auth (config from server so same HTML works on dev+live) ---
     let SUPABASE_URL = ''
@@ -907,7 +932,6 @@
 
     // Listen for auth state changes (only handle sign-out;
     // sign-in is handled by handleLogin/checkAuth to avoid race conditions)
-    let loginInProgress = false
     _supabaseReady.then(() => { if (!sb) return
     sb.auth.onAuthStateChange((event, session) => {
       currentSession = session
@@ -917,6 +941,18 @@
       }
     })
     })
+
+    // =============================================================
+    // ===== MODULE: Navigation & Utils ============================
+    // =============================================================
+    // Security helpers, API wrapper, navigation, sidebar, toast,
+    // confirm dialog, table filtering, loading states, PWA
+    // Functions: escapeHtml, safeText, safeUrl, api, init,
+    //   switchProvider, updateProviderDisplay, toggleSidebar,
+    //   closeSidebar, withLoading, filterTable, showToast,
+    //   showConfirm, navigate, formatCurrency, kpiCard,
+    //   kpiCardSmall, statusBar, segmentCard, tagColor,
+    //   trialStatusColor, invoiceStatusColor
 
     // --- Security Helpers ---
     function escapeHtml(str) {
@@ -994,7 +1030,10 @@
         // Check URL params (e.g. after Stripe OAuth callback)
         const urlParams = new URLSearchParams(window.location.search)
         const startPage = urlParams.get('page') || 'dashboard'
-        if (urlParams.get('tab')) settingsTab = urlParams.get('tab')
+        if (urlParams.get('tab')) {
+          settingsTab = urlParams.get('tab')
+          for (const section of settingsAccordion) { if (section.items.some(i => i.id === settingsTab)) { settingsAccordionOpen = section.id; break } }
+        }
         if (urlParams.get('stripe') === 'connected') {
           setTimeout(function() { showToast('Stripe erfolgreich verbunden!', 'success') }, 500)
         }
@@ -1162,6 +1201,22 @@
         }
       }
     }
+
+    // =============================================================
+    // ===== MODULE: Calendar ======================================
+    // =============================================================
+    // Week/day/month calendar, event rendering, tooltips,
+    // drag & drop, KPI updates, event detail modal,
+    // notifications, parent profiles, waitlist actions
+    // Functions: getMonday, addDays, fmtDate, fmtDateShort,
+    //   getCourseColor, getInstructorColor, getTeamMemberName,
+    //   getTeamMemberRole, hexToRgba, renderCalendar,
+    //   renderCalendarInto, showEventDetail, loadNotificationBadge,
+    //   showNotifications, renderNotifModal, toggleNotifRead,
+    //   markAllNotifsRead, showCalEvent, acceptWaitlistEntry,
+    //   showParentProfile, loadParentMessages, sendProviderMsg,
+    //   releaseToKidsClub, setCalView, updateKPIsForView,
+    //   calPrev, calNext, calToday, calDropEvent, calSlotClick
 
     // --- Calendar (Hauptansicht) ---
     let calWeekStart = getMonday(new Date())
@@ -1340,7 +1395,6 @@
 
       // Mini stats
       const todayEvents = eventsByDay[today] || []
-      const todayBookings = 0 // computed from calendar events below
       const weekEvents = events.filter(e => e.type === 'activity').length
 
       calContainer.innerHTML = `
@@ -1450,7 +1504,7 @@
               '<div class="cal-hour flex items-start justify-end pr-2 pt-1"><span class="text-xs text-gray-400">' + h + ':00</span></div>' +
               (calView === 'day' ? [calWeekStart] : days).map(d => {
                 const isToday = fmtDate(d) === today
-                return '<div class="cal-hour cal-day-col ' + (isToday ? 'cal-today' : '') + '" data-date="' + fmtDate(d) + '" data-hour="' + h + '" onclick="calSlotClick(\'' + fmtDate(d) + '\',' + h + ',event)" style="cursor:pointer" ondragover="event.preventDefault();this.style.background=\'#fdf4ed\'" ondragleave="this.style.background=\'\'" ondrop="calDropEvent(event,\'' + fmtDate(d) + '\',' + h + ');this.style.background=\'\'"></div>'
+                return '<div class="cal-hour cal-day-col ' + (isToday ? 'cal-today' : '') + '" data-date="' + fmtDate(d) + '" data-hour="' + h + '" onclick="calSlotClick(\'' + fmtDate(d) + '\',' + h + ',event)" style="cursor:pointer" ondragover="calDragOver(event,this)" ondragleave="this.classList.remove(\'drag-over\',\'drag-invalid\')" ondrop="calDropEvent(event,\'' + fmtDate(d) + '\',' + h + ');this.classList.remove(\'drag-over\',\'drag-invalid\')"></div>'
               }).join('')
             ).join('')}
           </div>
@@ -1604,16 +1658,20 @@
             eventEl.addEventListener('mouseenter', function(me) { showCalTooltip(me, ev, activity, occ, clr, roomName, occText, occPct) })
             eventEl.addEventListener('mousemove', moveCalTooltip)
             eventEl.addEventListener('mouseleave', hideCalTooltip)
-            eventEl.addEventListener('dragstart', function(de) { hideCalTooltip() })
 
             // Drag handlers
             eventEl.addEventListener('dragstart', function(e) {
+              hideCalTooltip()
               eventEl._dragged = false
-              e.dataTransfer.setData('text/plain', JSON.stringify({ activityId: ev.activityId, startTime: ev.startTime, endTime: ev.endTime, date: ev.date }))
-              eventEl.style.opacity = '0.5'
-              setTimeout(() => eventEl.style.cursor = 'grabbing', 0)
+              e.dataTransfer.effectAllowed = 'move'
+              e.dataTransfer.setData('text/plain', JSON.stringify({ activityId: ev.activityId, startTime: ev.startTime, endTime: ev.endTime, date: ev.date, roomId: activity?.roomId || null }))
+              eventEl.classList.add('dragging')
+              setTimeout(() => { eventEl._dragged = true }, 150)
             })
-            eventEl.addEventListener('dragend', function() { eventEl.style.opacity = '1'; eventEl.style.cursor = 'grab' })
+            eventEl.addEventListener('dragend', function() {
+              eventEl.classList.remove('dragging')
+              document.querySelectorAll('.cal-day-col.drag-over, .cal-day-col.drag-invalid').forEach(c => { c.classList.remove('drag-over', 'drag-invalid') })
+            })
 
             eventEl.innerHTML = `
               <div class="font-semibold truncate" style="font-size:11px;line-height:1.3;color:#1f2937;">${escapeHtml(ev.title)}</div>
@@ -2436,6 +2494,23 @@
       renderCalendarInto(activeCalContainer); updateKPIsForView()
     }
 
+    // Drag & Drop: highlight drop target on dragover
+    function calDragOver(e, cell) {
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'move'
+      document.querySelectorAll('.cal-day-col.drag-over, .cal-day-col.drag-invalid').forEach(function(c) {
+        if (c !== cell) c.classList.remove('drag-over', 'drag-invalid')
+      })
+      var hour = parseInt(cell.dataset.hour)
+      if (hour < 7 || hour > 21) {
+        cell.classList.add('drag-invalid')
+        cell.classList.remove('drag-over')
+      } else {
+        cell.classList.add('drag-over')
+        cell.classList.remove('drag-invalid')
+      }
+    }
+
     // Drag & Drop: move course to a different day/time
     async function calDropEvent(e, targetDate, targetHour) {
       e.preventDefault()
@@ -2443,15 +2518,37 @@
         const data = JSON.parse(e.dataTransfer.getData('text/plain'))
         if (!data.activityId) return
 
-        // Calculate new times
-        const oldStart = data.startTime.split(':')
-        const oldEnd = data.endTime.split(':')
-        const durationMin = (parseInt(oldEnd[0]) * 60 + parseInt(oldEnd[1])) - (parseInt(oldStart[0]) * 60 + parseInt(oldStart[1]))
-        const newStartTime = String(targetHour).padStart(2, '0') + ':00'
-        const totalEndMin = targetHour * 60 + durationMin
-        const endHour = Math.floor(totalEndMin / 60)
-        const endMin = totalEndMin % 60
-        const newEndTime = String(endHour).padStart(2, '0') + ':' + String(endMin).padStart(2, '0')
+        // Validate target hour
+        if (targetHour < 7 || targetHour > 21) {
+          showToast('Kurs kann nicht au\u00dferhalb der g\u00fcltigen Zeiten platziert werden', 'error')
+          return
+        }
+
+        // Calculate duration
+        const oldStartP = data.startTime.split(':')
+        const oldEndP = data.endTime.split(':')
+        const durationMin = (parseInt(oldEndP[0]) * 60 + parseInt(oldEndP[1])) - (parseInt(oldStartP[0]) * 60 + parseInt(oldStartP[1]))
+
+        // Half-hour precision from drop Y position within cell
+        const cellRect = e.currentTarget ? e.currentTarget.getBoundingClientRect() : null
+        let minuteOffset = 0
+        if (cellRect) {
+          const relY = e.clientY - cellRect.top
+          minuteOffset = relY > cellRect.height / 2 ? 30 : 0
+        }
+        const newStartTotalMin = targetHour * 60 + minuteOffset
+        const newStartTime = String(Math.floor(newStartTotalMin / 60)).padStart(2, '0') + ':' + String(newStartTotalMin % 60).padStart(2, '0')
+        const totalEndMin = newStartTotalMin + durationMin
+        const newEndTime = String(Math.floor(totalEndMin / 60)).padStart(2, '0') + ':' + String(totalEndMin % 60).padStart(2, '0')
+
+        // Validate end time doesn't go past 22:00
+        if (totalEndMin > 22 * 60) {
+          showToast('Kursende w\u00fcrde \u00fcber 22:00 hinausgehen', 'error')
+          return
+        }
+
+        // Skip if dropped on same position
+        if (data.date === targetDate && data.startTime === newStartTime) return
 
         // Get the new day code
         const targetD = new Date(targetDate)
@@ -2465,7 +2562,46 @@
             // Update the activity schedule
             const actRes = await api('/providers/' + currentProvider.id + '/activities')
             const act = actRes.data.find(a => a.id === data.activityId)
-            if (!act) return
+            if (!act) { showToast('Kurs nicht gefunden', 'error'); return }
+
+            // Room conflict check
+            const roomId = act.roomId || data.roomId
+            if (roomId) {
+              try {
+                const conflict = await api('/rooms/' + roomId + '/check-conflict', 'POST', {
+                  day: newDay, startTime: newStartTime, endTime: newEndTime,
+                  excludeActivityId: data.activityId
+                })
+                if (conflict.data && conflict.data.conflict) {
+                  showToast('Raumkonflikt: "' + (conflict.data.conflictingActivity ? conflict.data.conflictingActivity.title : 'Anderer Kurs') + '" belegt den Raum', 'error')
+                  return
+                }
+              } catch(re) { /* room API may not exist */ }
+            }
+
+            // Opening hours check
+            try {
+              const ohRes = await api('/opening-hours')
+              const oh = ohRes.data || ohRes
+              if (oh && oh.days) {
+                const dayKey = { MO: 'monday', TU: 'tuesday', WE: 'wednesday', TH: 'thursday', FR: 'friday', SA: 'saturday', SU: 'sunday' }[newDay]
+                const dh = oh.days[dayKey]
+                if (dh && !dh.enabled) {
+                  showToast('Der Standort ist ' + dayLabels[newDay] + ' geschlossen', 'error')
+                  return
+                }
+                if (dh && dh.enabled && dh.open && dh.close) {
+                  const oOpen = dh.open.split(':').map(Number)
+                  const oClose = dh.close.split(':').map(Number)
+                  const oOpenMin = oOpen[0] * 60 + (oOpen[1] || 0)
+                  const oCloseMin = oClose[0] * 60 + (oClose[1] || 0)
+                  if (newStartTotalMin < oOpenMin || totalEndMin > oCloseMin) {
+                    showToast('Kurs liegt au\u00dferhalb der \u00d6ffnungszeiten (' + dh.open + '\u2013' + dh.close + ')', 'error')
+                    return
+                  }
+                }
+              }
+            } catch(oe) { /* opening hours may not exist */ }
 
             // Update the slot that matches the old time
             const slots = act.schedule?.slots || []
@@ -2488,11 +2624,20 @@
             }
 
             await api('/activities/' + data.activityId, 'PUT', { schedule: { ...act.schedule, slots } })
-            renderCalendarInto(activeCalContainer)
+            showToast('Kurs verschoben auf ' + dayLabels[newDay] + ' ' + newStartTime + '\u2013' + newEndTime, 'success')
+            await renderCalendarInto(activeCalContainer)
             updateKPIsForView()
-          } catch(err) { console.error('Drop error:', err) }
+            // Highlight moved event briefly
+            setTimeout(() => {
+              const movedEl = document.querySelector('.cal-event[data-activity-id="' + data.activityId + '"]')
+              if (movedEl) movedEl.classList.add('just-dropped')
+            }, 100)
+          } catch(err) {
+            console.error('Drop error:', err)
+            showToast('Fehler beim Verschieben: ' + (err.message || 'Unbekannt'), 'error')
+          }
         }, { confirmText: 'Verschieben' })
-      } catch(err) { console.error('Drop error:', err) }
+      } catch(err) { console.error('Drop parse error:', err) }
     }
 
     // Click on empty calendar slot → create activity with pre-filled day/time
@@ -2542,7 +2687,12 @@
       }
     }
 
-    // --- Dashboard ---
+    // =============================================================
+    // ===== MODULE: Dashboard =====================================
+    // =============================================================
+    // Dashboard page with KPIs, calendar embed, payment banner
+    // Functions: renderDashboard, loadDashboardPaymentBanner
+
     async function renderDashboard() {
       const [dash, stats, occupancy, activitiesRes, bookingsRes, waitlistRes] = await Promise.all([
         api(`/providers/${currentProvider.id}/dashboard`),
@@ -2636,7 +2786,20 @@
       } catch(e) { /* silent */ }
     }
 
-    // --- Activities ---
+    // =============================================================
+    // ===== MODULE: Courses (Activities) ==========================
+    // =============================================================
+    // Course CRUD, activity cards, reviews, invitations,
+    // publishing, duplicating, archiving, activity form,
+    // slot management, course invite modal
+    // Functions: renderActivities, activityCard, starSvg,
+    //   renderStarsInline, ratingBadge, showReviewsModal,
+    //   showInviteModal, sendInvitations, publishActivity,
+    //   duplicateActivity, archiveActivity, showActivityForm,
+    //   addSlot, removeSlot, togglePackageSize, saveActivity,
+    //   showInviteParentsModal, closeInviteModal,
+    //   toggleInviteAll, sendCourseInvitations
+
     async function renderActivities() {
       const res = await api(`/providers/${currentProvider.id}/activities`)
       const activities = res.data
@@ -3505,6 +3668,13 @@
       }
     }
 
+    // =============================================================
+    // ===== MODULE: Bookings ======================================
+    // =============================================================
+    // Booking list, filters, payment, cancellation, CSV/DATEV export
+    // Functions: renderBookings, filterBookingsByActivity,
+    //   markBookingPaid, cancelBooking
+
     // --- Bookings ---
     let bookingsFilterActivity = '' // activity ID filter
 
@@ -3717,6 +3887,14 @@
       }, { danger: true })
     }
 
+    // =============================================================
+    // ===== MODULE: Customers =====================================
+    // =============================================================
+    // Customer list, loyalty tiers, customer detail modal
+    // Functions: getLoyaltyTiers, saveLoyaltyTiers,
+    //   getLoyaltyTier, loyaltyProgress, renderCustomers,
+    //   showCustomerDetail
+
     // --- Loyalty (pro Provider konfigurierbar) ---
     const defaultLoyaltyTiers = [
       { name: 'Starter', minBookings: 0, minSpent: 0, color: 'bg-gray-100 text-gray-600', icon: '⭐', discount: 0, perks: [] },
@@ -3735,8 +3913,7 @@
     function saveLoyaltyTiers(tiers) {
       localStorage.setItem('loyalty_' + currentProvider?.id, JSON.stringify(tiers))
     }
-    // Computed getter
-    const loyaltyTiers = null // will use getLoyaltyTiers() dynamically
+
 
     function getLoyaltyTier(bookingCount, totalSpent) {
       const tiers = getLoyaltyTiers()
@@ -3957,6 +4134,13 @@
       `
     }
 
+    // =============================================================
+    // ===== MODULE: Trials ========================================
+    // =============================================================
+    // Trial sessions list, status management, conversion to booking
+    // Functions: renderTrials, completeTrial, noShowTrial,
+    //   convertTrial
+
     // --- Trials ---
     const trialStatusDE = { scheduled: 'Geplant', completed: 'Abgeschlossen', no_show: 'Nicht erschienen', converted: 'Konvertiert', cancelled: 'Abgesagt' }
     const trialStatusColors2 = { scheduled: 'bg-brand-100 text-brand-700', completed: 'bg-green-100 text-green-700', no_show: 'bg-red-100 text-red-700', converted: 'bg-purple-100 text-purple-700', cancelled: 'bg-gray-100 text-gray-500' }
@@ -4059,6 +4243,14 @@
       showToast('Probestunde zur Buchung konvertiert!', 'success')
       navigate('trials')
     }
+
+    // =============================================================
+    // ===== MODULE: Invoices ======================================
+    // =============================================================
+    // Invoice list, generation, sending, payment tracking, PDF view
+    // Functions: renderInvoices, createInvoiceFromBooking,
+    //   generateAllInvoices, viewInvoicePdf, sendInvoice,
+    //   markInvoicePaid, cancelInvoice
 
     // --- Invoices ---
     const invoiceStatusDE = { draft: 'Entwurf', sent: 'Versendet', paid: 'Bezahlt', overdue: 'Überfällig', cancelled: 'Storniert' }
@@ -4260,6 +4452,17 @@
         navigate('invoices')
       }, { danger: true })
     }
+
+    // =============================================================
+    // ===== MODULE: Team ==========================================
+    // =============================================================
+    // Team member management, permissions, documents, absences
+    // Functions: renderTeam, buildPermissionsChecklist,
+    //   getPermissionsFromForm, showTeamForm, onRoleChangeInForm,
+    //   resetPermsToRoleDefault, editTeamMember, updateTeamMember,
+    //   showDocForm, showAbsenceForm, saveTeamMember, saveDoc,
+    //   saveAbsence, toggleTeamMember, inviteTeamMember,
+    //   deleteTeamMember
 
     // --- Team ---
     const roleLabels = { owner: 'Inhaber', admin: 'Administrator', manager: 'Manager', staff: 'Mitarbeiter', instructor: 'Kursleiter', receptionist: 'Empfang', assistant: 'Assistent' }
@@ -4652,6 +4855,12 @@
       }, { danger: true })
     }
 
+    // =============================================================
+    // ===== MODULE: Holidays & Seasons ============================
+    // =============================================================
+    // Holiday/season management
+    // Functions: renderHolidays
+
     // --- Holidays ---
     async function renderHolidays() {
       const [holidays, seasons, bundeslaender] = await Promise.all([
@@ -4710,7 +4919,13 @@
       `
     }
 
-    // --- Helpers ---
+    // =============================================================
+    // ===== MODULE: Reports =======================================
+    // =============================================================
+    // Reports page with 6 tabs: overview, courses, participants,
+    // trials, revenue, team
+    // Functions: renderReports
+
     // --- Berichte & Analysen ---
     let reportTab = 'overview'
 
@@ -4937,6 +5152,13 @@
       }
     }
 
+    // =============================================================
+    // ===== MODULE: Documents =====================================
+    // =============================================================
+    // Document upload, categories, download, deletion
+    // Functions: getStoredDocs, saveStoredDocs, renderDocuments,
+    //   showDocUploadForm, uploadDocument, deleteDocument
+
     // --- Dokumente ---
     const docCategories = [
       { value: 'contract', label: 'Verträge & AGB', icon: '📋' },
@@ -5109,6 +5331,19 @@
         navigate('documents')
       }, { danger: true })
     }
+
+    // =============================================================
+    // ===== MODULE: Course Blocks & Credits =======================
+    // =============================================================
+    // Course block management, credits, attendance tracking
+    // Functions: renderCourseBlocks, renderCB_Blocks,
+    //   showBlockDetail, createFollowUpBlock, showCreateBlockForm,
+    //   autoFillBlock, submitCreateBlock, cancelBlockSession,
+    //   showCancelReasonModal, executeCancelSession, cancelBlock,
+    //   rescheduleSession, executeReschedule, extendBlock,
+    //   runBlockCronjobs, renderCB_Credits, showManualCreditForm,
+    //   submitManualCredit, renderCB_Attendance,
+    //   openAttendanceForSession, markAttendance, fmtDateDE
 
     // --- Kursblöcke & Guthaben ---
     async function renderCourseBlocks() {
@@ -6010,6 +6245,13 @@
       return `${parts[2]}.${parts[1]}.${parts[0]}`
     }
 
+    // =============================================================
+    // ===== MODULE: Widgets (Embed) ===============================
+    // =============================================================
+    // Widget embed codes, branding, data export, copy-to-clipboard
+    // Functions: renderEmbed, exportData, saveWidgetBranding,
+    //   copyToClipboard
+
     // --- Embed / Widgets ---
     async function renderEmbed() {
       const slug = currentProvider.slug || 'mein-studio'
@@ -6232,6 +6474,19 @@
         setTimeout(() => { btn.textContent = orig; btn.classList.remove('bg-green-500', 'text-white') }, 2000)
       })
     }
+
+    // =============================================================
+    // ===== MODULE: Marketing =====================================
+    // =============================================================
+    // Automation flows, templates, tracking pixels, image upload
+    // Functions: loadMarketingFlows, loadMarketingTemplates,
+    //   loadMarketingSendCounts, getMarketingFlows,
+    //   getDefaultTemplates, getSendCountForTemplate,
+    //   getPixelSettings, savePixelSettings, renderMarketing,
+    //   showMarketingTab, renderFlowsTab, renderTemplatesTab,
+    //   editTemplate, insertVar, handleImageUpload, compressImage,
+    //   uploadProviderImage, removeProviderImage, removeImage,
+    //   renderTrackingTab, toggleFlow, updatePixel, saveAllPixels
 
     // --- Marketing & Automation ---
     const triggerLabels = {
@@ -6688,7 +6943,28 @@
       showToast('Tracking gespeichert!', 'success')
     }
 
-    // --- Settings ---
+    // =============================================================
+    // ===== MODULE: Settings ======================================
+    // =============================================================
+    // Company settings, tax/finance, loyalty, legal, opening hours,
+    // rooms, check-in, QR codes, payments (Stripe, PayPal, SEPA),
+    // cancellation policy, course settings
+    // Functions: getProviderSettings, saveProviderSettings,
+    //   renderSettings, loadOpeningHours, renderOpeningHours,
+    //   toggleOHDay, saveOpeningHours, loadRooms, renderRoomsList,
+    //   showAddRoom, editRoom, saveRoom, deleteRoom,
+    //   renderCheckinTab, loadQRLib, renderQRCode, downloadQR,
+    //   printQR, renderCoursesSettingsTab, toggleMakeupSystem,
+    //   saveCourseSettings, renderCompanyTab, renderPaymentsTab,
+    //   loadPaymentsTab, savePayPalFromPaymentsTab,
+    //   showCreateSepaMandate, submitSepaMandate,
+    //   renderFinanceTab, renderLegalTab, renderLoyaltyTab,
+    //   saveCompanySettings, saveFinanceSettings,
+    //   loadPaymentConfig, saveBookingRedirect, manualCheckin,
+    //   saveCheckinWindow, saveCheckinRedirect, connectStripe,
+    //   disconnectStripe, savePayPalConfig, saveCancellationPolicy,
+    //   saveLegalSettings, addTier, removeTier, saveLoyaltySettings
+
     // --- Provider settings persistence ---
     function getProviderSettings() {
       try { return JSON.parse(localStorage.getItem('provSettings_' + currentProvider?.id) || '{}') } catch { return {} }
@@ -6696,25 +6972,87 @@
     function saveProviderSettings(s) { localStorage.setItem('provSettings_' + currentProvider?.id, JSON.stringify(s)) }
 
     let settingsTab = 'company'
+    let settingsAccordionOpen = 'unternehmen'
+
+    const settingsAccordion = [
+      { id: 'unternehmen', label: 'Unternehmen', items: [
+        { id: 'company', label: 'Profil' },
+        { id: 'hours', label: 'Öffnungszeiten' },
+        { id: 'rooms', label: 'Räume' }
+      ]},
+      { id: 'finanzen', label: 'Finanzen', items: [
+        { id: 'finance', label: 'Steuern & MwSt' },
+        { id: 'courses', label: 'Kurse & Blöcke' }
+      ]},
+      { id: 'zahlungen', label: 'Zahlungen', items: [
+        { id: 'payments', label: 'Stripe, PayPal & SEPA' }
+      ]},
+      { id: 'treueprogramm', label: 'Treueprogramm', items: [
+        { id: 'loyalty', label: 'Stufen & Punkte' }
+      ]},
+      { id: 'rechtliches', label: 'Rechtliches', items: [
+        { id: 'legal', label: 'AGB & Datenschutz' }
+      ]},
+      { id: 'betrieb', label: 'Betrieb', items: [
+        { id: 'checkin', label: 'QR Check-in' }
+      ]}
+    ]
+
+    function settingsSelectTab(tabId) {
+      settingsTab = tabId
+      // Find which accordion section this tab belongs to and open it
+      for (const section of settingsAccordion) {
+        if (section.items.some(i => i.id === tabId)) {
+          settingsAccordionOpen = section.id
+          break
+        }
+      }
+      renderSettings()
+    }
+
+    function settingsToggleAccordion(sectionId) {
+      settingsAccordionOpen = settingsAccordionOpen === sectionId ? '' : sectionId
+      renderSettings()
+    }
+
+    function renderSettingsSidebar() {
+      return settingsAccordion.map(section => {
+        const isOpen = settingsAccordionOpen === section.id
+        const hasActive = section.items.some(i => i.id === settingsTab)
+        return `
+          <div class="settings-accordion-section">
+            <button onclick="settingsToggleAccordion('${section.id}')"
+              class="w-full flex items-center justify-between px-3 py-2.5 text-sm font-semibold rounded-lg transition-colors ${hasActive ? 'text-brand-700 bg-brand-50' : 'text-gray-700 hover:bg-gray-50'}">
+              <span>${section.label}</span>
+              <svg class="w-4 h-4 transition-transform ${isOpen ? 'rotate-90' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+            </button>
+            <div class="settings-accordion-items overflow-hidden transition-all ${isOpen ? 'max-h-40 opacity-100' : 'max-h-0 opacity-0'}" style="transition: max-height 0.2s ease, opacity 0.15s ease;">
+              ${section.items.map(item => `
+                <button onclick="settingsSelectTab('${item.id}')"
+                  class="w-full text-left pl-8 pr-3 py-2 text-sm rounded-lg transition-colors ${settingsTab === item.id ? 'text-brand-600 bg-brand-50 font-medium' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'}">
+                  ${item.label}
+                </button>
+              `).join('')}
+            </div>
+          </div>
+        `
+      }).join('')
+    }
 
     async function renderSettings() {
       const p = currentProvider
       const s = getProviderSettings()
 
       document.getElementById('content').innerHTML = `
-        <!-- Settings Tabs -->
-        <div class="flex gap-1 mb-6 border-b border-gray-200">
-          <button onclick="settingsTab='company'; renderSettings()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${settingsTab === 'company' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}">Unternehmen</button>
-          <button onclick="settingsTab='hours'; renderSettings()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${settingsTab === 'hours' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}">Öffnungszeiten</button>
-          <button onclick="settingsTab='payments'; renderSettings()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${settingsTab === 'payments' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}">Zahlungen</button>
-          <button onclick="settingsTab='finance'; renderSettings()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${settingsTab === 'finance' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}">Steuern & Finanzen</button>
-          <button onclick="settingsTab='loyalty'; renderSettings()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${settingsTab === 'loyalty' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}">Treueprogramm</button>
-          <button onclick="settingsTab='courses'; renderSettings()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${settingsTab === 'courses' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}">Kurse & Blöcke</button>
-          <button onclick="settingsTab='legal'; renderSettings()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${settingsTab === 'legal' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}">Rechtliches</button>
-          <button onclick="settingsTab='rooms'; renderSettings()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${settingsTab === 'rooms' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}">Räume</button>
-          <button onclick="settingsTab='checkin'; renderSettings()" class="px-4 py-2.5 text-sm font-medium border-b-2 ${settingsTab === 'checkin' ? 'border-brand-500 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'}">QR Check-in</button>
+        <!-- Settings Sidebar + Content -->
+        <div class="settings-layout flex flex-col md:flex-row gap-0 -mx-4 -mt-2 min-h-[600px]">
+          <!-- Sidebar -->
+          <div class="settings-sidebar w-full md:w-[250px] flex-shrink-0 border-b md:border-b-0 md:border-r border-gray-200 p-4 space-y-1 bg-gray-50/50">
+            ${renderSettingsSidebar()}
+          </div>
+          <!-- Content -->
+          <div class="settings-content flex-1 p-6" id="settingsContent"></div>
         </div>
-        <div id="settingsContent"></div>
       `
 
       const sc = document.getElementById('settingsContent')
@@ -7450,7 +7788,7 @@
             stripeHtml += '<div class="flex items-center gap-2 mt-2 text-yellow-700 bg-yellow-50 px-3 py-2 rounded-lg"><span>&#9888;</span> Testmodus aktiv — es werden keine echten Zahlungen verarbeitet</div>'
           }
           stripeHtml += '</div>'
-          stripeHtml += '<button onclick="showConfirm(\'Stripe-Verbindung wirklich trennen? Online-Zahlungen werden danach nicht mehr funktionieren.\', () => { disconnectStripe(); settingsTab=\\\'payments\\\'; renderSettings() }, { danger: true })" class="mt-4 text-xs text-red-500 hover:text-red-700 underline cursor-pointer">Verbindung trennen</button>'
+          stripeHtml += '<button onclick="showConfirm(\'Stripe-Verbindung wirklich trennen? Online-Zahlungen werden danach nicht mehr funktionieren.\', () => { disconnectStripe(); settingsSelectTab(\\\'payments\\\') }, { danger: true })" class="mt-4 text-xs text-red-500 hover:text-red-700 underline cursor-pointer">Verbindung trennen</button>'
           stripeHtml += '</div>'
         } else if (!stripe.platformConfigured) {
           // Platform not configured
@@ -7599,7 +7937,7 @@
       try {
         await api('/providers/' + currentProvider.id + '/paypal-config', 'PUT', { clientId, secret })
         showToast('PayPal verbunden!', 'success')
-        settingsTab = 'payments'; renderSettings()
+        settingsSelectTab('payments')
       } catch(e) { showToast('Fehler: ' + (e.message || 'Verbindung fehlgeschlagen'), 'error') }
     }
 
@@ -7669,7 +8007,7 @@
         await api('/sepa/mandates', 'POST', { providerId: currentProvider.id, parentId, accountHolder, iban, bic: bic || undefined })
         showToast('SEPA-Mandat erstellt!', 'success')
         document.getElementById('calModal').className = 'hidden'
-        settingsTab = 'payments'; renderSettings()
+        settingsSelectTab('payments')
       } catch(e) { showToast('Fehler: ' + (e.message || 'Mandat konnte nicht erstellt werden'), 'error') }
     }
 
@@ -8296,7 +8634,7 @@
         perks: [],
       })
       saveLoyaltyTiers(tiers)
-      settingsTab = 'loyalty'; renderSettings()
+      settingsSelectTab('loyalty')
     }
 
     function removeTier(idx) {
@@ -8305,7 +8643,7 @@
       showConfirm('Stufe "' + tiers[idx].name + '" wirklich löschen?', () => {
         tiers.splice(idx, 1)
         saveLoyaltyTiers(tiers)
-        settingsTab = 'loyalty'; renderSettings()
+        settingsSelectTab('loyalty')
       }, { danger: true })
     }
 
@@ -8329,8 +8667,15 @@
       })
       saveLoyaltyTiers(tiers)
       showToast('Treueprogramm gespeichert!', 'success')
-      settingsTab = 'loyalty'; renderSettings()
+      settingsSelectTab('loyalty')
     }
+
+    // =============================================================
+    // ===== MODULE: UI Helpers ====================================
+    // =============================================================
+    // Shared formatting and UI component helpers
+    // Functions: formatCurrency, kpiCard, kpiCardSmall, statusBar,
+    //   segmentCard, tagColor, trialStatusColor, invoiceStatusColor
 
     function formatCurrency(amount) { return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(amount || 0) }
 
@@ -8379,6 +8724,11 @@
       const m = { draft: 'bg-gray-100 text-gray-600', sent: 'bg-brand-100 text-brand-700', paid: 'bg-green-100 text-green-700', overdue: 'bg-red-100 text-red-700', cancelled: 'bg-gray-100 text-gray-500' }
       return m[s] || 'bg-gray-100 text-gray-600'
     }
+
+    // =============================================================
+    // ===== MODULE: Bootstrap / Init ==============================
+    // =============================================================
+    // Event listeners, auth check, PWA registration
 
     // Enter-Key im Login → Anmelden
     document.getElementById('loginPassword').addEventListener('keydown', (e) => {
