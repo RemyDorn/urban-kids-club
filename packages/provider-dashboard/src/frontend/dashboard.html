@@ -1377,7 +1377,21 @@
       `
 
       // Place events on the grid (day/week views only, month has inline events)
-      if (calView === 'month') return
+      if (calView === 'month') {
+        // Add tooltip delegation for month view events
+        const monthGrid = document.getElementById('monthGrid')
+        if (monthGrid) {
+          monthGrid.addEventListener('mouseenter', function(e) {
+            const el = e.target.closest('.cal-month-ev'); if (!el) return
+            const fakeEv = { title: el.dataset.ttTitle, startTime: el.dataset.ttTime.split(' \u2013 ')[0], endTime: el.dataset.ttTime.split(' \u2013 ')[1] || '' }
+            const fakeAct = el.dataset.ttInstr ? { instructorId: el.dataset.ttInstr } : null
+            showCalTooltip(e, fakeEv, fakeAct, null, el.dataset.ttClr, el.dataset.ttRoom, el.dataset.ttOcc, el.dataset.ttPct)
+          }, true)
+          monthGrid.addEventListener('mousemove', function(e) { if (e.target.closest('.cal-month-ev')) moveCalTooltip(e) }, true)
+          monthGrid.addEventListener('mouseleave', function(e) { if (e.target.closest('.cal-month-ev')) hideCalTooltip() }, true)
+        }
+        return
+      }
       const gridDays = calView === 'day' ? [calWeekStart] : days
       gridDays.forEach((d, dayIdx) => {
         const dayEvents = eventsByDay[fmtDate(d)] || []
