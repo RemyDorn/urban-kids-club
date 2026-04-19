@@ -135,7 +135,7 @@ export function registerInvoiceRoutes(router: Router) {
     const { data: provider } = await db.from('providers').select('id, name, display_name, company_name, legal_form, address_street, address_zip, address_city, email, phone, tax_id, vat_id, kleinunternehmer, bank_holder, bank_iban, bank_bic, logo_url').eq('id', invoice.provider_id).single()
     const { data: parent } = await db.from('parents').select('id, name, email, street, zip, city').eq('id', invoice.parent_id).single()
 
-    const lineItems = (invoice.line_items || []) as Array<{ description: string; quantity: number; unitPrice: number; vatRate: number; total: number }>
+    const lineItems = (invoice.line_items || []) as Array<{ description: string; quantity: number; unitPrice: number; vatRate: number; total: number; netAmount?: number; vatAmount?: number }>
     const isKleinunternehmer = provider?.kleinunternehmer || false
     const vatPercent = isKleinunternehmer ? 0 : Math.round((lineItems[0]?.vatRate || 0.19) * 100)
 
@@ -143,9 +143,12 @@ export function registerInvoiceRoutes(router: Router) {
     const fmtDate = (d: string) => d ? new Date(d).toLocaleDateString('de-DE') : ''
     const statusLabels: Record<string, string> = { draft: 'Entwurf', sent: 'Versendet', paid: 'Bezahlt', overdue: 'Überfällig', cancelled: 'Storniert' }
 
-    const lineItemsHtml = lineItems.map((item, i) =>
-      `<tr><td>${i + 1}</td><td>${escHtml(item.description)}</td><td>${fmt(item.unitPrice)} &euro;</td><td>${isKleinunternehmer ? 'entf.' : (Math.round(item.vatRate * 100) + '%')}</td><td>${fmt(item.total)} &euro;</td></tr>`
-    ).join('')
+    const lineItemsHtml = lineItems.map((item, i) => {
+      const vatRate = item.vatRate ?? 0.19
+      const brutto = item.total ?? 0
+      const net = item.netAmount ?? (vatRate > 0 ? Math.round(brutto / (1 + vatRate) * 100) / 100 : brutto)
+      return `<tr><td>${i + 1}</td><td>${escHtml(item.description)}</td><td>${fmt(item.unitPrice)} &euro;</td><td>${isKleinunternehmer ? 'entf.' : (Math.round(vatRate * 100) + '%')}</td><td>${fmt(net)} &euro;</td><td>${fmt(brutto)} &euro;</td></tr>`
+    }).join('')
 
     // Read template and replace placeholders
     const fs = await import('node:fs/promises')

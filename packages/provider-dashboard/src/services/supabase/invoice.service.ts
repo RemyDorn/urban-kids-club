@@ -62,6 +62,9 @@ export const SupabaseInvoiceService = {
     const dueDate = new Date(now)
     dueDate.setDate(dueDate.getDate() + 14)
 
+    const netAmount = subtotal  // alias for clarity
+    const vatAmount = tax       // alias for clarity
+
     const row = invoiceToDb({
       providerId,
       parentId: booking.parent_id,
@@ -70,13 +73,15 @@ export const SupabaseInvoiceService = {
       lineItems: [{
         description: `${activity.title} – ${label}`,
         quantity: 1,
-        unitPrice: subtotal,  // Netto-Einzelpreis
+        unitPrice: amount,        // Brutto-Einzelpreis (was der Kunde zahlt)
         vatRate,
-        total: subtotal,  // Netto-Gesamtpreis
+        total,                    // Brutto-Gesamtpreis
+        netAmount,                // Netto
+        vatAmount,                // MwSt-Betrag
       }],
-      subtotal,
-      tax,
-      total,
+      subtotal,                   // = Netto-Summe
+      tax,                        // = MwSt-Summe
+      total,                      // = Brutto-Summe
       currency: (booking.currency as Currency) ?? 'EUR',
       status: 'draft',
       issuedAt: now,
@@ -208,15 +213,18 @@ export const SupabaseInvoiceService = {
     if (error) throw error
     const result: Record<number, { net: number; vat: number; gross: number }> = {}
     for (const row of data ?? []) {
-      const items: Array<{ vatRate?: number; total?: number }> = row.line_items ?? []
+      const items: Array<{ vatRate?: number; total?: number; netAmount?: number; vatAmount?: number }> = row.line_items ?? []
       for (const item of items) {
         const rate = Math.round((item.vatRate ?? 0) * 100)
         if (!result[rate]) result[rate] = { net: 0, vat: 0, gross: 0 }
-        const net = item.total ?? 0
-        const vat = Math.round(net * (item.vatRate ?? 0) * 100) / 100
+        // total ist Brutto, netAmount/vatAmount sind die aufgeschlüsselten Werte
+        const brutto = item.total ?? 0
+        const vatRate = item.vatRate ?? 0
+        const net = item.netAmount ?? (vatRate > 0 ? Math.round(brutto / (1 + vatRate) * 100) / 100 : brutto)
+        const vat = item.vatAmount ?? Math.round((brutto - net) * 100) / 100
         result[rate].net += net
         result[rate].vat += vat
-        result[rate].gross += net + vat
+        result[rate].gross += brutto
       }
     }
     return result

@@ -220,17 +220,55 @@ describe('WaitlistService', () => {
 describe('InvoiceService', () => {
   beforeEach(resetAll)
 
-  it('should create invoice from booking', () => {
+  it('should create invoice from booking with ENTWURF number', () => {
     const { provider, activity, parent } = setup()
     const b = BookingService.create({ activityId: activity.id, providerId: provider.id, parentId: parent.id, child: parent.children[0], pricingOptionId: activity.pricing[0].id })
     assert.ok(!('error' in b))
 
     const inv = InvoiceService.createFromBooking(b.booking.id, 0.19)
     assert.ok(!('error' in inv))
-    assert.ok(inv.number.startsWith('INV-'))
+    assert.equal(inv.number, 'ENTWURF')
     assert.equal(inv.status, 'draft')
     assert.ok(inv.subtotal > 0)
     assert.ok(inv.tax > 0)
+  })
+
+  it('should assign sequential number only on send (GoBD)', () => {
+    const { provider, activity, parent } = setup()
+    const b = BookingService.create({ activityId: activity.id, providerId: provider.id, parentId: parent.id, child: parent.children[0], pricingOptionId: activity.pricing[0].id })
+    assert.ok(!('error' in b))
+
+    const inv = InvoiceService.createFromBooking(b.booking.id, 0.19)
+    assert.ok(!('error' in inv))
+    assert.equal(inv.number, 'ENTWURF')
+
+    const sent = InvoiceService.send(inv.id)
+    assert.ok(sent)
+    assert.ok(sent!.number.startsWith('INV-'))
+    assert.equal(sent!.status, 'sent')
+  })
+
+  it('should not waste invoice numbers on cancelled drafts', () => {
+    const { provider, activity, parent } = setup()
+
+    // Create and cancel first invoice (draft)
+    const b1 = BookingService.create({ activityId: activity.id, providerId: provider.id, parentId: parent.id, child: parent.children[0], pricingOptionId: activity.pricing[0].id })
+    assert.ok(!('error' in b1))
+    const inv1 = InvoiceService.createFromBooking(b1.booking.id, 0.19)
+    assert.ok(!('error' in inv1))
+    InvoiceService.cancel(inv1.id)
+
+    // Create second booking with different child
+    const p2 = assertNotError(ParentService.create({ name: 'P2', email: 'p2@t.de', children: [{ name: 'K2', age: 5, emergencyContact: 'P2', emergencyPhone: '1' }] }))
+    const b2 = BookingService.create({ activityId: activity.id, providerId: provider.id, parentId: p2.id, child: p2.children[0], pricingOptionId: activity.pricing[0].id })
+    assert.ok(!('error' in b2))
+    const inv2 = InvoiceService.createFromBooking(b2.booking.id, 0.19)
+    assert.ok(!('error' in inv2))
+
+    // Send second invoice — should get INV-YYYY-0001 (no gap)
+    const sent = InvoiceService.send(inv2.id)
+    assert.ok(sent)
+    assert.ok(sent!.number.match(/INV-\d{4}-0001/), `Expected first number, got ${sent!.number}`)
   })
 
   it('should prevent duplicate invoice for same booking', () => {
@@ -257,6 +295,42 @@ describe('InvoiceService', () => {
     const summary = InvoiceService.getVatSummary(provider.id, 2026)
     assert.ok(summary.totalGross > 0)
     assert.equal(summary.paidInvoices, 1)
+  })
+
+  it('should calculate Brutto→Netto correctly: 120€ Brutto, 19% → Netto 100.84€, MwSt 19.16€', () => {
+    const { provider, parent } = setup()
+    const inv = InvoiceService.create({
+      providerId: provider.id,
+      parentId: parent.id,
+      lineItems: [{ description: 'Testkurs', quantity: 1, unitPrice: 120, vatRate: 0.19 }],
+    })
+    assert.ok(!('error' in inv))
+    // Netto = 120 / 1.19 = 100.84 (gerundet)
+    assert.equal(inv.subtotal, 100.84)
+    // MwSt = 120 - 100.84 = 19.16
+    assert.equal(inv.tax, 19.16)
+    // Brutto = 120 (= was der Kunde zahlt)
+    assert.equal(inv.total, 120)
+    // Line item details
+    assert.equal(inv.lineItems[0].total, 120)
+    assert.equal(inv.lineItems[0].netAmount, 100.84)
+    assert.equal(inv.lineItems[0].vatAmount, 19.16)
+  })
+
+  it('should handle Kleinunternehmer (§19 UStG): Netto = Brutto, MwSt = 0', () => {
+    const { provider, parent } = setup()
+    const inv = InvoiceService.create({
+      providerId: provider.id,
+      parentId: parent.id,
+      lineItems: [{ description: 'Testkurs', quantity: 1, unitPrice: 120, vatRate: 0 }],
+    })
+    assert.ok(!('error' in inv))
+    // Kleinunternehmer: vatRate = 0 → Netto = Brutto
+    assert.equal(inv.subtotal, 120)
+    assert.equal(inv.tax, 0)
+    assert.equal(inv.total, 120)
+    assert.equal(inv.lineItems[0].netAmount, 120)
+    assert.equal(inv.lineItems[0].vatAmount, 0)
   })
 })
 

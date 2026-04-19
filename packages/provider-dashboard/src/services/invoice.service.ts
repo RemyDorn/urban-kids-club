@@ -31,10 +31,10 @@ export interface CreateInvoiceInput {
 const invoiceCounters = new Map<ID, number>()
 
 function nextInvoiceNumber(providerId: ID): string {
-  // Hole höchste bestehende Nummer falls Counter zurückgesetzt wurde
+  // Nur versendete/bezahlte/überfällige Rechnungen zählen (keine Entwürfe)
   const existing = Array.from(store.getFromIndex(store.indexes.invoicesByProvider, providerId))
     .map((id) => store.state.invoices.get(id)!)
-    .filter(Boolean)
+    .filter((inv) => inv && inv.status !== 'draft')
 
   const currentFromCounter = invoiceCounters.get(providerId) ?? 0
   const currentFromExisting = existing.reduce((max, inv) => {
@@ -81,29 +81,33 @@ export const InvoiceService = {
     const dueInDays = input.dueInDays ?? 14
 
     // Line Items mit variabler MwSt berechnen
+    // Preise sind IMMER Brutto (inkl. MwSt) — MwSt rausrechnen, nicht draufschlagen
     const lineItems: InvoiceLineItem[] = input.lineItems.map((item) => {
-      const total = Math.round(item.quantity * item.unitPrice * 100) / 100
+      const vatRate = item.vatRate ?? 0.19
+      const bruttoTotal = Math.round(item.quantity * item.unitPrice * 100) / 100
+      const netAmount = vatRate > 0
+        ? Math.round(bruttoTotal / (1 + vatRate) * 100) / 100
+        : bruttoTotal
+      const vatAmount = Math.round((bruttoTotal - netAmount) * 100) / 100
       return {
         description: item.description,
         quantity: item.quantity,
         unitPrice: item.unitPrice,
-        vatRate: item.vatRate ?? 0.19,
-        total,
+        vatRate,
+        total: bruttoTotal,       // Brutto
+        netAmount,                // Netto
+        vatAmount,                // MwSt-Betrag
       }
     })
 
-    // Netto-Summe (gerundet um Floating-Point-Drift zu vermeiden)
-    const subtotal = Math.round(lineItems.reduce((sum, item) => sum + item.total, 0) * 100) / 100
+    // Netto = Summe aller Netto-Beträge
+    const subtotal = Math.round(lineItems.reduce((sum, item) => sum + item.netAmount, 0) * 100) / 100
 
-    // MwSt nach Sätzen aufschlüsseln
-    let totalTax = 0
-    for (let i = 0; i < input.lineItems.length; i++) {
-      const vatRate = input.lineItems[i].vatRate ?? 0.19
-      totalTax += Math.round(lineItems[i].total * vatRate * 100) / 100
-    }
+    // MwSt = Summe aller MwSt-Beträge
+    const tax = Math.round(lineItems.reduce((sum, item) => sum + item.vatAmount, 0) * 100) / 100
 
-    const tax = Math.round(totalTax * 100) / 100
-    const total = Math.round((subtotal + tax) * 100) / 100
+    // Brutto-Gesamtbetrag = Summe aller Brutto-Beträge (= was der Kunde zahlt)
+    const total = Math.round(lineItems.reduce((sum, item) => sum + item.total, 0) * 100) / 100
 
     // Betrag muss positiv sein
     const amountCheck = Validators.amountPositive(total, 'Rechnungsbetrag')
@@ -117,7 +121,7 @@ export const InvoiceService = {
       providerId: input.providerId,
       parentId: input.parentId,
       bookingIds: input.bookingIds ?? [],
-      number: nextInvoiceNumber(input.providerId),
+      number: 'ENTWURF',
       lineItems,
       subtotal,
       tax,
@@ -168,6 +172,8 @@ export const InvoiceService = {
   send(id: ID): Invoice | undefined {
     const invoice = store.state.invoices.get(id)
     if (!invoice || invoice.status !== 'draft') return undefined
+    // GoBD: Rechnungsnummer erst beim Versenden vergeben
+    invoice.number = nextInvoiceNumber(invoice.providerId)
     invoice.status = 'sent'
 
     createNotification({
@@ -219,18 +225,30 @@ export const InvoiceService = {
     const pricingOption = activity.pricing.find((p) => p.id === booking.pricingOptionId)
     if (!pricingOption) return { error: 'Preisoption nicht gefunden' }
 
+    const lineItems: InvoiceLineItemInput[] = [
+      {
+        description: `${activity.title} – ${pricingOption.label} (${booking.child.name})`,
+        quantity: 1,
+        unitPrice: pricingOption.amount,
+        vatRate,
+      },
+    ]
+
+    // Geschwisterrabatt als separate Rechnungsposition
+    if (booking.discountApplied && booking.discountApplied > 0 && booking.discountReason === 'sibling') {
+      lineItems.push({
+        description: `Geschwisterrabatt (${pricingOption.siblingDiscount || ''}%)`,
+        quantity: 1,
+        unitPrice: -booking.discountApplied,
+        vatRate,
+      })
+    }
+
     return this.create({
       providerId: booking.providerId,
       parentId: booking.parentId,
       bookingIds: [bookingId],
-      lineItems: [
-        {
-          description: `${activity.title} – ${pricingOption.label} (${booking.child.name})`,
-          quantity: 1,
-          unitPrice: pricingOption.amount,
-          vatRate,
-        },
-      ],
+      lineItems,
       currency: pricingOption.currency,
     })
   },

@@ -221,6 +221,8 @@ export interface Booking {
   amountPaid: number
   currency: Currency
   source: 'direct' | 'platform'  // Direkt beim Provider oder über Kids Club Plattform
+  discountApplied?: number        // Rabattbetrag in EUR (z.B. 5.00)
+  discountReason?: string         // Grund: 'sibling', 'coupon', etc.
   notes?: string
   createdAt: Date
   updatedAt: Date
@@ -269,9 +271,11 @@ export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue' | 'cancelled'
 export interface InvoiceLineItem {
   description: string
   quantity: number
-  unitPrice: number
+  unitPrice: number           // Brutto-Einzelpreis (inkl. MwSt)
   vatRate: number             // 0.19, 0.07, 0 – MwSt-Satz pro Position (GoBD-Pflicht)
-  total: number
+  total: number               // Brutto-Gesamtpreis (quantity * unitPrice)
+  netAmount: number           // Netto-Gesamtpreis (Brutto / (1 + vatRate))
+  vatAmount: number           // MwSt-Betrag (Brutto - Netto)
 }
 
 export interface Invoice {
@@ -551,6 +555,7 @@ export interface CalendarConflict {
 export interface WaitlistEntry {
   id: ID
   activityId: ID
+  courseBlockId?: ID          // Optional: Warteliste für spezifischen Kursblock
   parentId: ID
   child: ChildInfo
   position: number
