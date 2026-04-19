@@ -3264,7 +3264,162 @@
       }
 
       document.getElementById('activityModal').className = 'hidden'
+
+      // After creating a NEW course, offer to invite matching parents
+      if (!editId && saveResult?.data?.id) {
+        const newActivity = saveResult.data
+        showInviteParentsModal(newActivity.id, newActivity.title, body.ageRange, body.category)
+      } else {
+        navigate('activities')
+      }
+    }
+
+    // ============================================================
+    // Kurs-Einladungen — Eltern einladen Modal
+    // ============================================================
+
+    async function showInviteParentsModal(activityId, courseName, ageRange, category) {
+      // Fetch matching parents
+      const params = new URLSearchParams()
+      if (ageRange?.min !== undefined) params.set('ageMin', ageRange.min)
+      if (ageRange?.max !== undefined) params.set('ageMax', ageRange.max)
+      if (category) params.set('category', category)
+      if (activityId) params.set('activityId', activityId)
+
+      let matchingParents = []
+      try {
+        const res = await api(`/providers/${currentProvider.id}/parents/matching?${params}`)
+        matchingParents = res.data || []
+      } catch(e) { console.error('Failed to load matching parents', e) }
+
+      // Build modal
+      let modal = document.getElementById('inviteParentsModal')
+      if (!modal) {
+        modal = document.createElement('div')
+        modal.id = 'inviteParentsModal'
+        document.body.appendChild(modal)
+      }
+
+      const parentRows = matchingParents.length > 0
+        ? matchingParents.map((p, i) => `
+          <label class="flex items-start gap-3 p-3 rounded-lg hover:bg-brand-50/50 cursor-pointer transition-colors ${p.alreadyInvited ? 'opacity-50' : ''}">
+            <input type="checkbox" name="inviteParent" value="${p.parentId}"
+              ${p.alreadyInvited ? 'disabled' : 'checked'}
+              class="mt-1 rounded border-gray-300 text-brand-500 focus:ring-brand-400" />
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2">
+                <span class="font-medium text-sm text-gray-800">${p.name}</span>
+                ${p.alreadyInvited ? '<span class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Bereits eingeladen</span>' : ''}
+              </div>
+              <div class="text-xs text-gray-500 mt-0.5">${p.email}</div>
+              ${p.childNames?.length ? `<div class="text-xs text-gray-400 mt-0.5">Kinder: ${p.childNames.join(', ')}</div>` : ''}
+              <div class="flex flex-wrap gap-1.5 mt-1.5">
+                ${p.matchReasons.map(r => `<span class="text-xs px-2 py-0.5 rounded-full ${
+                  r.includes('Alter') ? 'bg-blue-50 text-blue-700' :
+                  r.includes('Kurs') ? 'bg-purple-50 text-purple-700' :
+                  'bg-green-50 text-green-700'
+                }">${r}</span>`).join('')}
+              </div>
+            </div>
+          </label>
+        `).join('')
+        : '<div class="text-center py-8 text-gray-400 text-sm">Keine passenden Eltern gefunden</div>'
+
+      modal.className = 'cal-modal-backdrop'
+      modal.innerHTML = `
+        <div class="cal-modal" style="max-width:560px;width:95%;">
+          <div class="flex items-center justify-between mb-4">
+            <div>
+              <h3 class="text-lg font-bold text-gray-800">Eltern einladen?</h3>
+              <p class="text-sm text-gray-500 mt-0.5">${courseName}</p>
+            </div>
+            <button onclick="closeInviteModal()" class="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+          </div>
+
+          ${matchingParents.length > 0 ? `
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-xs text-gray-500">${matchingParents.filter(p => !p.alreadyInvited).length} passende Eltern</span>
+              <label class="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
+                <input type="checkbox" id="inviteSelectAll" checked onchange="toggleInviteAll(this.checked)"
+                  class="rounded border-gray-300 text-brand-500 focus:ring-brand-400" />
+                Alle ausw\u00e4hlen
+              </label>
+            </div>
+          ` : ''}
+
+          <div class="max-h-64 overflow-y-auto border border-gray-100 rounded-lg divide-y divide-gray-50">
+            ${parentRows}
+          </div>
+
+          ${matchingParents.length > 0 ? `
+            <div class="mt-4 pt-3 border-t border-gray-100">
+              <label class="flex items-center gap-2 text-sm text-gray-600 mb-3 cursor-pointer">
+                <input type="checkbox" id="inviteCouponToggle" onchange="document.getElementById('inviteCouponField').classList.toggle('hidden', !this.checked)"
+                  class="rounded border-gray-300 text-brand-500 focus:ring-brand-400" />
+                Gutschein-Code mitschicken
+              </label>
+              <div id="inviteCouponField" class="hidden mb-3">
+                <input type="text" id="inviteCouponCode" placeholder="z.B. WILLKOMMEN10"
+                  class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-brand-400 focus:border-brand-400" />
+              </div>
+            </div>
+
+            <div class="flex gap-2 mt-4">
+              <button onclick="closeInviteModal()" class="flex-1 px-4 py-2.5 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">\u00dcberspringen</button>
+              <button onclick="sendCourseInvitations('${activityId}')" id="inviteSendBtn"
+                class="flex-1 px-4 py-2.5 bg-brand-500 text-white rounded-lg text-sm font-medium hover:bg-brand-600 transition-colors">
+                Einladungen senden
+              </button>
+            </div>
+          ` : `
+            <div class="flex gap-2 mt-4">
+              <button onclick="closeInviteModal()" class="w-full px-4 py-2.5 bg-brand-500 text-white rounded-lg text-sm font-medium hover:bg-brand-600 transition-colors">Schlie\u00dfen</button>
+            </div>
+          `}
+        </div>
+      `
+
+      modal.addEventListener('click', (e) => { if (e.target === modal) closeInviteModal() })
+    }
+
+    function closeInviteModal() {
+      const modal = document.getElementById('inviteParentsModal')
+      if (modal) modal.className = 'hidden'
       navigate('activities')
+    }
+
+    function toggleInviteAll(checked) {
+      document.querySelectorAll('input[name="inviteParent"]:not(:disabled)').forEach(cb => { cb.checked = checked })
+    }
+
+    async function sendCourseInvitations(activityId) {
+      const selected = Array.from(document.querySelectorAll('input[name="inviteParent"]:checked:not(:disabled)'))
+        .map(cb => cb.value)
+
+      if (selected.length === 0) {
+        showToast('Bitte mindestens einen Elternteil ausw\u00e4hlen', 'error')
+        return
+      }
+
+      const couponCode = document.getElementById('inviteCouponToggle')?.checked
+        ? (document.getElementById('inviteCouponCode')?.value || '').trim()
+        : undefined
+
+      const btn = document.getElementById('inviteSendBtn')
+      if (btn) { btn.disabled = true; btn.textContent = 'Wird gesendet...' }
+
+      try {
+        const body = { parentIds: selected, activityId }
+        if (couponCode) body.couponCode = couponCode
+
+        const res = await api(`/providers/${currentProvider.id}/invite-parents`, 'POST', body)
+        const summary = res.summary || {}
+        showToast(`${summary.sent || 0} Einladung(en) gesendet${summary.skipped ? `, ${summary.skipped} \u00fcbersprungen` : ''}`, 'success')
+        closeInviteModal()
+      } catch(e) {
+        showToast('Fehler beim Senden der Einladungen', 'error')
+        if (btn) { btn.disabled = false; btn.textContent = 'Einladungen senden' }
+      }
     }
 
     // --- Bookings ---
@@ -3722,16 +3877,21 @@
     // --- Trials ---
     const trialStatusDE = { scheduled: 'Geplant', completed: 'Abgeschlossen', no_show: 'Nicht erschienen', converted: 'Konvertiert', cancelled: 'Abgesagt' }
     const trialStatusColors2 = { scheduled: 'bg-brand-100 text-brand-700', completed: 'bg-green-100 text-green-700', no_show: 'bg-red-100 text-red-700', converted: 'bg-purple-100 text-purple-700', cancelled: 'bg-gray-100 text-gray-500' }
+    const followUpStatusDE = { pending: 'Ausstehend', in_progress: 'Läuft', completed: 'Abgeschlossen', skipped: 'Übersprungen' }
+    const followUpStatusColors = { pending: 'bg-amber-100 text-amber-700', in_progress: 'bg-blue-100 text-blue-700', completed: 'bg-green-100 text-green-700', skipped: 'bg-gray-100 text-gray-500' }
 
     async function renderTrials() {
-      const [trials, stats, activities] = await Promise.all([
+      const [trials, stats, activities, followups] = await Promise.all([
         api(`/providers/${currentProvider.id}/trials`),
         api(`/providers/${currentProvider.id}/trials/stats`),
         api(`/providers/${currentProvider.id}/activities`),
+        api(`/providers/${currentProvider.id}/trials/followup-status`).catch(() => ({ data: [] })),
       ])
       const s = stats.data
       const actMap = {}
       activities.data.forEach(a => { actMap[a.id] = a })
+      const fuMap = {}
+      ;(followups.data || []).forEach(f => { fuMap[f.trialId] = f })
 
       document.getElementById('content').innerHTML = `
         <div class="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
@@ -3752,13 +3912,21 @@
                 <th class="px-6 py-3 text-left">Kind</th>
                 <th class="px-6 py-3 text-left">Kurs</th>
                 <th class="px-6 py-3 text-left">Status</th>
+                <th class="px-6 py-3 text-left">Follow-Up</th>
                 <th class="px-6 py-3 text-left">Aktionen</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-gray-100">
-              ${(trials.data || []).length === 0 ? '<tr><td colspan="5" class="px-6 py-12 text-center text-gray-400"><div class="text-3xl mb-2">🎯</div>Noch keine Probestunden. Erstelle eine über die Kurse-Seite.</td></tr>' : ''}
+              ${(trials.data || []).length === 0 ? '<tr><td colspan="6" class="px-6 py-12 text-center text-gray-400"><div class="text-3xl mb-2">🎯</div>Noch keine Probestunden. Erstelle eine über die Kurse-Seite.</td></tr>' : ''}
               ${(trials.data || []).map(t => {
                 const act = actMap[t.activityId]
+                const fu = fuMap[t.id]
+                const fuStatus = fu ? fu.status : (t.status === 'completed' || t.status === 'converted' ? 'pending' : null)
+                const fuEmails = fu ? [
+                  fu.feedbackSentAt ? 'Feedback' : null,
+                  fu.reminderSentAt ? 'Erinnerung' : null,
+                  fu.lastChanceSentAt ? 'Letzte Chance' : null,
+                ].filter(Boolean) : []
                 return `
                 <tr class="hover:bg-gray-50">
                   <td class="px-6 py-4 text-sm text-gray-700">${new Date(t.scheduledDate).toLocaleDateString('de-DE')} · ${t.scheduledTime}</td>
@@ -3768,6 +3936,12 @@
                   </td>
                   <td class="px-6 py-4 text-sm text-gray-700">${escapeHtml(act?.title || '–')}</td>
                   <td class="px-6 py-4"><span class="px-2 py-1 rounded-full text-xs font-medium ${trialStatusColors2[t.status] || 'bg-gray-100'}">${trialStatusDE[t.status] || t.status}</span></td>
+                  <td class="px-6 py-4">
+                    ${fuStatus ? `
+                      <span class="px-2 py-1 rounded-full text-xs font-medium ${followUpStatusColors[fuStatus] || 'bg-gray-100'}">${followUpStatusDE[fuStatus] || '–'}</span>
+                      ${fuEmails.length > 0 ? '<div class="text-xs text-gray-400 mt-1">' + fuEmails.join(' · ') + '</div>' : ''}
+                    ` : '<span class="text-xs text-gray-400">–</span>'}
+                  </td>
                   <td class="px-6 py-4">
                     <div class="flex items-center gap-1">
                       ${t.status === 'scheduled' ? `
@@ -6005,10 +6179,10 @@
       draft: { label: 'Entwurf', color: 'bg-gray-100 text-gray-600' },
     }
 
-    // Demo flows (in Produktion: aus API)
     // Marketing data cache (loaded from API)
     let _marketingFlows = null
     let _marketingTemplates = null
+    let _marketingSendCounts = null
 
     async function loadMarketingFlows() {
       if (_marketingFlows) return _marketingFlows
@@ -6032,12 +6206,29 @@
       return _marketingTemplates
     }
 
+    async function loadMarketingSendCounts() {
+      if (_marketingSendCounts) return _marketingSendCounts
+      try {
+        const res = await api(`/providers/${currentProvider.id}/marketing/send-counts`)
+        _marketingSendCounts = res.data || []
+      } catch {
+        _marketingSendCounts = []
+      }
+      return _marketingSendCounts
+    }
+
     function getMarketingFlows() {
       return _marketingFlows || []
     }
 
     function getDefaultTemplates() {
       return _marketingTemplates || []
+    }
+
+    function getSendCountForTemplate(templateId) {
+      const counts = _marketingSendCounts || []
+      const entry = counts.find(c => c.templateId === templateId)
+      return entry ? entry.totalSent : 0
     }
 
     function getPixelSettings() {
@@ -6049,7 +6240,7 @@
 
     async function renderMarketing() {
       // Load from API (cached after first call)
-      await Promise.all([loadMarketingFlows(), loadMarketingTemplates()])
+      await Promise.all([loadMarketingFlows(), loadMarketingTemplates(), loadMarketingSendCounts()])
       const flows = getMarketingFlows()
       const templates = getDefaultTemplates()
       const pixels = getPixelSettings()
@@ -6148,12 +6339,14 @@
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           ${templates.map((t, idx) => {
             const ch = channelInfo[t.channel] || channelInfo.whatsapp
+            const sendCount = getSendCountForTemplate(t.id)
             return `
             <div class="bg-white rounded-xl border border-brand-200 p-4">
               <div class="flex items-center justify-between mb-2">
                 <div class="flex items-center gap-2">
                   <span class="font-semibold text-sm text-gray-900">${escapeHtml(t.name)}</span>
                   <span class="px-2 py-0.5 rounded-full text-xs font-medium ${ch.color}">${ch.icon} ${ch.label}</span>
+                  ${sendCount > 0 ? '<span class="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">' + sendCount + 'x gesendet</span>' : '<span class="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">Noch nicht gesendet</span>'}
                 </div>
                 <button onclick="editTemplate(${idx})" class="text-xs text-brand-600 hover:text-brand-700 font-medium">Bearbeiten</button>
               </div>
@@ -6386,6 +6579,7 @@
         // Invalidate cache and re-fetch
         _marketingFlows = null
         await loadMarketingFlows()
+        showToast(active ? 'Flow aktiviert' : 'Flow pausiert', 'success')
       } catch (e) {
         showToast('Fehler beim Aktualisieren', 'error')
       }

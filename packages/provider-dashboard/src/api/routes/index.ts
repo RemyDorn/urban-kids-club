@@ -21,6 +21,7 @@ import { registerPortalRoutes } from './portal'
 import { registerSettingsRoutes } from './settings'
 import { registerMarketingRoutes } from './marketing'
 import { registerMiscRoutes } from './misc'
+import { registerInvitationRoutes } from './invitations'
 
 export function registerRoutes(router: Router) {
 
@@ -52,4 +53,5 @@ export function registerRoutes(router: Router) {
   registerSettingsRoutes(router)
   registerMarketingRoutes(router)
   registerMiscRoutes(router)
+  registerInvitationRoutes(router)
 }
