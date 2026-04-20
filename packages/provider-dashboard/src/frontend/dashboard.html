@@ -2341,88 +2341,37 @@
 
       const viewLabel = calView === 'day' ? 'Heute' : calView === 'month' ? 'Dieser Monat' : 'Diese Woche'
 
-      // Count courses that have at least one session in the visible range
+      // Count courses based on actual calendar events (respects rescheduled sessions)
       let activeCourses = 0, totalBooked = 0, totalCapacity = 0, courseSlots = 0
-      activities.forEach(a => {
-        if (a.status !== 'published' || !a.schedule?.slots) return
-        const sStart = a.schedule.startDate || '2020-01-01'
-        const sEnd = a.schedule.endDate || '2099-12-31'
-        let hasSessionInRange = false
-
-        var occ = occMap[a.id]
+      const startStr2 = fmtDate(startDate), endStr2 = fmtDate(endDate)
+      const eventsInRange = events.filter(e => e.type === 'activity' && e.date >= startStr2 && e.date <= endStr2)
+      const coursesInRange = new Set()
+      eventsInRange.forEach(e => {
+        coursesInRange.add(e.activityId)
+        courseSlots++
+        var occ = occMap[e.activityId]
         var hasByDate = occ && occ.byDate && Object.keys(occ.byDate).length > 0
-        a.schedule.slots.forEach(function(slot) {
-          var targetDay = dayToNum[slot.day]
-          if (targetDay === undefined) return
-          var cur = new Date(startDate)
-          while (cur <= endDate) {
-            if (cur.getDay() === targetDay) {
-              var ds = fmtDate(cur)
-              if (ds >= sStart && ds <= sEnd) {
-                hasSessionInRange = true
-                courseSlots++
-                // Count bookings for this date — use byDate if available, else use total booked count
-                var dateBooked = hasByDate ? (occ.byDate[ds] || 0) : (occ ? occ.booked : 0)
-                totalBooked += dateBooked
-                totalCapacity += a.capacity || 0
-              }
-            }
-            cur.setDate(cur.getDate() + 1)
-          }
-        })
-        if (hasSessionInRange) activeCourses++
+        var dateBooked = hasByDate ? (occ.byDate[e.date] || 0) : (occ ? occ.booked : 0)
+        totalBooked += dateBooked
+        var act = actMap[e.activityId]
+        totalCapacity += (act ? act.capacity : 0) || 0
       })
+      activeCourses = coursesInRange.size
 
       var occPct = totalCapacity > 0 ? Math.round((totalBooked / totalCapacity) * 100) : 0
 
-      // Count total sessions + sessions in range per activity (for revenue splitting)
-      var actSessionsTotal = {}  // activityId → total sessions across all weeks
-      var actSessionsInRange = {} // activityId → sessions in visible range
+      // Count total sessions + sessions in range per activity (based on actual events)
+      var actSessionsTotal = {}
+      var actSessionsInRange = {}
+      // Total sessions: from block data or packageSize
       activities.forEach(function(a) {
-        if (a.status !== 'published' || !a.schedule?.slots) return
-        var sStart = a.schedule.startDate || '2020-01-01'
-        // Use packageSize if available, otherwise use endDate (with sane fallback)
-        var pkgSize = a.pricing && a.pricing[0] && a.pricing[0].packageSize ? a.pricing[0].packageSize : 0
-        // If no endDate, calculate from packageSize or default to 12 weeks max
-        var sEnd = a.schedule.endDate
-        if (!sEnd && pkgSize > 0) {
-          // Estimate endDate from packageSize: pkgSize sessions × 7 days per session
-          var estEnd = new Date(sStart + 'T00:00:00')
-          estEnd.setDate(estEnd.getDate() + (pkgSize * 7))
-          sEnd = fmtDate(estEnd)
-        }
-        if (!sEnd) {
-          var maxEnd = new Date(sStart + 'T00:00:00')
-          maxEnd.setDate(maxEnd.getDate() + 84) // 12 weeks max fallback
-          sEnd = fmtDate(maxEnd)
-        }
-        var totalSessions = pkgSize || 0
-        var rangeSessions = 0
-        a.schedule.slots.forEach(function(slot) {
-          var targetDay = dayToNum[slot.day]
-          if (targetDay === undefined) return
-          // Count ALL sessions only if packageSize not available
-          if (!pkgSize) {
-            var allStart = new Date(sStart + 'T00:00:00')
-            var allEnd = new Date(sEnd + 'T00:00:00')
-            var c = new Date(allStart)
-            while (c <= allEnd) {
-              if (c.getDay() === targetDay) totalSessions++
-              c.setDate(c.getDate() + 1)
-            }
-          }
-          // Count sessions in visible range
-          var cur = new Date(startDate)
-          while (cur <= endDate) {
-            if (cur.getDay() === targetDay) {
-              var ds = fmtDate(cur)
-              if (ds >= sStart && ds <= sEnd) rangeSessions++
-            }
-            cur.setDate(cur.getDate() + 1)
-          }
-        })
-        actSessionsTotal[a.id] = totalSessions || 1
-        actSessionsInRange[a.id] = rangeSessions
+        if (a.status !== 'published') return
+        var pkgSize = a.pricing && a.pricing[0] && a.pricing[0].packageSize ? a.pricing[0].packageSize : 8
+        actSessionsTotal[a.id] = pkgSize || 8
+      })
+      // Sessions in range: count from actual calendar events
+      eventsInRange.forEach(function(e) {
+        actSessionsInRange[e.activityId] = (actSessionsInRange[e.activityId] || 0) + 1
       })
 
       // Build activity price map for unpaid amount fallback
@@ -2442,20 +2391,8 @@
         var occ = occMap[b.activityId]
         if (!occ) return
 
-        // Check if this booking's activity has ACTUAL coverage in visible range (via byDate)
-        var hasBlockCoverage = false
-        if (occ.byDate && Object.keys(occ.byDate).length > 0) {
-          // Block-based: only count if byDate has entries in visible range
-          for (var dateKey in occ.byDate) {
-            if (dateKey >= startStr && dateKey <= endStr && occ.byDate[dateKey] > 0) {
-              hasBlockCoverage = true
-              break
-            }
-          }
-        } else {
-          // Non-block (single sessions): check if activity has sessions in range
-          hasBlockCoverage = (actSessionsInRange[b.activityId] || 0) > 0
-        }
+        // Check if this booking's activity has actual sessions in visible range (from calendar events)
+        var hasBlockCoverage = (actSessionsInRange[b.activityId] || 0) > 0
         if (!hasBlockCoverage) return
 
         var sessionsInRange = actSessionsInRange[b.activityId] || 0
