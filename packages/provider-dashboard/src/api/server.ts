@@ -231,30 +231,62 @@ const DL=['Mo','Di','Mi','Do','Fr','Sa','So']
 const DLong=['Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag','Sonntag']
 let courses=[],curMonth=new Date().getMonth(),curYear=new Date().getFullYear(),selDate=null
 
+// Session dates map: date → [{title, start, end, ...}]
+let sessionDates={}
 try{
-  const r=await fetch('/api/providers/by-slug/'+slug+'/activities')
-  if(!r.ok){app.innerHTML='<div class="empty-state">Anbieter nicht gefunden.</div>';return}
-  const{data}=await r.json()
-  courses=data.filter(a=>a.status==='published'&&a.schedule?.slots)
+  const [actRes, blockRes]=await Promise.all([
+    fetch('/api/providers/by-slug/'+slug+'/activities').then(r=>r.json()),
+    fetch('/api/widget/providers/'+slug+'/course-blocks').then(r=>r.json()).catch(()=>({data:[]}))
+  ])
+  if(!actRes.data){app.innerHTML='<div class="empty-state">Anbieter nicht gefunden.</div>';return}
+  courses=actRes.data.filter(a=>a.status==='published'&&a.schedule?.slots)
+  const actMap={}; courses.forEach(a=>{actMap[a.id]=a})
+  const activeBlocks=(blockRes.data||[]).filter(b=>b.status==='active'||b.status==='upcoming')
+  const activitiesWithSessions=new Set()
+
+  // Load actual sessions for each active block
+  await Promise.all(activeBlocks.map(async block=>{
+    try{
+      const sr=await fetch('/api/course-blocks/'+block.id+'/sessions').then(r=>r.json())
+      const act=actMap[block.activityId]
+      if(!act)return
+      activitiesWithSessions.add(block.activityId)
+      ;(sr.data||[]).forEach(sess=>{
+        if(sess.status==='cancelled'||sess.status==='cancelled_by_provider')return
+        const d=sess.date
+        if(!sessionDates[d])sessionDates[d]=[]
+        const slot=act.schedule?.slots?.[0]||{}
+        sessionDates[d].push({title:act.title,start:sess.startTime||slot.startTime||block.recurringTime,end:sess.endTime||slot.endTime||'',cat:act.category,age:(act.ageRange?.min||0)+'-'+(act.ageRange?.max||0)+' J.',price:act.pricing?.[0]?.amount?act.pricing[0].amount.toFixed(0)+'\\u20AC':'',color:act.color||BC,desc:act.description||'',hasActiveBlock:true,blockId:block.id,activityId:act.id})
+      })
+    }catch(e){}
+  }))
+
+  // For activities WITHOUT sessions (no block), fall back to schedule
+  courses.forEach(a=>{
+    if(activitiesWithSessions.has(a.id))return
+    if(a.schedule.type!=='recurring')return
+    const sd=a.schedule.startDate||'',ed=a.schedule.endDate||'9999-12-31'
+    // Generate dates for next 3 months
+    const start=new Date(),end=new Date();end.setMonth(end.getMonth()+3)
+    for(let cur=new Date(start);cur<=end;cur.setDate(cur.getDate()+1)){
+      const ds=fmtD(cur)
+      if(ds<sd||ds>ed)continue
+      a.schedule.slots.forEach(s=>{
+        if(DN[s.day]===cur.getDay()){
+          if(!sessionDates[ds])sessionDates[ds]=[]
+          sessionDates[ds].push({title:a.title,start:s.startTime,end:s.endTime,cat:a.category,age:(a.ageRange?.min||0)+'-'+(a.ageRange?.max||0)+' J.',price:a.pricing?.[0]?.amount?a.pricing[0].amount.toFixed(0)+'\\u20AC':'',color:a.color||BC,desc:a.description||'',hasActiveBlock:false})
+        }
+      })
+    }
+  })
   render()
 }catch(e){app.innerHTML='<div class="empty-state">Fehler beim Laden.</div>'}
 
 function fmtD(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
 function getCoursesForDate(d){
-  const dow=d.getDay(),ds=fmtD(d),res=[]
-  courses.forEach(a=>{
-    if(a.schedule.type!=='recurring')return
-    const sd=a.schedule.startDate||'',ed=a.schedule.endDate||'9999-12-31'
-    if(ds<sd||ds>ed)return
-    a.schedule.slots.forEach(s=>{
-      if(DN[s.day]===dow){
-        // Check if any block covers this specific date
-        const hasBlockForDate=(a.blockDateRanges||[]).some(r=>ds>=r.start&&ds<=r.end)
-        res.push({title:a.title,start:s.startTime,end:s.endTime,cat:a.category,age:(a.ageRange?.min||0)+'-'+(a.ageRange?.max||0)+' J.',price:a.pricing?.[0]?.amount?a.pricing[0].amount.toFixed(0)+'€':'',color:a.color||BC,desc:a.description||'',hasActiveBlock:hasBlockForDate})
-      }
-    })
-  })
-  // Deduplicate: same title+start+end on same date
+  const ds=fmtD(d)
+  const res=sessionDates[ds]||[]
+  // Deduplicate
   const seen=new Set()
   return res.filter(e=>{const k=e.title+e.start+e.end;if(seen.has(k))return false;seen.add(k);return true}).sort((a,b)=>a.start.localeCompare(b.start))
 }
@@ -535,8 +567,8 @@ if(params.get('font')){document.body.style.fontFamily=params.get('font')+',syste
     const{data}=await r.json()
     const published=data.filter(a=>a.status==='published')
     if(!published.length){app.innerHTML='<div class="empty">Aktuell keine Kurse.</div>';return}
-    app.innerHTML=published.map(a=>'<div class="course"><div class="course-title">'+esc(a.title)+'</div><div class="course-meta"><span class="badge">'+esc(a.category)+'</span> '+(a.ageRange?.min||'?')+'-'+(a.ageRange?.max||'?')+' Jahre · '+(a.duration||'?')+' Min.'+(a.pricing?.[0]?.amount?' · '+a.pricing[0].amount+'€':'')+'<span id="rb-'+a.id+'" style="margin-left:6px"></span></div>'+(a.description?'<p style="font-size:13px;color:#3C2225;margin-top:8px">'+esc(a.description.substring(0,150))+(a.description.length>150?'...':'')+'</p>':'')+'</div>').join('')+'<div style="text-align:center;padding:8px 0;font-size:10px"><a href="https://urbankidsclub.de" target="_blank" rel="noopener" style="color:#94a3b8;text-decoration:none;transition:color 0.2s" onmouseover="this.style.color=\'#6B7280\'" onmouseout="this.style.color=\'#94a3b8\'">Powered by Urban Kids Club</a></div>'
-    published.forEach(a=>{fetch('${apiBase}/api/public/activities/'+a.id+'/rating').then(r=>r.json()).then(res=>{var d=res.data||res;if(d.count>0){var el=document.getElementById('rb-'+a.id);if(el)el.innerHTML='<span style="color:#d97706;font-weight:600">\\u2605 '+d.average.toFixed(1)+' \\u00B7 '+d.count+' Bewertung'+(d.count!==1?'en':'')+'</span>'}}).catch(()=>{})})
+    app.innerHTML=published.map(a=>'<div class="course"><div class="course-title">'+esc(a.title)+'</div><div class="course-meta"><span class="badge">'+esc(a.category)+'</span> '+(a.ageRange?.min||'?')+'-'+(a.ageRange?.max||'?')+' Jahre · '+(a.duration||'?')+' Min.'+(a.pricing?.[0]?.amount?' · '+a.pricing[0].amount+'\\u20AC':'')+'<span id="rb-'+a.id+'" style="margin-left:6px"></span></div>'+(a.description?'<p style="font-size:13px;color:#3C2225;margin-top:8px">'+esc(a.description.substring(0,150))+(a.description.length>150?'...':'')+'</p>':'')+'</div>').join('')+'<div style="text-align:center;padding:8px 0;font-size:10px"><a href="https://urbankidsclub.de" target="_blank" rel="noopener" style="color:#94a3b8;text-decoration:none">Powered by Urban Kids Club</a></div>'
+    published.forEach(a=>{fetch('/api/public/activities/'+a.id+'/rating').then(r=>r.json()).then(res=>{var d=res.data||res;if(d.count>0){var el=document.getElementById('rb-'+a.id);if(el)el.innerHTML='<span style="color:#d97706;font-weight:600">\\u2605 '+d.average.toFixed(1)+' \\u00B7 '+d.count+' Bewertung'+(d.count!==1?'en':'')+'</span>'}}).catch(()=>{})})
   }catch(e){app.innerHTML='<div class="empty">Fehler beim Laden.</div>'}
 })()
 </script></body></html>`
