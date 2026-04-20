@@ -239,7 +239,8 @@ try{
     fetch('/api/widget/providers/'+slug+'/course-blocks').then(r=>r.json()).catch(()=>({data:[]}))
   ])
   if(!actRes.data){app.innerHTML='<div class="empty-state">Anbieter nicht gefunden.</div>';return}
-  courses=actRes.data.filter(a=>a.status==='published'&&a.schedule?.slots)
+  const filterActivityId=new URLSearchParams(window.location.search).get('activity')
+  courses=actRes.data.filter(a=>a.status==='published'&&a.schedule?.slots&&(!filterActivityId||a.id===filterActivityId))
   const actMap={}; courses.forEach(a=>{actMap[a.id]=a})
   const activeBlocks=(blockRes.data||[]).filter(b=>b.status==='active'||b.status==='upcoming')
   const activitiesWithSessions=new Set()
@@ -570,8 +571,8 @@ if(params.get('font')){document.body.style.fontFamily=params.get('font')+',syste
     const{data}=await r.json()
     const published=data.filter(a=>a.status==='published')
     if(!published.length){app.innerHTML='<div class="empty">Aktuell keine Kurse.</div>';return}
-    var schedule=function(a){if(a.schedule?.type!=='recurring'||!a.schedule.slots)return '';var days={MO:'Mo',TU:'Di',WE:'Mi',TH:'Do',FR:'Fr',SA:'Sa',SU:'So'};return a.schedule.slots.map(function(s){return (days[s.day]||s.day)+' '+s.startTime+'-'+s.endTime}).join(', ')}
-    app.innerHTML=published.map(a=>'<div class="course"><div class="course-info"><div class="course-title">'+esc(a.title)+'</div><div class="course-meta"><span class="badge">'+esc(a.category)+'</span> '+(a.ageRange?.min||'?')+'-'+(a.ageRange?.max||'?')+' Jahre'+(schedule(a)?' · '+schedule(a):'')+(a.pricing?.[0]?.amount?' · '+a.pricing[0].amount+'\\u20AC':'')+'<span id="rb-'+a.id+'" style="margin-left:6px"></span></div>'+(a.description?'<p style="font-size:13px;color:#3C2225;margin-top:8px;margin-bottom:0">'+esc(a.description.substring(0,120))+(a.description.length>120?'...':'')+'</p>':'')+'</div><a class="book-btn" href="/embed/'+slug+'/calendar">Buchen</a></div>').join('')+'<div style="text-align:center;padding:8px 0;font-size:10px"><a href="https://urbankidsclub.de" target="_blank" rel="noopener" style="color:#94a3b8;text-decoration:none">Powered by Urban Kids Club</a></div>'
+    var trimS=function(t){return t?t.split(':').slice(0,2).join(':'):''};var schedule=function(a){if(a.schedule?.type!=='recurring'||!a.schedule.slots)return '';var days={MO:'Mo',TU:'Di',WE:'Mi',TH:'Do',FR:'Fr',SA:'Sa',SU:'So'};return a.schedule.slots.map(function(s){return (days[s.day]||s.day)+' '+trimS(s.startTime)+'-'+trimS(s.endTime)}).join(', ')}
+    app.innerHTML=published.map(a=>'<div class="course"><div class="course-info"><div class="course-title">'+esc(a.title)+'</div><div class="course-meta"><span class="badge">'+esc(a.category)+'</span> '+(a.ageRange?.min||'?')+'-'+(a.ageRange?.max||'?')+' Jahre'+(schedule(a)?' · '+schedule(a):'')+(a.pricing?.[0]?.amount?' · '+a.pricing[0].amount+'\\u20AC':'')+'<span id="rb-'+a.id+'" style="margin-left:6px"></span></div>'+(a.description?'<p style="font-size:13px;color:#3C2225;margin-top:8px;margin-bottom:0">'+esc(a.description.substring(0,120))+(a.description.length>120?'...':'')+'</p>':'')+'</div><a class="book-btn" href="/embed/'+slug+'/calendar?activity='+a.id+'">Buchen</a></div>').join('')+'<div style="text-align:center;padding:8px 0;font-size:10px"><a href="https://urbankidsclub.de" target="_blank" rel="noopener" style="color:#94a3b8;text-decoration:none">Powered by Urban Kids Club</a></div>'
     published.forEach(a=>{fetch('/api/public/activities/'+a.id+'/rating').then(r=>r.json()).then(res=>{var d=res.data||res;if(d.count>0){var el=document.getElementById('rb-'+a.id);if(el)el.innerHTML='<span style="color:#d97706;font-weight:600">\\u2605 '+d.average.toFixed(1)+' \\u00B7 '+d.count+' Bewertung'+(d.count!==1?'en':'')+'</span>'}}).catch(()=>{})})
   }catch(e){app.innerHTML='<div class="empty">Fehler beim Laden.</div>'}
 })()

@@ -709,8 +709,9 @@ export function registerPublicRoutes(router: Router) {
       .order('date', { ascending: true })
     if (error) return res.error(500, 'Fehler')
     // Map to camelCase for frontend consistency
+    const trimSec = (t: string) => t ? t.split(':').slice(0, 2).join(':') : ''
     const mapped = (sessions || []).map((s: any) => ({
-      id: s.id, date: s.date, startTime: s.start_time, endTime: s.end_time, status: s.status
+      id: s.id, date: s.date, startTime: trimSec(s.start_time), endTime: trimSec(s.end_time), status: s.status
     }))
     res.json({ data: mapped, count: mapped.length })
   })
