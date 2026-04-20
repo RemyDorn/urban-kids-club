@@ -1338,6 +1338,7 @@
       window._calActMap = actMap
       const occMap = {}
       occupancy.data.forEach(o => { occMap[o.activityId] = o })
+      window._calOccMap = occMap
 
       // Build calendar events from actual block sessions (not activity schedule)
       const dayToNum = { SU: 0, MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6 }
@@ -2310,25 +2311,23 @@
       if (currentPage === 'dashboard') navigate('dashboard')
     }
 
-    function setCalView(view) {
+    async function setCalView(view) {
       calView = view
       // Always snap to Monday for week view
       if (view === 'week') calWeekStart = getMonday(calWeekStart || new Date())
       else if (view === 'month') calWeekStart = new Date(calWeekStart.getFullYear(), calWeekStart.getMonth(), 1)
-      renderCalendarInto(activeCalContainer); updateKPIsForView()
+      await renderCalendarInto(activeCalContainer); updateKPIsForView()
     }
 
     function updateKPIsForView() {
       const kpiSection = document.getElementById('kpiSection')
-      if (!kpiSection || !window._activitiesData) return
+      if (!kpiSection) return
 
       const dayToNum = { SU: 0, MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6 }
-      const activities = window._activitiesData
+      const activities = window._activitiesData || []
       const events = window._calEvents || []
       const actMap = window._calActMap || {}
-      const occData = window._occData || []
-      const occMap = {}
-      occData.forEach(o => { occMap[o.activityId] = o })
+      const occMap = window._calOccMap || {}
 
       // Determine visible date range based on calView
       let startDate, endDate
@@ -2454,23 +2453,23 @@
       }
     }
     let activeCalContainer = 'dashboardCalendar'
-    function calPrev() {
+    async function calPrev() {
       if (calView === 'day') calWeekStart = addDays(calWeekStart, -1)
       else if (calView === 'week') calWeekStart = addDays(calWeekStart, -7)
       else calWeekStart = new Date(calWeekStart.getFullYear(), calWeekStart.getMonth() - 1, 1)
-      renderCalendarInto(activeCalContainer); updateKPIsForView()
+      await renderCalendarInto(activeCalContainer); updateKPIsForView()
     }
-    function calNext() {
+    async function calNext() {
       if (calView === 'day') calWeekStart = addDays(calWeekStart, 1)
       else if (calView === 'week') calWeekStart = addDays(calWeekStart, 7)
       else calWeekStart = new Date(calWeekStart.getFullYear(), calWeekStart.getMonth() + 1, 1)
-      renderCalendarInto(activeCalContainer); updateKPIsForView()
+      await renderCalendarInto(activeCalContainer); updateKPIsForView()
     }
-    function calToday() {
+    async function calToday() {
       if (calView === 'day') calWeekStart = new Date()
       else if (calView === 'week') calWeekStart = getMonday(new Date())
       else calWeekStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
-      renderCalendarInto(activeCalContainer); updateKPIsForView()
+      await renderCalendarInto(activeCalContainer); updateKPIsForView()
     }
 
     // Drag & Drop: highlight drop target on dragover
