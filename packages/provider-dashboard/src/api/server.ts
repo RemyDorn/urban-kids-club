@@ -884,6 +884,10 @@ const modeLabel = USE_SUPABASE ? 'Supabase' : 'In-Memory'
 // ============================================================
 const jobIntervals: ReturnType<typeof setInterval>[] = []
 
+// Production hardening: request timeouts
+server.requestTimeout = 30_000
+server.headersTimeout = 10_000
+
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`
 ┌─────────────────────────────────────────────────┐

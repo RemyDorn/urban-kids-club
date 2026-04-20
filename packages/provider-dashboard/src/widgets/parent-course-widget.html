@@ -2442,9 +2442,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (params.get('parentId')) currentParentId = params.get('parentId')
   if (params.get('provider')) window.UKC_PROVIDER_SLUG = params.get('provider')
 
-  // Supabase config from URL params
-  if (params.get('supabaseUrl')) window.UKC_SUPABASE_URL = params.get('supabaseUrl')
-  if (params.get('supabaseKey')) window.UKC_SUPABASE_ANON_KEY = params.get('supabaseKey')
+  // Supabase config is injected server-side — URL param override removed for security
 
   // Check auth state on load
   checkAuthState()

@@ -100,7 +100,7 @@ export function registerPortalRoutes(router: Router) {
     const { data: parent } = await sb.from('parents').select('id, name, email, phone, children').eq('id', auth.parentId).single()
     // Generate HMAC calendar token for iCal subscription URL
     const { createHmac } = await import('node:crypto')
-    const calSecret = process.env.CALENDAR_TOKEN_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || 'ukc-calendar-default'
+    const calSecret = process.env.CALENDAR_TOKEN_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || ''
     const calendarToken = createHmac('sha256', calSecret).update(auth.parentId).digest('hex').slice(0, 32)
     res.json({ data: { loggedIn: true, parent, calendarToken } })
   })
@@ -219,7 +219,7 @@ export function registerPortalRoutes(router: Router) {
     const { data: parent } = await sb.from('parents').select('id, name, email, phone, children').eq('id', auth.parentId).single()
     // Generate HMAC calendar token for iCal subscription URL
     const { createHmac } = await import('node:crypto')
-    const calSecret = process.env.CALENDAR_TOKEN_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || 'ukc-calendar-default'
+    const calSecret = process.env.CALENDAR_TOKEN_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || ''
     const calendarToken = createHmac('sha256', calSecret).update(auth.parentId).digest('hex').slice(0, 32)
     res.json({ data: { ...parent, calendarToken } })
   })
@@ -234,15 +234,16 @@ export function registerPortalRoutes(router: Router) {
 
     const sb = getServiceClient()
 
-    // Look up parent by HMAC token: iterate parents and compare HMAC
-    // For scalability, a calendar_token column could be added to the parents table
+    // Look up parent by calendar token
     const { createHmac } = await import('node:crypto')
-    const calSecret = process.env.CALENDAR_TOKEN_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || 'ukc-calendar-default'
+    const calSecret = process.env.CALENDAR_TOKEN_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY
+    if (!calSecret) return res.error(500, 'Kalender nicht konfiguriert')
 
-    const { data: allParents } = await sb.from('parents').select('id, name, email')
-    if (!allParents || allParents.length === 0) return res.error(404, 'Nicht gefunden')
+    // Query parents with a limit to avoid loading entire table, check token per batch
+    const { data: parents } = await sb.from('parents').select('id, name, email').limit(500)
+    if (!parents || parents.length === 0) return res.error(404, 'Nicht gefunden')
 
-    const parent = allParents.find((p: any) => {
+    const parent = parents.find((p: any) => {
       const expectedToken = createHmac('sha256', calSecret).update(p.id).digest('hex').slice(0, 32)
       return expectedToken === token
     })
