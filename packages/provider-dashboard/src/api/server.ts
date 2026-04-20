@@ -132,7 +132,7 @@ const router = new Router()
 registerRoutes(router)
 
 // Embed HTML generator for public iframe widgets
-function generateEmbedHtml(slug: string, type: string, _url: string): string {
+function generateEmbedHtml(slug: string, type: string, _url: string, activityId?: string): string {
   // Sanitize slug to prevent XSS — only allow alphanumeric, hyphens, underscores
   slug = slug.replace(/[^a-zA-Z0-9_-]/g, '')
   const apiBase = '' // relative to same origin
@@ -542,7 +542,56 @@ if(params.get('font')){document.body.style.fontFamily=params.get('font')+',syste
 </script></body></html>`
   }
 
-  return `<!DOCTYPE html><html><body><p>Widget-Typ "${type}" nicht gefunden. Verfügbar: calendar, courses</p></body></html>`
+  // Single course embed: /embed/:slug/course/:activityId
+  if (type === 'course' && activityId) {
+    const safeActId = activityId.replace(/[^a-zA-Z0-9-]/g, '')
+    return `<!DOCTYPE html>
+<html lang="de"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kurs</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter',system-ui,sans-serif;background:transparent;color:#1f2937;padding:16px}
+.card{background:#fff;border-radius:16px;box-shadow:0 2px 12px rgba(0,0,0,0.06);border:1px solid #f0ebe8;overflow:hidden;max-width:500px;margin:0 auto}
+.card-header{padding:20px 24px;border-bottom:1px solid #f0ebe8}
+.card-body{padding:20px 24px}
+.title{font-size:18px;font-weight:700;color:#3C2225}
+.meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;font-size:13px;color:#64748b}
+.badge{background:#f0ebe8;color:#8B3A28;padding:2px 8px;border-radius:6px;font-size:12px;font-weight:500}
+.desc{font-size:14px;color:#3C2225;margin-top:12px;line-height:1.6}
+.price{font-size:20px;font-weight:700;color:#B5533A;margin-top:12px}
+.btn{display:block;width:100%;padding:12px;background:linear-gradient(135deg,#B5533A,#8B3A28);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;text-align:center;text-decoration:none;margin-top:16px}
+.btn:hover{opacity:0.9}
+.empty{text-align:center;padding:40px;color:#94a3b8}
+#rating{margin-top:8px}
+</style>
+</head><body>
+<div id="app"><div class="empty">Wird geladen...</div></div>
+<script>
+(async function(){
+  const slug=${JSON.stringify(slug)},actId='${safeActId}',app=document.getElementById('app')
+  function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+  try{
+    const r=await fetch('/api/providers/by-slug/'+slug+'/activities')
+    if(!r.ok){app.innerHTML='<div class="empty">Kurs nicht gefunden.</div>';return}
+    const{data}=await r.json()
+    const a=data.find(function(x){return x.id===actId&&x.status==='published'})
+    if(!a){app.innerHTML='<div class="empty">Kurs nicht verfügbar.</div>';return}
+    const schedule=a.schedule?.type==='recurring'?a.schedule.slots?.map(function(s){
+      var days={MO:'Mo',TU:'Di',WE:'Mi',TH:'Do',FR:'Fr',SA:'Sa',SU:'So'}
+      return (days[s.day]||s.day)+' '+s.startTime+'-'+s.endTime
+    }).join(', '):''
+    const price=a.pricing?.[0]?.amount?a.pricing[0].amount.toFixed(2).replace('.',',')+' \\u20AC':''
+    const pkg=a.pricing?.[0]?.packageSize?' ('+a.pricing[0].packageSize+'er-Paket)':''
+    app.innerHTML='<div class="card"><div class="card-header"><div class="title">'+esc(a.title)+'</div><div class="meta"><span class="badge">'+esc(a.category)+'</span><span>'+(a.ageRange?.min||'?')+'-'+(a.ageRange?.max||'?')+' Jahre</span>'+(schedule?'<span>'+esc(schedule)+'</span>':'')+'</div><div id="rating"></div></div><div class="card-body">'+(a.description?'<div class="desc">'+esc(a.description)+'</div>':'')+(price?'<div class="price">'+price+pkg+'</div>':'')+'<a class="btn" href="/embed/'+slug+'/calendar" target="_top">Jetzt buchen</a></div></div>'
+    fetch('/api/public/activities/'+a.id+'/rating').then(function(r){return r.json()}).then(function(res){var d=res.data||res;if(d.count>0){var el=document.getElementById('rating');if(el)el.innerHTML='<span style="color:#d97706;font-size:13px;font-weight:600">\\u2605 '+d.average.toFixed(1)+' \\u00B7 '+d.count+' Bewertung'+(d.count!==1?'en':'')+'</span>'}}).catch(function(){})
+  }catch(e){app.innerHTML='<div class="empty">Fehler beim Laden.</div>'}
+})()
+</script></body></html>`
+  }
+
+  return `<!DOCTYPE html><html><body><p>Widget-Typ "${type}" nicht gefunden. Verfügbar: calendar, courses, course</p></body></html>`
 }
 
 // QR Check-in Page – mobile-optimized two-step flow
@@ -807,13 +856,16 @@ const server = createServer((req, res) => {
 
   // Embed: Public embeddable widgets (calendar, courses, etc.)
   if (path.startsWith('/embed/')) {
-    const parts = path.split('/').filter(Boolean) // ['embed', slug, type]
+    const parts = path.split('/').filter(Boolean) // ['embed', slug, type, ...extra]
     const slug = parts[1] || ''
-    const embedType = parts[2] || 'calendar'
+    let embedType = parts[2] || 'calendar'
+    const embedExtra = parts[3] || '' // e.g. activityId for single course view
+    // Normalize: 'course' (singular) with activityId → single course embed
+    if (embedType === 'course' && embedExtra) embedType = 'course'
     res.setHeader('Content-Type', 'text/html; charset=utf-8')
     res.setHeader('Cache-Control', 'no-cache')
     res.statusCode = 200
-    res.end(generateEmbedHtml(slug, embedType, url))
+    res.end(generateEmbedHtml(slug, embedType, url, embedExtra))
     return
   }
 
