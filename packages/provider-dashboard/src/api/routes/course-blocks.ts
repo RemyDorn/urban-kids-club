@@ -124,7 +124,8 @@ export function registerCourseBlockRoutes(router: Router) {
       const { data: provider } = await db.from('providers').select('company_name').eq('id', auth.providerId).single()
 
       const courseName = activity?.title || 'Kurs'
-      const time = block?.recurring_time || activity?.schedule?.slots?.[0]?.startTime || ''
+      const rawTime = block?.recurring_time || activity?.schedule?.slots?.[0]?.startTime || ''
+      const time = rawTime.split(':').slice(0, 2).join(':')
       const dayNames: Record<string, string> = { '0': 'Sonntag', '1': 'Montag', '2': 'Dienstag', '3': 'Mittwoch', '4': 'Donnerstag', '5': 'Freitag', '6': 'Samstag' }
       const fmtDE = (d: string) => { const p = d.split('-'); return `${p[2]}.${p[1]}.${p[0]}` }
       const newDayName = dayNames[String(new Date(newDate + 'T12:00:00').getDay())] || ''
@@ -159,7 +160,10 @@ export function registerCourseBlockRoutes(router: Router) {
                     <div style="color: #dc2626; margin-top: 8px; text-decoration: line-through;">❌ ${oldDateFmt} um ${time} Uhr</div>
                     <div style="color: #059669; margin-top: 4px; font-weight: 600;">✅ Neuer Termin: ${newDayName}, ${newDateFmt} um ${time} Uhr</div>
                   </div>
-                  <p>Falls der neue Termin nicht passt, melde dich einfach bei uns — wir finden eine Lösung!</p>
+                  <div style="background: #fffbeb; border: 1px solid #fef3c7; border-radius: 10px; padding: 14px 16px; margin-bottom: 20px; font-size: 14px; color: #92400e;">
+                    <strong>Keine Sorge — dein Termin fällt nicht aus!</strong> Er wird lediglich ans Ende des Kurszeitraums angehängt, damit du keine Stunde verpasst. Du bekommst weiterhin alle gebuchten Termine.
+                  </div>
+                  <p>Falls der neue Termin trotzdem nicht passt, melde dich einfach bei uns — wir finden eine Lösung!</p>
                   <p style="margin-top: 24px; color: #64748b; font-size: 14px;">Liebe Grüße,<br><strong>${providerName}</strong></p>
                   <hr style="border: none; border-top: 1px solid #F2E6E2; margin: 24px 0;">
                   <p style="color: #94a3b8; font-size: 12px; text-align: center;">Powered by Urban Kids Club</p>
