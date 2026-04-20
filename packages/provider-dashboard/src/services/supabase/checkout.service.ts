@@ -234,67 +234,94 @@ export class CheckoutService {
       return booking
     }
 
-    // Normal checkout: atomic capacity check via DB function
-    // Uses SELECT ... FOR UPDATE to lock the block row, preventing TOCTOU race conditions
-    const { data: rpcResult, error: rpcError } = await db.rpc('atomic_create_booking', {
-      p_activity_id: params.activityId,
-      p_amount: params.paymentMethod !== 'onsite' ? params.amount / 100 : params.amount / 100,
-      p_block_id: activeBlock.id,
-      p_booked_date: params.bookedDate || null,
-      p_child_info: childInfo,
-      p_currency: params.currency || 'EUR',
-      p_parent_id: parent.id,
-      p_payment_method: params.paymentMethod,
-      p_paypal_order_id: params.paypalOrderId || null,
-      p_provider_id: params.providerId,
-      p_source: 'widget',
-      p_stripe_session_id: params.stripeSessionId || null,
-    })
+    // Normal checkout: capacity check + booking + enrollment
+    // Check capacity against block enrollments
+    const { count: enrollCount } = await db.from('block_enrollments')
+      .select('*', { count: 'exact', head: true })
+      .eq('block_id', activeBlock.id).eq('status', 'active')
+    const currentCount = enrollCount ?? 0
+    const maxCapacity = (activeBlock.capacity ?? 10) + (activeBlock.makeup_capacity ?? 0)
 
-    if (rpcError) throw new Error(rpcError.message)
-    if (rpcResult?.error) {
-      // If course is full but block exists → add to waitlist instead of error
-      if (rpcResult.error.includes('ausgebucht') && activeBlock) {
-        const { count: existingWl } = await db.from('waitlist_entries')
-          .select('*', { count: 'exact', head: true })
-          .eq('activity_id', params.activityId).eq('parent_id', parent.id)
-          .in('status', ['waiting', 'offered'])
-        if (!existingWl || existingWl === 0) {
-          // Use Date.now() for position to avoid race condition with parallel requests
-          await db.from('waitlist_entries').insert({
-            activity_id: params.activityId, parent_id: parent.id,
-            child_info: { firstName: params.childFirstName, lastName: params.childLastName, birthYear: params.childBirthYear },
-            position: Date.now(), priority: 'normal', status: 'waiting',
+    if (currentCount >= maxCapacity) {
+      // Course full → add to waitlist
+      const { count: existingWl } = await db.from('waitlist_entries')
+        .select('*', { count: 'exact', head: true })
+        .eq('activity_id', params.activityId).eq('parent_id', parent.id)
+        .in('status', ['waiting', 'offered'])
+      if (!existingWl || existingWl === 0) {
+        await db.from('waitlist_entries').insert({
+          activity_id: params.activityId, parent_id: parent.id,
+          child_info: { firstName: params.childFirstName, lastName: params.childLastName, birthYear: params.childBirthYear },
+          position: Date.now(), priority: 'normal', status: 'waiting',
+        })
+        await db.from('notifications').insert({
+          recipient_type: 'provider', recipient_id: params.providerId,
+          type: 'block_full', channel: 'in_app',
+          title: 'Kurs ist voll — Warteliste!',
+          body: params.childFirstName + ' wurde auf die Warteliste gesetzt.',
+          data: { activityId: params.activityId },
+        })
+        // ignore notification errors
+        try {
+          const { EmailService } = await import('../../lib/email')
+          const { data: activity } = await db.from('activities').select('title').eq('id', params.activityId).maybeSingle()
+          const { data: provider } = await db.from('providers').select('company_name').eq('id', params.providerId).single()
+          await EmailService.sendWaitlistConfirmation(params.parentEmail, {
+            parentName: params.parentFirstName,
+            childName: (params.childFirstName + ' ' + params.childLastName).trim(),
+            courseName: activity?.title || 'Kurs',
+            providerName: provider?.company_name || '',
           })
-          // Notify provider
-          await db.from('notifications').insert({
-            recipient_type: 'provider', recipient_id: params.providerId,
-            type: 'block_full', channel: 'in_app',
-            title: 'Kurs ist voll — Warteliste!',
-            body: params.childFirstName + ' wurde auf die Warteliste gesetzt.',
-            data: { activityId: params.activityId },
-          })
-          // Send waitlist confirmation email
-          try {
-            const { EmailService } = await import('../../lib/email')
-            const { data: activity } = await db.from('activities').select('title').eq('id', params.activityId).maybeSingle()
-            const { data: provider } = await db.from('providers').select('company_name').eq('id', params.providerId).single()
-            await EmailService.sendWaitlistConfirmation(params.parentEmail, {
-              parentName: params.parentFirstName,
-              childName: (params.childFirstName + ' ' + params.childLastName).trim(),
-              courseName: activity?.title || 'Kurs',
-              providerName: provider?.company_name || '',
-            })
-          } catch (emailErr) {
-            console.error('[Checkout] Waitlist email failed:', emailErr)
-          }
+        } catch (emailErr) {
+          console.error('[Checkout] Waitlist email failed:', emailErr)
         }
-        throw new Error('Tut uns leid — da war leider jemand schneller! 😅 Aber keine Sorge, wir haben ' + params.childFirstName + ' auf die Warteliste gesetzt. Sobald ein Platz frei wird, melden wir uns sofort bei dir!')
       }
-      throw new Error(rpcResult.error)
+      throw new Error('Tut uns leid — da war leider jemand schneller! 😅 Aber keine Sorge, wir haben ' + params.childFirstName + ' auf die Warteliste gesetzt. Sobald ein Platz frei wird, melden wir uns sofort bei dir!')
     }
 
-    const booking = { id: rpcResult.id, ...rpcResult }
+    const amountEur = params.amount > 0 ? params.amount / 100 : 0
+
+    // Create booking
+    const { data: newBooking, error: bookingErr } = await db.from('provider_bookings').insert({
+      provider_id: params.providerId,
+      activity_id: params.activityId,
+      parent_id: parent.id,
+      child_info: childInfo,
+      pricing_option_id: 'default',
+      payment_method: params.paymentMethod,
+      amount_paid: amountEur,
+      currency: params.currency || 'EUR',
+      source: 'widget',
+      status: 'confirmed',
+      payment_status: params.paymentMethod === 'onsite' ? 'unpaid' : 'paid',
+      stripe_session_id: params.stripeSessionId || null,
+      paypal_order_id: params.paypalOrderId || null,
+      booked_date: params.bookedDate || null,
+    }).select().single()
+    if (bookingErr) throw new Error(bookingErr.message)
+
+    // Create block enrollment
+    const childName = `${params.childFirstName} ${params.childLastName}`.trim()
+    const childId = `${params.childFirstName}-${params.childLastName}-${params.childBirthYear}`
+    const childAge = new Date().getFullYear() - params.childBirthYear
+    await db.from('block_enrollments').insert({
+      block_id: activeBlock.id,
+      activity_type: 'course',
+      provider_id: params.providerId,
+      parent_id: parent.id,
+      child_id: childId,
+      child_name: childName,
+      child_age: childAge,
+      booking_id: newBooking.id,
+      status: 'active',
+      price_paid: amountEur,
+      currency: params.currency || 'EUR',
+      credits_earned: 0,
+      credits_used: 0,
+    })
+    // enrollment insert is best-effort
+
+    const booking = { id: newBooking.id, ...newBooking }
 
     // 3b. Notify provider about new booking
     try {
