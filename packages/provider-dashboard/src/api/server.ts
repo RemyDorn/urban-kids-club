@@ -325,10 +325,12 @@ function render(){
     if(evts.length){
       slotsHtml+=evts.map(e=>{
         const hasBlock=e.hasActiveBlock
+        var dur=''
+        if(e.start&&e.end){var sp=e.start.split(':').map(Number),ep=e.end.split(':').map(Number);var mins=(ep[0]*60+(ep[1]||0))-(sp[0]*60+(sp[1]||0));if(mins>0)dur=mins+' Min.'}
         if (hasBlock) {
-          return '<div class="slot-card"><div class="slot-time">'+esc(e.start)+' Uhr</div><div class="slot-info"><div class="slot-title">'+esc(e.title)+'</div><div class="slot-meta">'+esc(e.start)+' – '+esc(e.end)+' Uhr · <span class="slot-badge">'+esc(e.cat)+'</span> · '+esc(e.age)+(e.price?' · '+esc(e.price):'')+'</div></div><button class="book-btn" data-title="'+esc(e.title)+'" data-date="'+selDate+'" data-time="'+esc(e.start)+'" onclick="window._bookCourse(this.dataset.title,this.dataset.date,this.dataset.time)">Buchen</button></div>'
+          return '<div class="slot-card"><div class="slot-time">'+esc(e.start)+' Uhr<div style="font-size:11px;color:#94a3b8;font-weight:400;margin-top:2px">bis '+esc(e.end)+' Uhr</div></div><div class="slot-info"><div class="slot-title">'+esc(e.title)+'</div><div class="slot-meta">'+(dur?dur+' · ':'')+'<span class="slot-badge">'+esc(e.cat)+'</span> · '+esc(e.age)+(e.price?' · '+esc(e.price):'')+'</div></div><button class="book-btn" data-title="'+esc(e.title)+'" data-date="'+selDate+'" data-time="'+esc(e.start)+'" onclick="window._bookCourse(this.dataset.title,this.dataset.date,this.dataset.time)">Buchen</button></div>'
         } else {
-          return '<div class="slot-card"><div class="slot-time">'+esc(e.start)+' Uhr</div><div class="slot-info"><div class="slot-title">'+esc(e.title)+'</div><div class="slot-meta">'+esc(e.start)+' – '+esc(e.end)+' Uhr · <span class="slot-badge">'+esc(e.cat)+'</span> · '+esc(e.age)+'</div></div><button class="book-btn" style="background:#6b7280" data-title="'+esc(e.title)+'" data-date="'+selDate+'" onclick="window._waitlistCourse(this.dataset.title,this.dataset.date)">Warteliste</button></div>'
+          return '<div class="slot-card"><div class="slot-time">'+esc(e.start)+' Uhr<div style="font-size:11px;color:#94a3b8;font-weight:400;margin-top:2px">bis '+esc(e.end)+' Uhr</div></div><div class="slot-info"><div class="slot-title">'+esc(e.title)+'</div><div class="slot-meta">'+(dur?dur+' · ':'')+'<span class="slot-badge">'+esc(e.cat)+'</span> · '+esc(e.age)+'</div></div><button class="book-btn" style="background:#6b7280" data-title="'+esc(e.title)+'" data-date="'+selDate+'" onclick="window._waitlistCourse(this.dataset.title,this.dataset.date)">Warteliste</button></div>'
         }
       }).join('')
     }else{slotsHtml+='<div class="empty-state">Keine Kurse an diesem Tag.</div>'}
