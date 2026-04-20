@@ -1335,6 +1335,7 @@
 
       const actMap = {}
       activities.data.forEach(a => { actMap[a.id] = a })
+      window._calActMap = actMap
       const occMap = {}
       occupancy.data.forEach(o => { occMap[o.activityId] = o })
 
@@ -1416,6 +1417,7 @@
         }
       })
 
+      window._calEvents = events
       const conflicts = [] // Conflicts computed locally could be added later
 
       // Hours 7-21
@@ -2318,11 +2320,13 @@
 
     function updateKPIsForView() {
       const kpiSection = document.getElementById('kpiSection')
-      if (!kpiSection || !window._occData || !window._activitiesData) return
+      if (!kpiSection || !window._activitiesData) return
 
       const dayToNum = { SU: 0, MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6 }
       const activities = window._activitiesData
-      const occData = window._occData
+      const events = window._calEvents || []
+      const actMap = window._calActMap || {}
+      const occData = window._occData || []
       const occMap = {}
       occData.forEach(o => { occMap[o.activityId] = o })
 
