@@ -80,13 +80,21 @@ export const SupabaseActivityService = {
 
   async archive(id: ID, providerId?: ID): Promise<Activity | undefined> {
     const sb = getServiceClient()
-    // Archive = free everything: remove room, remove instructor, set status
+    // Archive: set status first (guaranteed to work)
     let query = sb.from(TABLE)
-      .update({ status: 'archived', room_id: null, instructor_id: null, updated_at: new Date().toISOString() })
+      .update({ status: 'archived', updated_at: new Date().toISOString() })
       .eq('id', id)
     if (providerId) query = query.eq('provider_id', providerId)
     const { data, error } = await query.select().maybeSingle()
     if (error) throw error
+
+    // Try to free room + instructor (may fail if PostgREST schema cache is stale)
+    if (data) {
+      try {
+        let freeQuery = sb.from(TABLE).update({ room_id: null, instructor_id: null }).eq('id', id)
+        await freeQuery
+      } catch (e) { console.warn('[Activity] Could not free room/instructor (schema cache?):', e) }
+    }
 
     if (data) {
       // Cancel all active/upcoming course blocks

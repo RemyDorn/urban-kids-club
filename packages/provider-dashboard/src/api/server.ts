@@ -548,10 +548,13 @@ if(params.get('font')){document.body.style.fontFamily=params.get('font')+',syste
 <title>Kursliste</title>
 <style>
   body{margin:0;font-family:Inter,system-ui,sans-serif;background:#fff}
-  .course{padding:16px;border:1px solid #F2E6E2;border-radius:12px;margin-bottom:12px}
+  .course{padding:16px;border:1px solid #F2E6E2;border-radius:12px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:12px}
+  .course-info{flex:1}
   .course-title{font-weight:700;color:#3C2225;font-size:16px}
   .course-meta{font-size:13px;color:#64748B;margin-top:4px}
   .badge{display:inline-block;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:600;background:#FFEFE1;color:${brandColor}}
+  .book-btn{padding:8px 20px;background:linear-gradient(135deg,${brandColor},#8B3A28);color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;text-decoration:none}
+  .book-btn:hover{opacity:0.9}
   .empty{text-align:center;padding:40px;color:#64748B}
 </style>
 </head><body>
@@ -567,7 +570,8 @@ if(params.get('font')){document.body.style.fontFamily=params.get('font')+',syste
     const{data}=await r.json()
     const published=data.filter(a=>a.status==='published')
     if(!published.length){app.innerHTML='<div class="empty">Aktuell keine Kurse.</div>';return}
-    app.innerHTML=published.map(a=>'<div class="course"><div class="course-title">'+esc(a.title)+'</div><div class="course-meta"><span class="badge">'+esc(a.category)+'</span> '+(a.ageRange?.min||'?')+'-'+(a.ageRange?.max||'?')+' Jahre · '+(a.duration||'?')+' Min.'+(a.pricing?.[0]?.amount?' · '+a.pricing[0].amount+'\\u20AC':'')+'<span id="rb-'+a.id+'" style="margin-left:6px"></span></div>'+(a.description?'<p style="font-size:13px;color:#3C2225;margin-top:8px">'+esc(a.description.substring(0,150))+(a.description.length>150?'...':'')+'</p>':'')+'</div>').join('')+'<div style="text-align:center;padding:8px 0;font-size:10px"><a href="https://urbankidsclub.de" target="_blank" rel="noopener" style="color:#94a3b8;text-decoration:none">Powered by Urban Kids Club</a></div>'
+    var schedule=function(a){if(a.schedule?.type!=='recurring'||!a.schedule.slots)return '';var days={MO:'Mo',TU:'Di',WE:'Mi',TH:'Do',FR:'Fr',SA:'Sa',SU:'So'};return a.schedule.slots.map(function(s){return (days[s.day]||s.day)+' '+s.startTime+'-'+s.endTime}).join(', ')}
+    app.innerHTML=published.map(a=>'<div class="course"><div class="course-info"><div class="course-title">'+esc(a.title)+'</div><div class="course-meta"><span class="badge">'+esc(a.category)+'</span> '+(a.ageRange?.min||'?')+'-'+(a.ageRange?.max||'?')+' Jahre'+(schedule(a)?' · '+schedule(a):'')+(a.pricing?.[0]?.amount?' · '+a.pricing[0].amount+'\\u20AC':'')+'<span id="rb-'+a.id+'" style="margin-left:6px"></span></div>'+(a.description?'<p style="font-size:13px;color:#3C2225;margin-top:8px;margin-bottom:0">'+esc(a.description.substring(0,120))+(a.description.length>120?'...':'')+'</p>':'')+'</div><a class="book-btn" href="/embed/'+slug+'/calendar">Buchen</a></div>').join('')+'<div style="text-align:center;padding:8px 0;font-size:10px"><a href="https://urbankidsclub.de" target="_blank" rel="noopener" style="color:#94a3b8;text-decoration:none">Powered by Urban Kids Club</a></div>'
     published.forEach(a=>{fetch('/api/public/activities/'+a.id+'/rating').then(r=>r.json()).then(res=>{var d=res.data||res;if(d.count>0){var el=document.getElementById('rb-'+a.id);if(el)el.innerHTML='<span style="color:#d97706;font-weight:600">\\u2605 '+d.average.toFixed(1)+' \\u00B7 '+d.count+' Bewertung'+(d.count!==1?'en':'')+'</span>'}}).catch(()=>{})})
   }catch(e){app.innerHTML='<div class="empty">Fehler beim Laden.</div>'}
 })()

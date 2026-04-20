@@ -2434,7 +2434,8 @@
       var occSection = document.getElementById('occPerCourseSection')
       if (occSection) {
         var courseRows = ''
-        occData.forEach(function(o) {
+        var occDataArr = window._occData || []
+        occDataArr.forEach(function(o) {
           // Calculate per-date booked for visible range
           var rangeBooked = 0
           if (o.byDate && Object.keys(o.byDate).length > 0) {
