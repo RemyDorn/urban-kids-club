@@ -110,7 +110,7 @@ export function registerCourseBlockRoutes(router: Router) {
     const today = new Date().toISOString().slice(0, 10)
     if (newDate < today) return res.error(400, 'Datum darf nicht in der Vergangenheit liegen')
     // Update in DB
-    const { data: updated, error } = await db.from('block_sessions').update({ date: newDate, updated_at: new Date().toISOString() }).eq('id', req.params.id).select().single()
+    const { data: updated, error } = await db.from('block_sessions').update({ date: newDate }).eq('id', req.params.id).select().single()
     if (error) return res.error(500, error.message)
     res.json({ data: updated })
   })
@@ -132,7 +132,7 @@ export function registerCourseBlockRoutes(router: Router) {
     // If cancelling, cancel all future scheduled sessions
     if (newStatus === 'cancelled') {
       const today = new Date().toISOString().slice(0, 10)
-      await db.from('block_sessions').update({ status: 'cancelled_by_provider', updated_at: new Date().toISOString() }).eq('block_id', req.params.id).eq('status', 'scheduled').gte('date', today)
+      await db.from('block_sessions').update({ status: 'cancelled_by_provider' }).eq('block_id', req.params.id).eq('status', 'scheduled').gte('date', today)
     }
     res.json({ data: updated })
   })
