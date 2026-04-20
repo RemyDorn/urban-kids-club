@@ -217,7 +217,26 @@ export const ActivityService = {
     const activity = store.state.activities.get(id)
     if (!activity) return undefined
     activity.status = 'archived'
+    activity.roomId = undefined
+    activity.instructorId = undefined
     activity.updatedAt = new Date()
+
+    // Cancel active/upcoming course blocks for this activity
+    for (const [, block] of store.state.courseBlocks || []) {
+      if (block.activityId === id && ['active', 'upcoming'].includes(block.status)) {
+        block.status = 'cancelled'
+        block.updatedAt = new Date()
+      }
+    }
+
+    // Expire pending waitlist entries
+    for (const [, entry] of store.state.waitlistEntries || []) {
+      if (entry.activityId === id && ['waiting', 'offered'].includes(entry.status)) {
+        entry.status = 'expired'
+        entry.updatedAt = new Date()
+      }
+    }
+
     return activity
   },
 

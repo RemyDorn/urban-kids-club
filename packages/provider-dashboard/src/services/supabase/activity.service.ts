@@ -80,20 +80,28 @@ export const SupabaseActivityService = {
 
   async archive(id: ID, providerId?: ID): Promise<Activity | undefined> {
     const sb = getServiceClient()
+    // Archive = free everything: remove room, remove instructor, set status
     let query = sb.from(TABLE)
-      .update({ status: 'archived', updated_at: new Date().toISOString() })
+      .update({ status: 'archived', room_id: null, instructor_id: null, updated_at: new Date().toISOString() })
       .eq('id', id)
     if (providerId) query = query.eq('provider_id', providerId)
     const { data, error } = await query.select().maybeSingle()
     if (error) throw error
 
-    // Also cancel all active/upcoming course blocks for this activity
     if (data) {
+      // Cancel all active/upcoming course blocks
       const { error: blockErr } = await sb.from('course_blocks')
         .update({ status: 'cancelled', updated_at: new Date().toISOString() })
         .eq('activity_id', id)
         .in('status', ['active', 'upcoming'])
       if (blockErr) console.error('[Activity] Failed to cancel blocks on archive:', blockErr.message)
+
+      // Cancel pending waitlist entries
+      const { error: waitErr } = await sb.from('waitlist_entries')
+        .update({ status: 'expired', updated_at: new Date().toISOString() })
+        .eq('activity_id', id)
+        .in('status', ['waiting', 'offered'])
+      if (waitErr) console.error('[Activity] Failed to expire waitlist on archive:', waitErr.message)
     }
 
     return data ? activityFromDb(data) : undefined

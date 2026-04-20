@@ -2807,29 +2807,72 @@
     //   showInviteParentsModal, closeInviteModal,
     //   toggleInviteAll, sendCourseInvitations
 
+    let _activityTabFilter = 'published'
+
     async function renderActivities() {
       const res = await api(`/providers/${currentProvider.id}/activities`)
       const activities = res.data
       allActivitiesCache = activities
 
+      const counts = { published: 0, draft: 0, archived: 0 }
+      activities.forEach(a => { if (counts[a.status] !== undefined) counts[a.status]++; else if (a.status === 'cancelled') counts.archived++ })
+
+      const tabClass = (key) => key === _activityTabFilter
+        ? 'px-4 py-2 text-sm font-semibold rounded-lg bg-brand-500 text-white'
+        : 'px-4 py-2 text-sm font-medium rounded-lg bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
+
       document.getElementById('content').innerHTML = `
         <div class="mb-4 flex flex-wrap items-center gap-2 justify-between">
-          <input type="text" id="actSearch" placeholder="Suchen..." class="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full md:w-64 focus:ring-2 focus:ring-brand-500" onkeyup="filterActivities()">
           <div class="flex items-center gap-2">
-            <span class="text-xs text-gray-500">${activities.length} Kurse</span>
+            <button onclick="_activityTabFilter='published';renderActivityList()" class="${tabClass('published')}">Aktiv (${counts.published})</button>
+            <button onclick="_activityTabFilter='draft';renderActivityList()" class="${tabClass('draft')}">Entwurf (${counts.draft})</button>
+            <button onclick="_activityTabFilter='archived';renderActivityList()" class="${tabClass('archived')}">Archiviert (${counts.archived})</button>
+          </div>
+          <div class="flex items-center gap-2">
+            <input type="text" id="actSearch" placeholder="Suchen..." class="border border-gray-200 rounded-lg px-3 py-2 text-sm w-48 focus:ring-2 focus:ring-brand-500" onkeyup="renderActivityList()">
             <button onclick="showActivityForm()" class="bg-brand-500 text-white px-3 py-2 rounded-lg text-xs md:text-sm font-medium hover:bg-brand-600 transition-colors flex items-center gap-1.5">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
               Neuer Kurs
             </button>
           </div>
         </div>
-        <div id="activityList" class="grid gap-4">
-          ${activities.map(a => activityCard(a)).join('')}
-        </div>
+        <div id="activityList" class="grid gap-4"></div>
         <div id="activityModal" class="hidden"></div>
       `
-      // Load rating badges asynchronously
-      activities.forEach(a => {
+      renderActivityList()
+    }
+
+    function renderActivityList() {
+      const search = (document.getElementById('actSearch')?.value || '').toLowerCase()
+      const filtered = (allActivitiesCache || []).filter(a => {
+        const matchTab = _activityTabFilter === 'archived' ? (a.status === 'archived' || a.status === 'cancelled') : a.status === _activityTabFilter
+        const matchSearch = !search || a.title.toLowerCase().includes(search) || (a.category || '').toLowerCase().includes(search)
+        return matchTab && matchSearch
+      })
+
+      const list = document.getElementById('activityList')
+      if (!list) return
+      list.innerHTML = filtered.length
+        ? filtered.map(a => activityCard(a)).join('')
+        : '<div class="text-center py-12 text-gray-400"><p class="text-sm">Keine Kurse in diesem Bereich</p></div>'
+
+      // Re-render tabs to update active state
+      const tabContainer = list.parentElement?.querySelector('.flex.items-center.gap-2')
+      if (tabContainer) {
+        const buttons = tabContainer.querySelectorAll('button')
+        buttons.forEach(btn => {
+          const text = btn.textContent.trim()
+          const isActive = (text.startsWith('Aktiv') && _activityTabFilter === 'published')
+            || (text.startsWith('Entwurf') && _activityTabFilter === 'draft')
+            || (text.startsWith('Archiviert') && _activityTabFilter === 'archived')
+          btn.className = isActive
+            ? 'px-4 py-2 text-sm font-semibold rounded-lg bg-brand-500 text-white'
+            : 'px-4 py-2 text-sm font-medium rounded-lg bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
+        })
+      }
+
+      // Load ratings for visible cards
+      filtered.forEach(a => {
         api('/activities/' + a.id + '/rating').then(r => {
           const d = r.data || r
           const el = document.getElementById('rating-badge-' + a.id)
@@ -5763,7 +5806,7 @@
               <label class="block text-sm font-medium text-gray-700 mb-1">Kurs</label>
               <select name="activityId" id="blockActivitySelect" required class="w-full border rounded-lg px-3 py-2 text-sm">
                 <option value="">Kurs wählen…</option>
-                ${activities.map(a => `<option value="${a.id}" data-type="${a.category}">${escapeHtml(a.title)}</option>`).join('')}
+                ${activities.filter(a => a.status !== 'archived').map(a => `<option value="${a.id}" data-type="${a.category}">${escapeHtml(a.title)}</option>`).join('')}
               </select>
             </div>
             <div>
