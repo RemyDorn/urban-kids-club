@@ -846,8 +846,17 @@ const server = createServer((req, res) => {
     res.setHeader('Content-Type', 'text/html; charset=utf-8')
     res.setHeader('Cache-Control', 'no-cache')
     res.statusCode = 200
-    // Widget: X-Frame-Options already excluded above for /widget/ paths
-    res.end(parentWidgetHtml)
+    // Inject Supabase config so widget auth (Google/Apple/Magic Link) works
+    const sbUrl = process.env.SUPABASE_URL || ''
+    const sbKey = process.env.SUPABASE_ANON_KEY || ''
+    const injectedHtml = parentWidgetHtml.replace(
+      "const SUPABASE_URL = window.UKC_SUPABASE_URL || ''",
+      `const SUPABASE_URL = window.UKC_SUPABASE_URL || '${sbUrl}'`
+    ).replace(
+      "const SUPABASE_ANON_KEY = window.UKC_SUPABASE_ANON_KEY || ''",
+      `const SUPABASE_ANON_KEY = window.UKC_SUPABASE_ANON_KEY || '${sbKey}'`
+    )
+    res.end(injectedHtml)
     return
   }
 

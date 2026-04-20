@@ -1886,6 +1886,13 @@ function renderCheckoutStep() {
             <div style="display:flex;justify-content:space-between;font-weight:700;margin-top:6px;padding-top:6px;border-top:1px solid #d1fae5"><span>Gesamt</span><span>${finalPrice}</span></div>
           </div>
         ` : `<div class="checkout-summary-price">${price}</div>`}
+        <div id="coupon-section" style="margin-top:12px">
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="text" id="co-coupon" placeholder="Rabatt-Code" value="${checkoutData.couponCode || ''}" style="flex:1;padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:13px">
+            <button onclick="applyCoupon()" style="padding:8px 16px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:13px;cursor:pointer;white-space:nowrap">Einlösen</button>
+          </div>
+          <div id="coupon-result" style="font-size:12px;margin-top:4px"></div>
+        </div>
       </div>
 
       <label class="checkout-checkbox">
@@ -2008,6 +2015,31 @@ async function submitCheckout() {
       submitBtn.disabled = false
       submitBtn.textContent = 'Erneut versuchen'
     }
+  }
+}
+
+async function applyCoupon() {
+  const code = document.getElementById('co-coupon')?.value?.trim()
+  const resultEl = document.getElementById('coupon-result')
+  if (!code) { resultEl.innerHTML = '<span style="color:#ef4444">Bitte Code eingeben</span>'; return }
+  try {
+    const resp = await fetch(API_BASE + '/api/coupons/validate', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, activityId: checkoutBlock?.activityId || '', amount: checkoutBlock?.pricePerBlock || 0 })
+    })
+    const data = await resp.json()
+    if (data.valid) {
+      checkoutData.couponCode = code
+      checkoutData.couponDiscount = data.discount || 0
+      checkoutData.couponType = data.type || 'percentage'
+      resultEl.innerHTML = '<span style="color:#16a34a">\u2713 ' + esc(data.message || 'Rabatt angewendet!') + '</span>'
+    } else {
+      checkoutData.couponCode = ''
+      checkoutData.couponDiscount = 0
+      resultEl.innerHTML = '<span style="color:#ef4444">' + esc(data.error || 'Ungültiger Code') + '</span>'
+    }
+  } catch(e) {
+    resultEl.innerHTML = '<span style="color:#ef4444">Fehler beim Prüfen</span>'
   }
 }
 

@@ -581,6 +581,49 @@ export function registerPublicRoutes(router: Router) {
     }
   })
 
+  // Public: Validate coupon code
+  router.post('/api/coupons/validate', async (req, res) => {
+    const db = getServiceClient()
+    const { code, activityId, amount } = req.body as any
+    if (!code) return res.json({ valid: false, error: 'Kein Code angegeben' })
+
+    // Look up coupon by code (case-insensitive)
+    const { data: coupon } = await db.from('coupons')
+      .select('*')
+      .ilike('code', code)
+      .eq('active', true)
+      .maybeSingle()
+
+    if (!coupon) return res.json({ valid: false, error: 'Ungültiger Rabatt-Code' })
+
+    // Check expiry
+    const now = new Date()
+    if (coupon.valid_from && new Date(coupon.valid_from) > now) return res.json({ valid: false, error: 'Code noch nicht gültig' })
+    if (coupon.valid_until && new Date(coupon.valid_until) < now) return res.json({ valid: false, error: 'Code abgelaufen' })
+
+    // Check usage limit
+    if (coupon.max_uses && coupon.used_count >= coupon.max_uses) return res.json({ valid: false, error: 'Code bereits aufgebraucht' })
+
+    // Check activity restriction (activity_ids is an array)
+    if (coupon.activity_ids?.length > 0 && activityId && !coupon.activity_ids.includes(activityId)) return res.json({ valid: false, error: 'Code gilt nicht für diesen Kurs' })
+
+    // Calculate discount
+    let discount = 0
+    let message = ''
+    if (coupon.type === 'percentage') {
+      discount = Math.round((amount || 0) * (coupon.value / 100) * 100) / 100
+      message = `${coupon.value}% Rabatt (-${discount.toFixed(2).replace('.', ',')} €)`
+    } else if (coupon.type === 'fixed_amount') {
+      discount = coupon.value
+      message = `${coupon.value.toFixed(2).replace('.', ',')} € Rabatt`
+    } else if (coupon.type === 'free_trial') {
+      discount = amount || 0
+      message = 'Kostenlose Probestunde!'
+    }
+
+    res.json({ valid: true, discount, type: coupon.type, value: coupon.value, message })
+  })
+
   // Public: Get activity details + payment config for checkout form
   router.get('/api/checkout/activity/:activityId', async (req, res) => {
     const db = getServiceClient()
