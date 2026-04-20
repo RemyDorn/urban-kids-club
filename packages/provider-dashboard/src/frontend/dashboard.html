@@ -2698,12 +2698,6 @@
       window._bookingStats = s
       window._waitlistCount = waitlistRes.count
 
-      // Calculate occupancy for current view
-      const occData = window._occData
-      let totalBooked = 0, totalCapacity = 0
-      occData.forEach(o => { totalBooked += o.booked || 0; totalCapacity += o.capacity || 0 })
-      const weeklyOccPct = totalCapacity > 0 ? Math.round((totalBooked / totalCapacity) * 100) : 0
-
       document.getElementById('content').innerHTML = `
         <!-- Kalender oben -->
         <div id="dashboardCalendar" class="mb-8"></div>
@@ -2711,21 +2705,8 @@
         <!-- Payment Status Banner (loaded async) -->
         <div id="dashPaymentBanner"></div>
 
-        <!-- KPI Cards (dynamic — updates with calendar view) -->
-        <div id="kpiSection">
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
-            ${kpiCard('Aktive Kurse', d.publishedActivities, d.totalActivities + ' gesamt', 'bg-brand-100 text-brand-500', '📚')}
-            ${kpiCard('Buchungen', d.confirmedBookings, s.total + ' gesamt', 'bg-green-50 text-green-600', '✅')}
-            ${kpiCard('Unbezahlt', d.unpaidBookings, 'offene Zahlungen', 'bg-amber-50 text-amber-600', '💰')}
-            ${kpiCard('Auslastung', weeklyOccPct + '%', totalBooked + '/' + totalCapacity + ' Plätze', 'bg-brand-100 text-brand-400', '📊')}
-          </div>
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
-            ${kpiCard('Umsatz', formatCurrency(d.totalRevenue), 'bezahlt', 'bg-emerald-50 text-emerald-600', '💶')}
-            ${kpiCard('Offener Umsatz', formatCurrency(d.unpaidRevenue || 0), (d.unpaidBookings || 0) + ' Buchungen offen', 'bg-orange-50 text-orange-600', '💰')}
-            ${kpiCard('Warteliste', waitlistRes.count, 'Interessenten', 'bg-amber-50 text-amber-600', '📋')}
-            ${kpiCard('Probestunden', d.upcomingTrials || 0, 'anstehend', 'bg-brand-100 text-brand-500', '🎯')}
-          </div>
-        </div>
+        <!-- KPI Cards (dynamic — filled by updateKPIsForView after calendar renders) -->
+        <div id="kpiSection"></div>
 
         <!-- Auslastung pro Kurs (dynamic — updates with calendar view) -->
         <div id="occPerCourseSection"></div>
