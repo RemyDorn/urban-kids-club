@@ -700,6 +700,21 @@ export function registerPublicRoutes(router: Router) {
     res.json({ data: enriched, count: enriched.length })
   })
 
+  // Public: Block sessions (for widget calendar to show actual dates)
+  router.get('/api/widget/course-blocks/:id/sessions', async (req, res) => {
+    const db = getServiceClient()
+    const { data: sessions, error } = await db.from('block_sessions')
+      .select('id, date, start_time, end_time, status')
+      .eq('block_id', req.params.id)
+      .order('date', { ascending: true })
+    if (error) return res.error(500, 'Fehler')
+    // Map to camelCase for frontend consistency
+    const mapped = (sessions || []).map((s: any) => ({
+      id: s.id, date: s.date, startTime: s.start_time, endTime: s.end_time, status: s.status
+    }))
+    res.json({ data: mapped, count: mapped.length })
+  })
+
   // Eltern: Enrollments mit Block-Info (auth required)
   router.get('/api/widget/enrollments/parent/:parentId', async (req, res) => {
     const auth = await requireAuth(req, res)

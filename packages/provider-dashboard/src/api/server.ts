@@ -247,7 +247,7 @@ try{
   // Load actual sessions for each active block
   await Promise.all(activeBlocks.map(async block=>{
     try{
-      const sr=await fetch('/api/course-blocks/'+block.id+'/sessions').then(r=>r.json())
+      const sr=await fetch('/api/widget/course-blocks/'+block.id+'/sessions').then(r=>r.json())
       const act=actMap[block.activityId]
       if(!act)return
       activitiesWithSessions.add(block.activityId)
