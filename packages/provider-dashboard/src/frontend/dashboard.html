@@ -1315,6 +1315,7 @@
           api(`/providers/${currentProvider.id}/holidays`),
           api('/rooms'),
           api(`/providers/${currentProvider.id}/team`),
+          api(`/providers/${currentProvider.id}/course-blocks`),
         ])
         // Activities are required — if they fail, calendar can't render
         if (results[0].status === 'rejected') throw results[0].reason
@@ -1324,6 +1325,7 @@
         holidays = results[2].status === 'fulfilled' ? results[2].value : { data: [] }
         _rooms = results[3].status === 'fulfilled' ? (results[3].value.data || []) : []
         _calTeamMembers = results[4].status === 'fulfilled' ? (results[4].value.data || []) : []
+        var _calBlocks = results[5].status === 'fulfilled' ? (results[5].value.data || []) : []
         if (results[1].status === 'rejected') console.warn('Occupancy data failed, calendar will render without it:', results[1].reason)
       } catch (err) {
         console.error('Calendar data fetch error:', err)
@@ -1336,7 +1338,7 @@
       const occMap = {}
       occupancy.data.forEach(o => { occMap[o.activityId] = o })
 
-      // Build virtual calendar events from activity schedules
+      // Build calendar events from actual block sessions (not activity schedule)
       const dayToNum = { SU: 0, MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6 }
       const holidayDates = new Set()
       ;(holidays.data || []).forEach(h => {
@@ -1358,30 +1360,59 @@
         for (let i = 0; i < 7; i++) days.push(addDays(calWeekStart, i))
       }
 
+      // Load sessions for active blocks and use their actual dates
+      const activeBlocks = (_calBlocks || []).filter(b => b.status === 'active' || b.status === 'upcoming')
+      const sessionsByActivity = {}
+      await Promise.all(activeBlocks.map(async block => {
+        try {
+          const sessRes = await api('/course-blocks/' + block.id + '/sessions')
+          const sessions = sessRes.data || []
+          sessions.forEach(sess => {
+            if (sess.status === 'cancelled' || sess.status === 'cancelled_by_provider') return
+            if (!sessionsByActivity[block.activityId]) sessionsByActivity[block.activityId] = []
+            sessionsByActivity[block.activityId].push({ date: sess.date, startTime: sess.startTime || block.recurringTime, endTime: sess.endTime || '', blockId: block.id, sessionId: sess.id })
+          })
+        } catch(e) {}
+      }))
+
+      const dayDates = new Set(days.map(d => fmtDate(d)))
+
       activities.data.filter(a => a.status === 'published').forEach(a => {
-        if (a.schedule.type === 'recurring') {
-          const recurStart = a.schedule.startDate || ''
-          const recurEnd = a.schedule.endDate || '9999-12-31'
-          for (const slot of a.schedule.slots) {
-            const targetDay = dayToNum[slot.day]
+        const realSessions = sessionsByActivity[a.id]
+        if (realSessions && realSessions.length > 0) {
+          // Use actual block session dates (respects rescheduled dates)
+          realSessions.forEach(sess => {
+            if (dayDates.has(sess.date) && !holidayDates.has(sess.date)) {
+              const slot = a.schedule?.slots?.[0] || {}
+              events.push({ activityId: a.id, title: a.title, date: sess.date, startTime: sess.startTime || slot.startTime, endTime: sess.endTime || slot.endTime, type: 'activity', blockId: sess.blockId, sessionId: sess.sessionId })
+            }
+          })
+        } else {
+          // Fallback: no block sessions → use schedule (for activities without blocks)
+          if (a.schedule.type === 'recurring') {
+            const recurStart = a.schedule.startDate || ''
+            const recurEnd = a.schedule.endDate || '9999-12-31'
+            for (const slot of a.schedule.slots) {
+              const targetDay = dayToNum[slot.day]
+              days.forEach(d => {
+                const ds = fmtDate(d)
+                if (d.getDay() === targetDay && ds >= recurStart && ds <= recurEnd && !holidayDates.has(ds)) {
+                  events.push({ activityId: a.id, title: a.title, date: ds, startTime: slot.startTime, endTime: slot.endTime, type: 'activity' })
+                }
+              })
+            }
+          } else if (a.schedule.type === 'single') {
+            if (a.schedule.date >= start && a.schedule.date <= end) {
+              events.push({ activityId: a.id, title: a.title, date: a.schedule.date, startTime: a.schedule.startTime, endTime: a.schedule.endTime, type: 'activity' })
+            }
+          } else if (a.schedule.type === 'camp') {
             days.forEach(d => {
               const ds = fmtDate(d)
-              if (d.getDay() === targetDay && ds >= recurStart && ds <= recurEnd && !holidayDates.has(ds)) {
-                events.push({ activityId: a.id, title: a.title, date: ds, startTime: slot.startTime, endTime: slot.endTime, type: 'activity' })
+              if (ds >= a.schedule.startDate && ds <= a.schedule.endDate && d.getDay() >= 1 && d.getDay() <= 5) {
+                events.push({ activityId: a.id, title: a.title + ' (Camp)', date: ds, startTime: a.schedule.dailyStartTime, endTime: a.schedule.dailyEndTime, type: 'activity' })
               }
             })
           }
-        } else if (a.schedule.type === 'single') {
-          if (a.schedule.date >= start && a.schedule.date <= end) {
-            events.push({ activityId: a.id, title: a.title, date: a.schedule.date, startTime: a.schedule.startTime, endTime: a.schedule.endTime, type: 'activity' })
-          }
-        } else if (a.schedule.type === 'camp') {
-          days.forEach(d => {
-            const ds = fmtDate(d)
-            if (ds >= a.schedule.startDate && ds <= a.schedule.endDate && d.getDay() >= 1 && d.getDay() <= 5) {
-              events.push({ activityId: a.id, title: a.title + ' (Camp)', date: ds, startTime: a.schedule.dailyStartTime, endTime: a.schedule.dailyEndTime, type: 'activity' })
-            }
-          })
         }
       })
 
