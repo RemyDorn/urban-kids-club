@@ -328,14 +328,14 @@ export const SupabaseCourseBlockService = {
 
   async getAttendanceBySession(sessionId: ID): Promise<any[]> {
     const sb = getServiceClient()
-    const { data, error } = await sb.from('session_attendances').select('*').eq('session_id', sessionId)
+    const { data, error } = await sb.from('session_attendance_records').select('*').eq('session_id', sessionId)
     if (error) throw error
     return data ?? []
   },
 
   async markAttendance(attendanceId: ID, status: string): Promise<any> {
     const sb = getServiceClient()
-    const { data, error } = await sb.from('session_attendances')
+    const { data, error } = await sb.from('session_attendance_records')
       .update({ status, updated_at: new Date().toISOString() })
       .eq('id', attendanceId).select().maybeSingle()
     if (error) throw error

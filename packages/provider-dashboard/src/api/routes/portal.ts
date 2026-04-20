@@ -553,7 +553,7 @@ export function registerPortalRoutes(router: Router) {
     if (!auth) return
     const sb = getServiceClient()
     const { data } = await sb.from('messages')
-      .select('id, provider_id, sender_type, content, read_at, created_at')
+      .select('id, provider_id, type, body, read, sent_at')
       .eq('parent_id', auth.parentId).order('created_at', { ascending: false }).limit(200)
 
     // Get provider names
@@ -571,7 +571,7 @@ export function registerPortalRoutes(router: Router) {
     if (!auth) return
     const sb = getServiceClient()
     const { data } = await sb.from('messages')
-      .select('id, provider_id, sender_type, content, read_at, created_at')
+      .select('id, provider_id, type, body, read, sent_at')
       .eq('parent_id', auth.parentId).eq('provider_id', req.params.providerId)
       .order('created_at', { ascending: true }).limit(100)
 
@@ -579,9 +579,9 @@ export function registerPortalRoutes(router: Router) {
     const { data: prov } = await sb.from('providers').select('company_name').eq('id', req.params.providerId).maybeSingle()
 
     // Auto-mark provider messages as read
-    await sb.from('messages').update({ read_at: new Date().toISOString() })
+    await sb.from('messages').update({ read: true })
       .eq('parent_id', auth.parentId).eq('provider_id', req.params.providerId)
-      .eq('sender_type', 'provider').is('read_at', null)
+      .eq('type', 'provider').eq('read', false)
 
     const enriched = (data ?? []).map((m: any) => ({ ...m, providerName: prov?.company_name || '' }))
     res.json({ data: enriched })
@@ -593,8 +593,8 @@ export function registerPortalRoutes(router: Router) {
     if (!auth) return
     const { messageIds, providerId } = req.body as { messageIds?: string[]; providerId?: string }
     const sb = getServiceClient()
-    let q = sb.from('messages').update({ read_at: new Date().toISOString() })
-      .eq('parent_id', auth.parentId).eq('sender_type', 'provider').is('read_at', null)
+    let q = sb.from('messages').update({ read: true })
+      .eq('parent_id', auth.parentId).eq('type', 'provider').eq('read', false)
     if (providerId) q = q.eq('provider_id', providerId)
     if (messageIds?.length) q = q.in('id', messageIds)
     const { error } = await q
@@ -611,7 +611,7 @@ export function registerPortalRoutes(router: Router) {
     const sb = getServiceClient()
     const { data, error } = await sb.from('messages').insert({
       provider_id: providerId, parent_id: auth.parentId,
-      sender_type: 'parent', content: content.trim(),
+      type: 'parent', body: content.trim(),
     }).select().single()
     if (error) throw error
     res.status(201).json({ data })
@@ -627,7 +627,7 @@ export function registerPortalRoutes(router: Router) {
     const sb = getServiceClient()
     const { data, error } = await sb.from('messages').insert({
       provider_id: providerId, parent_id: auth.parentId,
-      sender_type: 'parent', content: content.trim(),
+      type: 'parent', body: content.trim(),
     }).select().single()
     if (error) throw error
     res.status(201).json({ data })
@@ -642,9 +642,9 @@ export function registerPortalRoutes(router: Router) {
       .select('*').eq('provider_id', auth.providerId).eq('parent_id', req.params.parentId)
       .order('created_at', { ascending: true })
     // Mark unread messages as read
-    await sb.from('messages').update({ read_at: new Date().toISOString() })
+    await sb.from('messages').update({ read: true })
       .eq('provider_id', auth.providerId).eq('parent_id', req.params.parentId)
-      .eq('sender_type', 'parent').is('read_at', null)
+      .eq('type', 'parent').eq('read', false)
     res.json({ data: data ?? [] })
   })
 
@@ -657,7 +657,7 @@ export function registerPortalRoutes(router: Router) {
     const sb = getServiceClient()
     const { data, error } = await sb.from('messages').insert({
       provider_id: auth.providerId, parent_id: req.params.parentId,
-      sender_type: 'provider', content: content.trim(),
+      type: 'provider', body: content.trim(),
     }).select().single()
     if (error) throw error
     res.status(201).json({ data })

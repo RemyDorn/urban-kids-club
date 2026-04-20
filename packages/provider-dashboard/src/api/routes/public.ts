@@ -112,7 +112,7 @@ export function registerPublicRoutes(router: Router) {
     // both read the same count and assign the same position number
     await db.from('waitlist_entries').insert({
       activity_id: activityId,
-      block_id: wlBlock?.id || null,
+      course_block_id: wlBlock?.id || null,
       parent_id: existingParent.id,
       child_info: { firstName: child.firstName, lastName: child.lastName, birthYear: child.birthYear },
       position: Date.now(),
@@ -185,8 +185,15 @@ export function registerPublicRoutes(router: Router) {
     const ip = getClientIp(req)
     if (!rateLimit(`checkout:${ip}`, 10, 60 * 60 * 1000)) return res.error(429, 'Zu viele Anfragen. Bitte später erneut probieren.')
 
-    // Idempotency check
-    const idempotencyKey = req.raw?.headers?.['x-idempotency-key'] as string | undefined
+    // Idempotency check (with server-side fallback if no client header)
+    let idempotencyKey = req.raw?.headers?.['x-idempotency-key'] as string | undefined
+    if (!idempotencyKey) {
+      const { slug, activityId, child, parent } = req.body as any
+      if (activityId && parent?.email && child?.firstName && child?.lastName) {
+        const { createHash } = await import('node:crypto')
+        idempotencyKey = createHash('sha256').update(activityId + ':' + parent.email + ':' + child.firstName + ':' + child.lastName).digest('hex').slice(0, 32)
+      }
+    }
     if (idempotencyKey) {
       const cached = idempotencyStore.get(idempotencyKey)
       if (cached && cached.expiresAt > Date.now()) {
@@ -271,7 +278,7 @@ export function registerPublicRoutes(router: Router) {
           // Use Date.now() for position to avoid race condition with parallel requests
           await db.from('waitlist_entries').insert({
             activity_id: activityId, parent_id: parentId,
-            block_id: activeBlock?.id || null,
+            course_block_id: activeBlock?.id || null,
             child_info: { firstName: child.firstName, lastName: child.lastName, birthYear: child.birthYear },
             position: Date.now(), priority: 'normal', status: 'waiting',
           })
@@ -436,7 +443,7 @@ export function registerPublicRoutes(router: Router) {
         return res.json(responseData)
       } catch (ppErr: any) {
         console.error('[PayPal] Order creation failed:', ppErr)
-        return res.error(500, 'PayPal-Zahlung fehlgeschlagen: ' + (ppErr.message || 'Unbekannter Fehler'))
+        return res.error(500, 'Zahlung fehlgeschlagen. Bitte versuche es erneut.')
       }
     }
 
@@ -478,6 +485,7 @@ export function registerPublicRoutes(router: Router) {
       }
 
       // 2b. Re-check capacity at webhook time (race condition protection)
+      let isOverbooked = false
       if (meta.activity_id) {
         const { data: act } = await db.from('activities').select('capacity').eq('id', meta.activity_id).single()
         const maxCap = act?.capacity || 12
@@ -486,15 +494,15 @@ export function registerPublicRoutes(router: Router) {
           .eq('activity_id', meta.activity_id)
           .eq('status', 'confirmed')
         if (count !== null && count >= maxCap) {
-          console.warn(`Webhook: course ${meta.activity_id} full at payment time (${count}/${maxCap}). Booking created anyway — refund may be needed.`)
-          // Still create the booking but log warning — manual refund needed
+          isOverbooked = true
+          console.error(`[Stripe Webhook] OVERBOOKING: course ${meta.activity_id} full at payment time (${count}/${maxCap}). Booking will be created as pending_refund. Stripe session: ${session.id}`)
         }
       }
 
-      // 3. Create booking with correct status
+      // 3. Create booking — with pending_refund status if overbooked
       try {
         const { CheckoutService } = await import('../../services/supabase/checkout.service')
-        await CheckoutService.createBooking({
+        const booking = await CheckoutService.createBooking({
           providerId: meta.provider_id, activityId: meta.activity_id, blockId: meta.block_id || undefined,
           childFirstName: meta.child_first, childLastName: meta.child_last,
           childBirthYear: parseInt(meta.child_year) || 2020,
@@ -503,7 +511,25 @@ export function registerPublicRoutes(router: Router) {
           bookedDate: meta.booked_date || undefined,
           paymentMethod: 'stripe', amount: session.amount_total || 0,
           currency: session.currency || 'eur', stripeSessionId: session.id,
+          ...(isOverbooked ? { status: 'pending_refund' } : {}),
         })
+
+        // If overbooked, notify provider and update booking status directly
+        if (isOverbooked) {
+          // Ensure status is pending_refund in DB (in case CheckoutService ignores the field)
+          await db.from('provider_bookings').update({ status: 'pending_refund' }).eq('id', booking.id)
+
+          await db.from('notifications').insert({
+            recipient_type: 'provider',
+            recipient_id: meta.provider_id,
+            type: 'overbooking',
+            channel: 'in_app',
+            title: 'Überbuchung erkannt — manueller Refund nötig',
+            body: `${meta.child_first} ${meta.child_last} hat bezahlt, aber der Kurs war bereits voll. Buchung #${booking.id} wurde als "pending_refund" markiert. Bitte Stripe-Refund durchführen.`,
+            data: { bookingId: booking.id, activityId: meta.activity_id, stripeSessionId: session.id },
+          })
+          console.error(`[Stripe Webhook] Overbooking notification sent to provider ${meta.provider_id}. Booking ${booking.id} marked as pending_refund.`)
+        }
       } catch (err: any) {
         // 4. Return 500 so Stripe retries
         console.error('Webhook booking creation failed:', err.message)
@@ -563,7 +589,7 @@ export function registerPublicRoutes(router: Router) {
         parentPhone: meta.parent_phone || '',
         bookedDate: meta.booked_date || undefined,
         paymentMethod: 'paypal',
-        amount: result.amount,
+        amount: Math.round((parseFloat(result.amount) || 0) * 100),
         currency: result.currency,
         paypalOrderId: token,
       })
@@ -577,7 +603,7 @@ export function registerPublicRoutes(router: Router) {
       ;(res as any).end()
     } catch (err: any) {
       console.error('[PayPal] Capture failed:', err)
-      res.error(500, 'PayPal-Zahlung fehlgeschlagen: ' + (err.message || 'Unbekannter Fehler'))
+      res.error(500, 'Zahlung fehlgeschlagen. Bitte versuche es erneut.')
     }
   })
 
@@ -653,14 +679,23 @@ export function registerPublicRoutes(router: Router) {
     const providerId = provider.id
 
     const blocks = await CourseBlockService.getBlocksByProvider(providerId)
-    const enriched = await Promise.all(blocks.map(async (block: any) => {
-      const activity = await ActivityService.getById(block.activityId)
+
+    // Batch-load all activities to avoid N+1 queries
+    const activityIds = [...new Set(blocks.map((b: any) => b.activityId).filter(Boolean))]
+    const activities = await Promise.all(activityIds.map((id: string) => ActivityService.getById(id)))
+    const activityMap = new Map<string, any>()
+    for (const act of activities) {
+      if (act) activityMap.set(act.id, act)
+    }
+
+    const enriched = blocks.map((block: any) => {
+      const activity = activityMap.get(block.activityId)
       return {
         ...block,
         _activityTitle: activity?.title ?? block.activityType,
         _enrollmentCount: 0, // TODO: add enrollment count query to service
       }
-    }))
+    })
 
     res.json({ data: enriched, count: enriched.length })
   })

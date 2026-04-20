@@ -282,20 +282,22 @@ export const BackgroundJobs = {
         const booking = store.state.bookings.get(bid)
         if (!booking || booking.status !== 'confirmed') continue
 
-        // In-App Notification (immer)
+        // Skip if reminder was already sent for this booking+date (persisted check, survives restarts)
+        if (wasReminderAlreadySent(bid, calEvent.date)) continue
+
+        // In-App Notification (includes eventDate for deduplication)
         bookingReminders++
         createNotification({
           recipientType: 'parent', recipientId: booking.parentId,
           type: 'booking_reminder',
           title: 'Erinnerung: Kurs morgen',
           body: `"${booking.child.name}" hat morgen um ${calEvent.startTime} Kurs: "${calEvent.title}".`,
-          data: { bookingId: bid, activityId: calEvent.activityId },
+          data: { bookingId: bid, activityId: calEvent.activityId, eventDate: calEvent.date },
         })
 
-        // E-Mail Erinnerung (wenn Provider es aktiviert hat und noch nicht gesendet)
-        const reminderKey = `${bid}-${calEvent.date}`
+        // E-Mail Erinnerung (wenn Provider es aktiviert hat)
         const reminderEnabled = provider?.reminderEmailsEnabled !== false // Default: true
-        if (reminderEnabled && !store.state.sentCourseReminders.has(reminderKey)) {
+        if (reminderEnabled) {
           const parent = store.state.parents.get(booking.parentId)
           if (parent?.email) {
             const location = activity?.locationId ? store.state.locations.get(activity.locationId) : undefined
@@ -312,8 +314,6 @@ export const BackgroundJobs = {
               courseTime: calEvent.startTime,
               location: location?.name,
             }).catch((err) => console.error(`[CourseReminder] E-Mail an ${parent.email} fehlgeschlagen:`, err))
-
-            store.state.sentCourseReminders.add(reminderKey)
           }
         }
       }
@@ -425,8 +425,27 @@ export const BackgroundJobs = {
 // ============================================================
 
 /**
+ * Checks if a booking_reminder notification was already sent for a given booking+date.
+ * Uses the persisted notifications store instead of in-memory Set, so it survives restarts.
+ */
+function wasReminderAlreadySent(bookingId: ID, eventDate: string): boolean {
+  // Check notifications store for an existing booking_reminder with matching bookingId and date
+  for (const notif of store.state.notifications.values()) {
+    if (
+      notif.type === 'booking_reminder' &&
+      notif.data?.bookingId === bookingId &&
+      notif.data?.eventDate === eventDate
+    ) {
+      return true
+    }
+  }
+  return false
+}
+
+/**
  * Sends course reminder emails for sessions starting in the next 24-26 hours.
- * Designed to be called every hour. Uses sentCourseReminders Set for deduplication.
+ * Designed to be called every hour. Uses persisted notifications for deduplication
+ * (survives server restarts, unlike the previous in-memory Set approach).
  * Respects provider.reminderEmailsEnabled setting (default: true).
  */
 export async function sendCourseReminders(): Promise<{ sent: number; skipped: number; errors: number }> {
@@ -465,8 +484,7 @@ export async function sendCourseReminders(): Promise<{ sent: number; skipped: nu
       const booking = store.state.bookings.get(bid)
       if (!booking || booking.status !== 'confirmed') continue
 
-      const reminderKey = `${bid}-${calEvent.date}`
-      if (store.state.sentCourseReminders.has(reminderKey)) {
+      if (wasReminderAlreadySent(bid, calEvent.date)) {
         skipped++
         continue
       }
@@ -489,17 +507,16 @@ export async function sendCourseReminders(): Promise<{ sent: number; skipped: nu
         })
 
         if (result.success) {
-          store.state.sentCourseReminders.add(reminderKey)
           sent++
 
-          // Also create in-app notification
+          // Create in-app notification with eventDate for deduplication (survives restarts)
           createNotification({
             recipientType: 'parent',
             recipientId: booking.parentId,
             type: 'booking_reminder',
             title: 'Erinnerung: Kurs morgen',
             body: `"${booking.child.name}" hat morgen um ${calEvent.startTime} Kurs: "${calEvent.title}".`,
-            data: { bookingId: bid, activityId: calEvent.activityId },
+            data: { bookingId: bid, activityId: calEvent.activityId, eventDate: calEvent.date },
           })
         } else {
           console.error(`[CourseReminder] E-Mail an ${parent.email} fehlgeschlagen:`, result.error)

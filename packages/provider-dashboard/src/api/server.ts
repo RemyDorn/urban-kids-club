@@ -166,6 +166,7 @@ p{color:#64748b;font-size:14px;line-height:1.6}
     return `<!DOCTYPE html>
 <html lang="de"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' https:; script-src 'unsafe-inline' https://cdn.jsdelivr.net https://js.stripe.com https://www.paypal.com; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' https: data:; connect-src 'self' https://*.supabase.co https://api.stripe.com https://api.paypal.com">
 <title>Kurskalender</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -221,7 +222,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:transparent;color:#1f29
 <div id="app"><div style="text-align:center;padding:60px;color:#94a3b8;font-size:13px">Wird geladen...</div></div>
 <script>
 (async()=>{
-const slug='${slug}',app=document.getElementById('app'),BC='${brandColor}'
+const slug=${JSON.stringify(slug)},app=document.getElementById('app'),BC='${brandColor}'
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
 function showMsg(msg,type){const e=document.querySelector('.wdg-toast');if(e)e.remove();const t=document.createElement('div');t.className='wdg-toast';t.style.cssText='position:fixed;bottom:16px;left:50%;transform:translateX(-50%);padding:10px 20px;border-radius:10px;font-size:13px;font-weight:500;z-index:9999;color:#fff;background:'+(type==='error'?'#dc2626':'#059669')+';box-shadow:0 4px 16px rgba(0,0,0,.15);animation:fadeIn .3s ease';t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),3500)}
 const DN={MO:1,TU:2,WE:3,TH:4,FR:5,SA:6,SU:0,DI:2,MI:3,DO:4,SO:0}
@@ -727,6 +728,7 @@ async function doCheckin(){
 }
 
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
+function showMsg(msg,type){const e=document.querySelector('.wdg-toast');if(e)e.remove();const t=document.createElement('div');t.className='wdg-toast';t.style.cssText='position:fixed;bottom:16px;left:50%;transform:translateX(-50%);padding:10px 20px;border-radius:10px;font-size:13px;font-weight:500;z-index:9999;color:#fff;background:'+(type==='error'?'#dc2626':'#059669')+';box-shadow:0 4px 16px rgba(0,0,0,.15)';t.textContent=msg;document.body.appendChild(t);setTimeout(function(){t.remove()},3500)}
 </script>
 </body></html>`
 }

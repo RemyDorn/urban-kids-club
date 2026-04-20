@@ -92,7 +92,8 @@ export function registerAuthRoutes(router: Router) {
     if (provError) {
       // Rollback: delete auth user
       await db.auth.admin.deleteUser(authData.user.id)
-      return res.error(500, 'Provider-Erstellung fehlgeschlagen: ' + provError.message)
+      console.error('[Auth] Provider creation failed:', provError.message)
+      return res.error(500, 'Registrierung fehlgeschlagen. Bitte versuche es erneut.')
     }
 
     // 4. Set provider_id in user metadata for auth middleware

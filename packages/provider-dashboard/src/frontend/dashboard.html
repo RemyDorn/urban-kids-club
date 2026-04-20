@@ -2672,26 +2672,29 @@
     // Functions: renderDashboard, loadDashboardPaymentBanner
 
     async function renderDashboard() {
-      const [dash, stats, occupancy, activitiesRes, bookingsRes, waitlistRes] = await Promise.all([
+      const [dash, stats, occupancy, activitiesRes, bookingsRes] = await Promise.all([
         api(`/providers/${currentProvider.id}/dashboard`),
         api(`/providers/${currentProvider.id}/bookings/stats`),
         api(`/providers/${currentProvider.id}/reports/occupancy`).catch(function() { return { data: [] } }),
         api(`/providers/${currentProvider.id}/activities`),
         api(`/providers/${currentProvider.id}/bookings`).catch(function() { return { data: [] } }),
-        api(`/providers/${currentProvider.id}/activities`).then(async actRes => {
-          let total = 0
-          for (const a of (actRes.data || [])) {
-            try {
-              const w = await api('/activities/' + a.id + '/waitlist')
-              var entries = (w.data || w || []).filter(function(e) { return e.status === 'waiting' || e.status === 'offered' })
-              total += entries.length
-            } catch(e) {}
-          }
-          return { count: total }
-        }).catch(() => ({ count: 0 })),
       ])
       const d = dash.data
       const s = stats.data
+
+      // Count waitlist entries from the already-fetched activities
+      let waitlistCount = 0
+      try {
+        const activities = activitiesRes.data || []
+        const waitlistPromises = activities.map(function(a) {
+          return api('/activities/' + a.id + '/waitlist').then(function(w) {
+            var entries = (w.data || w || []).filter(function(e) { return e.status === 'waiting' || e.status === 'offered' })
+            return entries.length
+          }).catch(function() { return 0 })
+        })
+        const counts = await Promise.all(waitlistPromises)
+        for (var i = 0; i < counts.length; i++) { waitlistCount += counts[i] }
+      } catch(e) { waitlistCount = 0 }
 
       // Store data globally for KPI updates on view change
       window._occData = occupancy.data || []
@@ -2699,7 +2702,7 @@
       window._bookingsData = bookingsRes.data || []
       window._dashData = d
       window._bookingStats = s
-      window._waitlistCount = waitlistRes.count
+      window._waitlistCount = waitlistCount
 
       document.getElementById('content').innerHTML = `
         <!-- Kalender oben -->

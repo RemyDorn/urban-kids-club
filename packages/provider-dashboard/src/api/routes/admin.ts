@@ -334,7 +334,8 @@ export function registerAdminRoutes(router: Router) {
 
     if (provError) {
       await db.auth.admin.deleteUser(authData.user.id)
-      return res.error(500, provError.message)
+      console.error('[Admin] Provider creation failed:', provError.message)
+      return res.error(500, 'Aktion fehlgeschlagen')
     }
     // Auto-add owner as team member
     await (db.from('team_members').insert({

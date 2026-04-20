@@ -209,7 +209,7 @@ export class CheckoutService {
             child_age: childAge,
             booking_id: booking.id,
             status: 'active',
-            price_paid: params.amount > 0 ? params.amount / 100 : 0,
+            price_paid: finalAmount,
             currency: params.currency || 'EUR',
             credits_earned: 0,
             credits_used: 0,
@@ -253,14 +253,26 @@ export class CheckoutService {
       p_booked_date: params.bookedDate || null,
     })
 
-    // If RPC fails (e.g. PostgREST cache), fall back to direct inserts
+    // If RPC fails (e.g. PostgREST cache), fall back to direct inserts with capacity check
+    let booking: any = null
     if (rpcError) {
       console.warn('[Checkout] RPC failed, falling back to direct insert:', rpcError.message)
+
+      // Capacity check (since RPC couldn't do it atomically)
+      const { count: fallbackCount } = await db.from('block_enrollments')
+        .select('*', { count: 'exact', head: true })
+        .eq('block_id', activeBlock.id).eq('status', 'active')
+      const fallbackMax = (activeBlock.capacity ?? 10) + (activeBlock.makeup_capacity ?? 0)
+      if ((fallbackCount ?? 0) >= fallbackMax) {
+        throw new Error('Dieser Kurs ist leider ausgebucht.')
+      }
+
+      const paymentStatus = (params.paymentMethod === 'onsite' || amountEur <= 0) ? 'unpaid' : 'paid'
       const { data: newBooking, error: bookingErr } = await db.from('provider_bookings').insert({
         provider_id: params.providerId, activity_id: params.activityId, parent_id: parent.id,
-        child_info: childInfo, pricing_option_id: 'default', payment_method: params.paymentMethod,
+        child_info: childInfo, payment_method: params.paymentMethod,
         amount_paid: amountEur, currency: params.currency || 'EUR', source: 'widget',
-        status: 'confirmed', payment_status: params.paymentMethod === 'onsite' ? 'unpaid' : 'paid',
+        status: 'confirmed', payment_status: paymentStatus,
         stripe_session_id: params.stripeSessionId || null, paypal_order_id: params.paypalOrderId || null,
         booked_date: params.bookedDate || null,
       }).select().single()
@@ -278,7 +290,7 @@ export class CheckoutService {
         })
       } catch (enrollErr: any) { console.error('[Checkout] Enrollment fallback failed:', enrollErr.message) }
 
-      var booking: any = { id: newBooking.id, ...newBooking }
+      booking = { id: newBooking.id, ...newBooking }
     } else if (rpcResult?.error) {
       // RPC returned a business error (course full)
       if (String(rpcResult.error).includes('ausgebucht') || String(rpcResult.error).includes('voll')) {
@@ -308,7 +320,7 @@ export class CheckoutService {
       }
       throw new Error(rpcResult.error)
     } else {
-      var booking: any = { id: rpcResult?.id, ...rpcResult }
+      booking = { id: rpcResult?.id, ...rpcResult }
     }
 
     if (!booking?.id) throw new Error('Buchung konnte nicht erstellt werden')
