@@ -110,8 +110,82 @@ export function registerCourseBlockRoutes(router: Router) {
     const today = new Date().toISOString().slice(0, 10)
     if (newDate < today) return res.error(400, 'Datum darf nicht in der Vergangenheit liegen')
     // Update in DB
+    const oldDate = session.date
     const { data: updated, error } = await db.from('block_sessions').update({ date: newDate }).eq('id', req.params.id).select().single()
     if (error) return res.error(500, error.message)
+
+    // Notify all enrolled parents about the reschedule
+    try {
+      const blockId = session.block_id
+      const { data: block } = await db.from('course_blocks').select('activity_id, recurring_time').eq('id', blockId).single()
+      const { data: activity } = await db.from('activities').select('title, schedule').eq('id', block?.activity_id).single()
+      const { data: enrollments } = await db.from('block_enrollments')
+        .select('parent_id, child_name').eq('block_id', blockId).eq('status', 'active')
+      const { data: provider } = await db.from('providers').select('company_name').eq('id', auth.providerId).single()
+
+      const courseName = activity?.title || 'Kurs'
+      const time = block?.recurring_time || activity?.schedule?.slots?.[0]?.startTime || ''
+      const dayNames: Record<string, string> = { '0': 'Sonntag', '1': 'Montag', '2': 'Dienstag', '3': 'Mittwoch', '4': 'Donnerstag', '5': 'Freitag', '6': 'Samstag' }
+      const fmtDE = (d: string) => { const p = d.split('-'); return `${p[2]}.${p[1]}.${p[0]}` }
+      const newDayName = dayNames[String(new Date(newDate + 'T12:00:00').getDay())] || ''
+      const oldDateFmt = fmtDE(oldDate)
+      const newDateFmt = fmtDE(newDate)
+      const providerName = provider?.company_name || ''
+
+      // Get unique parent emails
+      const parentIds = [...new Set((enrollments || []).map((e: any) => e.parent_id))]
+      for (const parentId of parentIds) {
+        const { data: parent } = await db.from('parents').select('name, email').eq('id', parentId).single()
+        if (!parent?.email) continue
+        const childNames = (enrollments || []).filter((e: any) => e.parent_id === parentId).map((e: any) => e.child_name).join(', ')
+
+        // Send email
+        try {
+          const { EmailService } = await import('../../lib/email')
+          await EmailService.send({
+            to: parent.email,
+            subject: `Terminänderung: ${courseName} — neuer Termin am ${newDateFmt}`,
+            html: `
+              <div style="font-family: 'Inter', 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; color: #3C2225;">
+                <div style="background: linear-gradient(135deg, #B5533A, #8B3A28); padding: 32px; border-radius: 16px 16px 0 0; text-align: center;">
+                  <div style="font-size: 48px; margin-bottom: 8px;">📅</div>
+                  <h1 style="color: white; margin: 0; font-size: 22px; font-weight: 700;">Termin verschoben</h1>
+                </div>
+                <div style="padding: 32px; background: #FFF9F5; border-radius: 0 0 16px 16px;">
+                  <p style="font-size: 16px;">Hallo ${parent.name?.split(' ')[0] || 'Hallo'},</p>
+                  <p>der folgende Termin von <strong>${childNames}</strong> wurde verschoben:</p>
+                  <div style="background: white; padding: 20px; border-radius: 12px; border-left: 4px solid #f59e0b; margin: 20px 0;">
+                    <div style="font-weight: 700; font-size: 16px;">${courseName}</div>
+                    <div style="color: #dc2626; margin-top: 8px; text-decoration: line-through;">❌ ${oldDateFmt} um ${time} Uhr</div>
+                    <div style="color: #059669; margin-top: 4px; font-weight: 600;">✅ Neuer Termin: ${newDayName}, ${newDateFmt} um ${time} Uhr</div>
+                  </div>
+                  <p>Falls der neue Termin nicht passt, melde dich einfach bei uns — wir finden eine Lösung!</p>
+                  <p style="margin-top: 24px; color: #64748b; font-size: 14px;">Liebe Grüße,<br><strong>${providerName}</strong></p>
+                  <hr style="border: none; border-top: 1px solid #F2E6E2; margin: 24px 0;">
+                  <p style="color: #94a3b8; font-size: 12px; text-align: center;">Powered by Urban Kids Club</p>
+                </div>
+              </div>
+            `,
+            text: `Terminänderung: ${courseName} für ${childNames}. Alter Termin: ${oldDateFmt} ${time} Uhr. Neuer Termin: ${newDateFmt} ${time} Uhr. Bei Fragen melde dich bei ${providerName}.`,
+          })
+        } catch (emailErr) {
+          console.error(`[Reschedule] Email to ${parent.email} failed:`, emailErr)
+        }
+
+        // In-app notification
+        await db.from('notifications').insert({
+          recipient_type: 'parent', recipient_id: parentId,
+          type: 'session_rescheduled', channel: 'in_app',
+          title: 'Termin verschoben',
+          body: `${courseName}: ${oldDateFmt} → ${newDateFmt}`,
+          data: { sessionId: req.params.id, oldDate, newDate, blockId },
+        }).catch(() => {})
+      }
+      console.log(`[Reschedule] Notified ${parentIds.length} parents about session ${req.params.id}: ${oldDate} → ${newDate}`)
+    } catch (notifyErr) {
+      console.error('[Reschedule] Notification failed (non-blocking):', notifyErr)
+    }
+
     res.json({ data: updated })
   })
 
