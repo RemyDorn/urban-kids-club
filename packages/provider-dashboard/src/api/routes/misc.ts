@@ -462,8 +462,8 @@ export function registerMiscRoutes(router: Router) {
     const { data: parents } = await sb.from('parents').select('id, name, email, children').in('id', parentIds)
 
     const { EmailService } = await import('../../lib/email')
-    const origin = process.env.APP_PUBLIC_URL || 'https://dev.urbankids.club'
-    const bookingUrl = `${origin}/widget/${provider?.slug || ''}`
+    const origin = process.env.APP_PUBLIC_URL || `https://${req.raw.headers.host || 'app.urbankids.club'}`
+    const bookingUrl = `${origin}/embed/${provider?.slug || ''}/calendar?activity=${activityId}`
     const currentYear = new Date().getFullYear()
 
     // Build course details string

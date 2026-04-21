@@ -939,7 +939,9 @@ const server = createServer((req, res) => {
     res.setHeader('Content-Type', 'text/html; charset=utf-8')
     res.setHeader('Cache-Control', 'no-cache')
     res.statusCode = 200
-    // Inject Supabase config so widget auth (Google/Apple/Magic Link) works
+    // Extract slug from URL: /widget/socialy → socialy
+    const widgetSlug = url.split('/')[2]?.split('?')[0]?.replace(/[^a-zA-Z0-9_-]/g, '') || ''
+    // Inject Supabase config + provider slug
     const sbUrl = process.env.SUPABASE_URL || ''
     const sbKey = process.env.SUPABASE_ANON_KEY || ''
     const injectedHtml = parentWidgetHtml.replace(
@@ -948,6 +950,9 @@ const server = createServer((req, res) => {
     ).replace(
       "const SUPABASE_ANON_KEY = window.UKC_SUPABASE_ANON_KEY || ''",
       `const SUPABASE_ANON_KEY = window.UKC_SUPABASE_ANON_KEY || '${sbKey}'`
+    ).replace(
+      "const PROVIDER_SLUG = window.UKC_PROVIDER_SLUG || ''",
+      `const PROVIDER_SLUG = window.UKC_PROVIDER_SLUG || '${widgetSlug}'`
     )
     res.end(injectedHtml)
     return
