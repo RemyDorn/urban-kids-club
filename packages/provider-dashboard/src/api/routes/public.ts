@@ -488,7 +488,12 @@ export function registerPublicRoutes(router: Router) {
       let isOverbooked = false
       if (meta.activity_id) {
         const { data: act } = await db.from('activities').select('capacity').eq('id', meta.activity_id).single()
-        const maxCap = act?.capacity || 12
+        // Check active block for makeup_capacity
+        const { data: whBlock } = await db.from('course_blocks')
+          .select('id, capacity, makeup_capacity')
+          .eq('activity_id', meta.activity_id).in('status', ['active', 'upcoming'])
+          .order('start_date', { ascending: true }).limit(1).maybeSingle()
+        const maxCap = (whBlock?.capacity || act?.capacity || 12) + (whBlock?.makeup_capacity || 0)
         const { count } = await db.from('provider_bookings')
           .select('id', { count: 'exact', head: true })
           .eq('activity_id', meta.activity_id)
@@ -569,9 +574,7 @@ export function registerPublicRoutes(router: Router) {
           .select('booking_redirect_url').eq('id', provider.id).single()
         const origin = req.raw.headers.origin || (req.raw.headers.host ? `https://${req.raw.headers.host}` : 'https://app.urbankids.club')
         const redirectUrl = provExtra?.booking_redirect_url || `${origin}/embed/${slug}/booking-success`
-        ;(res as any).writeHead(302, { Location: redirectUrl })
-        ;(res as any).end()
-        return
+        return res.redirect(redirectUrl)
       }
 
       // Create booking
@@ -599,8 +602,7 @@ export function registerPublicRoutes(router: Router) {
         .select('booking_redirect_url').eq('id', provider.id).single()
       const origin = req.raw.headers.origin || (req.raw.headers.host ? `https://${req.raw.headers.host}` : 'https://app.urbankids.club')
       const redirectUrl = provExtra?.booking_redirect_url || `${origin}/embed/${slug}/booking-success`
-      ;(res as any).writeHead(302, { Location: redirectUrl })
-      ;(res as any).end()
+      res.redirect(redirectUrl)
     } catch (err: any) {
       console.error('[PayPal] Capture failed:', err)
       res.error(500, 'Zahlung fehlgeschlagen. Bitte versuche es erneut.')
@@ -608,7 +610,9 @@ export function registerPublicRoutes(router: Router) {
   })
 
   // Public: Validate coupon code
-  router.post('/api/coupons/validate', async (req, res) => {
+  router.post('/api/public/coupons/validate', async (req, res) => {
+    // Rate limit: 20 validations per IP per hour
+    if (!rateLimit('coupon-validate:' + getClientIp(req), 20, 60 * 60 * 1000)) return res.error(429, 'Zu viele Anfragen')
     const db = getServiceClient()
     const { code, activityId, amount } = req.body as any
     if (!code) return res.json({ valid: false, error: 'Kein Code angegeben' })
@@ -688,12 +692,27 @@ export function registerPublicRoutes(router: Router) {
       if (act) activityMap.set(act.id, act)
     }
 
+    // Batch-load enrollment counts for all blocks
+    const db = getServiceClient()
+    const blockIds = blocks.map((b: any) => b.id).filter(Boolean)
+    const enrollmentCounts = new Map<string, number>()
+    if (blockIds.length > 0) {
+      const { data: countRows } = await db.from('block_enrollments')
+        .select('block_id', { count: 'exact', head: false })
+        .in('block_id', blockIds)
+        .eq('status', 'active')
+      // Count per block_id
+      for (const row of countRows ?? []) {
+        enrollmentCounts.set(row.block_id, (enrollmentCounts.get(row.block_id) || 0) + 1)
+      }
+    }
+
     const enriched = blocks.map((block: any) => {
       const activity = activityMap.get(block.activityId)
       return {
         ...block,
         _activityTitle: activity?.title ?? block.activityType,
-        _enrollmentCount: 0, // TODO: add enrollment count query to service
+        _enrollmentCount: enrollmentCounts.get(block.id) || 0,
       }
     })
 

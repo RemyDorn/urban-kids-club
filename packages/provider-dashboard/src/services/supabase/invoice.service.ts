@@ -126,9 +126,10 @@ export const SupabaseInvoiceService = {
         const { EmailService } = await import('../../lib/email')
         let courseName = ''
         let childName = ''
-        if (invoiceRow.booking_id) {
+        const bookingIds: string[] = Array.isArray(invoiceRow.booking_ids) ? invoiceRow.booking_ids : invoiceRow.booking_ids ? [invoiceRow.booking_ids] : []
+        if (bookingIds.length > 0) {
           const { data: booking } = await sb.from('provider_bookings')
-            .select('activity_id, child_info').eq('id', invoiceRow.booking_id).maybeSingle()
+            .select('activity_id, child_info').eq('id', bookingIds[0]).maybeSingle()
           if (booking) {
             const ci = booking.child_info as any
             childName = ci?.firstName ? (ci.firstName + ' ' + (ci.lastName || '')).trim() : ''

@@ -79,6 +79,10 @@ select:focus { border-color:var(--primary); }
 .stars-display { display:inline-flex; gap:1px; }
 .star-filled { color:#f59e0b; }
 .star-empty { color:#d1d5db; }
+@media (max-width:599px) {
+  .tabs { overflow-x:auto; white-space:nowrap; -webkit-overflow-scrolling:touch; flex-wrap:nowrap; }
+  .tabs .tab { flex:0 0 auto; }
+}
 </style>
 </head>
 <body>
@@ -340,6 +344,18 @@ document.getElementById('loginForm').addEventListener('submit', async function(e
     }
     document.getElementById('loginMsg').innerHTML = '<div class="card" style="background:#ecfdf5;border-color:#a7f3d0"><p style="font-weight:600;color:#059669">Login-Link gesendet!</p><p style="font-size:13px;color:#047857;margin-top:4px">Wir haben dir einen Login-Link per E-Mail geschickt. Klicke darauf, um dich einzuloggen.</p></div>';
     document.getElementById('loginForm').style.display = 'none';
+    var retryBtn = document.createElement('button');
+    retryBtn.className = 'btn btn-outline';
+    retryBtn.style.cssText = 'width:100%;margin-top:12px';
+    retryBtn.textContent = 'Andere E-Mail versuchen';
+    retryBtn.onclick = function() {
+      document.getElementById('loginForm').style.display = '';
+      document.getElementById('loginMsg').innerHTML = '';
+      document.getElementById('loginEmail').value = '';
+      document.getElementById('loginBtn').disabled = false;
+      document.getElementById('loginBtn').textContent = 'Magic Link senden';
+    };
+    document.getElementById('loginMsg').appendChild(retryBtn);
   } catch(e) {
     document.getElementById('loginMsg').innerHTML = '<p style="color:#ef4444">Fehler beim Senden.</p>';
     btn.disabled = false; btn.textContent = 'Magic Link senden';

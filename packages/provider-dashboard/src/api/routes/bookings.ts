@@ -28,7 +28,7 @@ export function registerBookingRoutes(router: Router) {
     const auth = await requireAuth(req, res)
     if (!auth) return
     // Verify activity belongs to this provider
-    const act = await ActivityService.getById(req.params.activityId)
+    const act = await ActivityService.getById(req.params.activityId, auth.providerId)
     if (!act || act.providerId !== auth.providerId) return res.error(404, 'Aktivität nicht gefunden')
     const bookings = await BookingService.listByActivity(req.params.activityId)
     res.json({ data: bookings, count: bookings.length })

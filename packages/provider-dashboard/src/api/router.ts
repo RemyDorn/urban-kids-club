@@ -24,6 +24,7 @@ export interface ApiResponse {
   json(data: unknown): void
   error(code: number, message: string): void
   html(content: string, code?: number): void
+  redirect(url: string, code?: number): void
 }
 
 interface Route {
@@ -156,6 +157,10 @@ export class Router {
           res.setHeader('Content-Type', 'text/html; charset=utf-8')
           res.statusCode = code ?? statusCode
           res.end(content)
+        },
+        redirect(url: string, code?: number) {
+          res.writeHead(code ?? 302, { Location: url })
+          res.end()
         },
       }
 

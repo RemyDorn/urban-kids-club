@@ -175,7 +175,13 @@ export function registerMiscRoutes(router: Router) {
         .select('id, activity_id, parent_id, child_info, status, payment_status, payment_method, amount_paid, currency, created_at')
         .eq('provider_id', auth.providerId).order('created_at', { ascending: false })
       const { data: activities } = await sb.from('activities').select('id, title').eq('provider_id', auth.providerId)
-      const { data: parents } = await sb.from('parents').select('id, name, email')
+      // Only load parents who have bookings with this provider
+      const { data: providerParentIds } = await sb.from('provider_bookings')
+        .select('parent_id').eq('provider_id', auth.providerId)
+      const parentIds = [...new Set((providerParentIds || []).map((b: any) => b.parent_id))]
+      const { data: parents } = parentIds.length > 0
+        ? await sb.from('parents').select('id, name, email').in('id', parentIds)
+        : { data: [] as any[] }
       const actMap = new Map((activities ?? []).map((a: any) => [a.id, a.title]))
       const parMap = new Map((parents ?? []).map((p: any) => [p.id, { name: p.name, email: p.email }]))
 

@@ -177,13 +177,15 @@ export function registerCourseBlockRoutes(router: Router) {
         }
 
         // In-app notification
-        await db.from('notifications').insert({
-          recipient_type: 'parent', recipient_id: parentId,
-          type: 'session_rescheduled', channel: 'in_app',
-          title: 'Termin verschoben',
-          body: `${courseName}: ${oldDateFmt} → ${newDateFmt}`,
-          data: { sessionId: req.params.id, oldDate, newDate, blockId },
-        }).catch(() => {})
+        try {
+          await db.from('notifications').insert({
+            recipient_type: 'parent', recipient_id: parentId,
+            type: 'session_rescheduled', channel: 'in_app',
+            title: 'Termin verschoben',
+            body: `${courseName}: ${oldDateFmt} → ${newDateFmt}`,
+            data: { sessionId: req.params.id, oldDate, newDate, blockId },
+          })
+        } catch (_) { /* non-critical */ }
       }
       console.log(`[Reschedule] Notified ${parentIds.length} parents about session ${req.params.id}: ${oldDate} → ${newDate}`)
     } catch (notifyErr) {
