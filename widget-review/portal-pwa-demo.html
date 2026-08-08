@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PWA Demo · Eltern-Portal · Urban Kids Club</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700;800&family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;1,9..144,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #FFEFE1; --surface: #FFF9F5; --ink: #3C2124;
+    --muted: #C49980; --primary: #CC895E; --signal: #B4523A; --sage: #627A5A;
+    --border: rgba(60,33,36,0.10);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { background: var(--bg); color: var(--ink); font-family: 'Inter', sans-serif; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 50px 24px 80px; }
+
+  .kicker { font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 11.5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--primary); margin-bottom: 10px; }
+  h1 { font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: clamp(36px, 6vw, 52px); line-height: 1.05; letter-spacing: -0.005em; margin-bottom: 14px; }
+  h1 em { font-family: 'Fraunces', serif; font-style: italic; font-weight: 400; color: var(--primary); }
+  .lead { font-size: 16.5px; color: rgba(60,33,36,0.74); max-width: 720px; margin-bottom: 36px; line-height: 1.6; }
+
+  /* Architecture diagram */
+  .arch { background: var(--surface); border: 1px solid var(--border); border-radius: 22px; padding: 30px 32px; margin-bottom: 36px; box-shadow: 0 2px 8px rgba(60,33,36,0.04); }
+  .arch h2 { font-family: 'Barlow Condensed', sans-serif; font-size: 24px; letter-spacing: -0.005em; margin-bottom: 20px; }
+  .arch h2 em { font-family: 'Fraunces', serif; font-style: italic; color: var(--primary); }
+  .arch-grid { display: grid; grid-template-columns: 1fr auto 1fr; gap: 28px; align-items: stretch; }
+  .arch-col { padding: 22px 24px; border-radius: 16px; }
+  .arch-col.app { background: var(--bg); border: 1px solid var(--border); }
+  .arch-col.account { background: var(--ink); color: var(--bg); }
+  .arch-col.account .arch-col-label { color: rgba(255,239,225,0.6); }
+  .arch-col.account .arch-col-list li { border-color: rgba(255,239,225,0.1); }
+  .arch-col-label { font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; font-weight: 700; color: var(--muted); margin-bottom: 8px; }
+  .arch-col-title { font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 19px; letter-spacing: -0.005em; margin-bottom: 14px; }
+  .arch-col-title em { font-family: 'Fraunces', serif; font-style: italic; font-weight: 400; }
+  .arch-col-list { list-style: none; }
+  .arch-col-list li { padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; color: inherit; }
+  .arch-col-list li:last-child { border-bottom: 0; }
+  .arch-link { display: flex; align-items: center; justify-content: center; }
+  .arch-link::before { content: ''; width: 100%; height: 1px; background: var(--muted); position: relative; }
+  .arch-link span { padding: 6px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 999px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; color: var(--ink); white-space: nowrap; }
+
+  @media (max-width: 820px) { .arch-grid { grid-template-columns: 1fr; gap: 16px; } .arch-link { display: none; } }
+
+  /* Provider preview cards */
+  .providers { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; margin-bottom: 36px; }
+  .provider-card { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 24px; transition: all 220ms cubic-bezier(.2,.8,.2,1); }
+  .provider-card:hover { transform: translateY(-3px); box-shadow: 0 12px 32px rgba(60,33,36,0.10); border-color: var(--primary); }
+  .provider-icon-stack { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
+  .provider-icon { width: 64px; height: 64px; border-radius: 16px; display: flex; align-items: center; justify-content: center; font-family: 'Fraunces', serif; font-style: italic; font-size: 32px; line-height: 1; box-shadow: 0 6px 20px rgba(0,0,0,0.10); }
+  .provider-meta-name { font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 18px; letter-spacing: -0.005em; }
+  .provider-meta-handle { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+  .provider-card-desc { font-size: 13.5px; color: rgba(60,33,36,0.7); line-height: 1.55; margin-bottom: 18px; min-height: 60px; }
+  .provider-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .provider-actions a { padding: 10px 12px; border-radius: 10px; font-size: 12.5px; font-weight: 600; text-align: center; text-decoration: none; transition: all 140ms; }
+  .a-open { background: var(--ink); color: var(--bg); }
+  .a-open:hover { background: #2A1418; }
+  .a-install { background: var(--bg); color: var(--ink); border: 1px solid var(--border); }
+  .a-install:hover { background: #FCE7D5; }
+
+  /* Feature row */
+  .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 36px; }
+  .feature { padding: 18px 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; }
+  .feature-icon { width: 36px; height: 36px; border-radius: 10px; background: rgba(204,137,94,0.14); color: var(--primary); display: flex; align-items: center; justify-content: center; font-size: 18px; margin-bottom: 12px; }
+  .feature h4 { font-family: 'Barlow Condensed', sans-serif; font-size: 15px; letter-spacing: -0.005em; margin-bottom: 4px; }
+  .feature p { font-size: 12.5px; color: rgba(60,33,36,0.68); line-height: 1.5; }
+
+  /* Schema preview */
+  .schema { background: var(--ink); color: rgba(255,239,225,0.85); border-radius: 18px; padding: 22px 26px; margin-bottom: 36px; overflow-x: auto; }
+  .schema-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+  .schema-head-title { font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 15px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--primary); }
+  .schema-head-link { font-size: 12px; color: rgba(255,239,225,0.6); text-decoration: none; }
+  .schema-head-link:hover { color: var(--primary); }
+  .schema pre { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; line-height: 1.65; white-space: pre; }
+  .schema .kw { color: var(--primary); font-weight: 600; }
+  .schema .com { color: rgba(255,239,225,0.45); font-style: italic; }
+
+  /* Phase timeline */
+  .timeline { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 26px 30px; margin-bottom: 36px; }
+  .timeline h2 { font-family: 'Barlow Condensed', sans-serif; font-size: 24px; letter-spacing: -0.005em; margin-bottom: 18px; }
+  .timeline h2 em { font-family: 'Fraunces', serif; font-style: italic; color: var(--primary); }
+  .phase { display: grid; grid-template-columns: 90px 1fr; gap: 18px; padding: 16px 0; border-bottom: 1px solid var(--border); }
+  .phase:last-child { border-bottom: 0; }
+  .phase-num { font-family: 'Fraunces', serif; font-style: italic; font-size: 28px; color: var(--primary); line-height: 1; padding-top: 4px; }
+  .phase-now { padding: 4px 10px; border-radius: 999px; background: var(--sage); color: var(--bg); font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; display: inline-block; margin-left: 10px; vertical-align: 4px; }
+  .phase-soon { padding: 4px 10px; border-radius: 999px; background: var(--muted); color: var(--bg); font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; display: inline-block; margin-left: 10px; vertical-align: 4px; }
+  .phase-title { font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 18px; letter-spacing: -0.005em; margin-bottom: 6px; }
+  .phase-title em { font-family: 'Fraunces', serif; font-style: italic; color: var(--primary); font-weight: 400; }
+  .phase-body { font-size: 13.5px; color: rgba(60,33,36,0.72); line-height: 1.6; }
+  .phase-body code { font-family: ui-monospace, monospace; font-size: 12px; background: var(--bg); padding: 1px 6px; border-radius: 4px; color: var(--primary); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="kicker">PWA · Eltern-Portal · Hybrid B/C Architecture</div>
+  <h1>Eine App pro Provider —<br>Ein <em>Account</em> für die Mama.</h1>
+  <p class="lead">
+    Jeder Studio-Anbieter bekommt eine eigene installierbare PWA mit eigenem Branding. Im Backend ist die Email
+    der globale Anchor, sodass eine Mama bei mehreren Studios erkannt wird ohne dass Provider die Account-Hoheit verlieren.
+    Phase 2 (Kids Club Master) kann später aktiviert werden — die Accounts existieren dann schon.
+  </p>
+
+  <!-- ARCHITECTURE -->
+  <div class="arch">
+    <h2>Wie das <em>technisch</em> aufgeteilt ist</h2>
+    <div class="arch-grid">
+      <div class="arch-col app">
+        <div class="arch-col-label">App-Schicht</div>
+        <div class="arch-col-title">White-Label PWA <em>pro Provider</em></div>
+        <ul class="arch-col-list">
+          <li>Manifest dynamisch <code>/portal/:slug/manifest.json</code></li>
+          <li>Icon &amp; Theme aus Provider-Brand-Registry</li>
+          <li>Service Worker scoped auf <code>/portal/:slug/</code></li>
+          <li>Apple-Touch-Icon, Status-Bar Color, Splashscreen pro Slug</li>
+          <li>Mama installiert „Socialy" — sieht nur Socialy-Buchungen</li>
+        </ul>
+      </div>
+      <div class="arch-link"><span>FK via parent_id</span></div>
+      <div class="arch-col account">
+        <div class="arch-col-label">Account-Schicht</div>
+        <div class="arch-col-title">UKC-globaler <em>Email-Anchor</em></div>
+        <ul class="arch-col-list">
+          <li><code>parents</code> — Email unique key (CITEXT)</li>
+          <li><code>parent_provider_links</code> — M:N Beziehungen</li>
+          <li><code>children</code> — parent-scoped, provider-sichtbar via Buchung</li>
+          <li>RLS: jeder Provider sieht nur seine eigenen Eltern</li>
+          <li>Phase 2: Master-View für „Mein Bereich" cross-provider</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- LIVE PROVIDER DEMOS -->
+  <h2 style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:24px;letter-spacing:-0.005em;margin-bottom:6px;">Drei Provider, <em style="font-family:'Fraunces',serif;font-style:italic;color:var(--primary);font-weight:400;">drei PWAs</em>, ein Backend</h2>
+  <p style="font-size:14px;color:rgba(60,33,36,0.7);margin-bottom:22px;">Klick auf „Portal öffnen" um die White-Label-Version zu sehen. Auf einem Handy zeigt sich der Install-Banner unten rechts.</p>
+
+  <div class="providers">
+
+    <div class="provider-card">
+      <div class="provider-icon-stack">
+        <div class="provider-icon" style="background:#FBF5EA;color:#D96C45;">S</div>
+        <div>
+          <div class="provider-meta-name">Socialy</div>
+          <div class="provider-meta-handle">socialy.club · Pilot-Provider</div>
+        </div>
+      </div>
+      <div class="provider-card-desc">Cream-Coral-Sage Brand. Babykurse, Yoga, Tanz. Live mit Kursdaten.</div>
+      <div class="provider-actions">
+        <a href="/portal/socialy" class="a-open">Portal öffnen</a>
+        <a href="/portal/socialy/install" class="a-install">Install-Guide</a>
+      </div>
+    </div>
+
+    <div class="provider-card">
+      <div class="provider-icon-stack">
+        <div class="provider-icon" style="background:#FFEFE1;color:#CC895E;">U</div>
+        <div>
+          <div class="provider-meta-name">Urban Kids Club</div>
+          <div class="provider-meta-handle">ukc · Phase 2 Master-App</div>
+        </div>
+      </div>
+      <div class="provider-card-desc">Linen-Sienna Brand. Reserviert für Kids-Club-Master-View (B2C-Pivot Phase 2).</div>
+      <div class="provider-actions">
+        <a href="/portal/ukc" class="a-open">Portal öffnen</a>
+        <a href="/portal/ukc/install" class="a-install">Install-Guide</a>
+      </div>
+    </div>
+
+    <div class="provider-card">
+      <div class="provider-icon-stack">
+        <div class="provider-icon" style="background:#FAFAFA;color:#E91E63;">T</div>
+        <div>
+          <div class="provider-meta-name">Tanzschule Mitte</div>
+          <div class="provider-meta-handle">tanzschule-mitte · Demo</div>
+        </div>
+      </div>
+      <div class="provider-card-desc">Pink-Schwarz Brand. Demo-Provider zum Testen wie sich Branding dynamisch ändert.</div>
+      <div class="provider-actions">
+        <a href="/portal/tanzschule-mitte" class="a-open">Portal öffnen</a>
+        <a href="/portal/tanzschule-mitte/install" class="a-install">Install-Guide</a>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- FEATURES -->
+  <div class="features">
+    <div class="feature">
+      <div class="feature-icon">📲</div>
+      <h4>Home-Screen-Icon</h4>
+      <p>Nach Install hat die Mama ein App-Icon auf dem Phone. Tap = direkt im App-Modus, ohne Browser-Chrome.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">📡</div>
+      <h4>Offline-fähig</h4>
+      <p>Service Worker cached die letzten Buchungen + Kursliste. Im U-Bahn-Tunnel öffnen geht trotzdem.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">🔔</div>
+      <h4>Push-bereit</h4>
+      <p>SW-Layer ist da. Push-Permission-Flow + Server-Komponente kommt in Phase 1.5 (nach erstem Roll-out).</p>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">🎨</div>
+      <h4>Eigenes Branding</h4>
+      <p>Manifest-Endpoint generiert Icon + Theme aus Provider-Registry. Ein Eintrag — neue PWA verfügbar.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">📭</div>
+      <h4>Kein App Store</h4>
+      <p>Eltern müssen nichts downloaden. Magic-Link in Email → installieren in 4 Tippern. 0 EUR Apple/Google-Gebühren.</p>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">⚡</div>
+      <h4>Updates instant</h4>
+      <p>Du deployst Code → 24h später ist's auf jedem Handy. Kein App-Store-Review, keine Versionshölle.</p>
+    </div>
+  </div>
+
+  <!-- SCHEMA -->
+  <div class="schema">
+    <div class="schema-head">
+      <div class="schema-head-title">Migration 006 · Parent Federation Schema</div>
+      <a class="schema-head-link" href="#">Vollständig ansehen →</a>
+    </div>
+<pre><span class="com">-- Global parent identity (one row per real human)</span>
+<span class="kw">CREATE TABLE</span> parents (
+  id              UUID PRIMARY KEY,
+  email           CITEXT NOT NULL UNIQUE,           <span class="com">-- case-insensitive global anchor</span>
+  display_name    TEXT,
+  phone           TEXT,
+  ...
+);
+
+<span class="com">-- M:N — same parent can be linked to multiple providers</span>
+<span class="kw">CREATE TABLE</span> parent_provider_links (
+  parent_id                 UUID REFERENCES parents(id),
+  provider_id               UUID REFERENCES providers(id),
+  share_with_other_providers BOOLEAN DEFAULT FALSE,  <span class="com">-- Phase-2 opt-in</span>
+  marketing_consent          BOOLEAN DEFAULT FALSE,
+  UNIQUE (parent_id, provider_id)
+);
+
+<span class="com">-- Provider sees only their own parents (RLS)</span>
+<span class="kw">CREATE POLICY</span> parents_provider_scope <span class="kw">ON</span> parents
+  <span class="kw">FOR SELECT USING</span> (
+    EXISTS (SELECT 1 FROM parent_provider_links ppl
+            WHERE ppl.parent_id = parents.id
+              AND ppl.provider_id = current_setting('app.current_provider_id')::UUID)
+  );</pre>
+  </div>
+
+  <!-- TIMELINE -->
+  <div class="timeline">
+    <h2>Roll-out <em>Plan</em></h2>
+
+    <div class="phase">
+      <div class="phase-num">01</div>
+      <div>
+        <div class="phase-title">PWA-Schicht live <span class="phase-now">jetzt</span></div>
+        <div class="phase-body">
+          Manifest, Service Worker, Install-Banner, Provider-Branding-Registry. Eltern können <code>/portal/socialy</code>
+          aufs Handy installieren. Account-System läuft noch auf bestehendem <code>customers</code>-Schema.
+        </div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="phase-num">02</div>
+      <div>
+        <div class="phase-title">Federation-Schema deployen <span class="phase-soon">Q2</span></div>
+        <div class="phase-body">
+          Migration 006 anwenden, Backfill von <code>customers</code> → <code>parents</code> + <code>parent_provider_links</code>.
+          Backend-API-Layer auf <code>parent_id</code> umstellen, RLS aktivieren. Verhalten unverändert für Eltern.
+        </div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="phase-num">03</div>
+      <div>
+        <div class="phase-title">Magic-Link-Auth <span class="phase-soon">Q2</span></div>
+        <div class="phase-body">
+          Eltern melden sich mit Email an. Erste Buchung bei zweitem Provider erkennt Account → Mama bestätigt
+          „verbinden", <code>parent_provider_links</code> bekommt zweiten Eintrag. White-Label bleibt erhalten.
+        </div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="phase-num">04</div>
+      <div>
+        <div class="phase-title">Push-Notifications <span class="phase-soon">Q3</span></div>
+        <div class="phase-body">
+          VAPID-Keys, Subscription-API, Server-Komponente für Buchungs-Bestätigungen, Wartelisten-Matches,
+          Krankmeldungs-Antworten. Opt-in pro Provider.
+        </div>
+      </div>
+    </div>
+
+    <div class="phase">
+      <div class="phase-num">05</div>
+      <div>
+        <div class="phase-title">Kids Club Master-App <em>(B2C-Pivot)</em> <span class="phase-soon">Q4+</span></div>
+        <div class="phase-body">
+          <code>/portal/ukc</code> aktivieren als Master-View — zeigt alle Provider an die die Mama opt-in geteilt hat.
+          Discovery-Layer für neue Studios in der Stadt. Zeitpunkt: wenn 5+ Provider live sind und der Pull-Effekt da ist.
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <p style="text-align:center;color:rgba(60,33,36,0.5);font-size:12.5px;margin-top:30px;">
+    PWA scaffold · Service Worker registriert sich beim ersten Visit · Install-Banner erscheint nach 1.5s auf Mobile
+  </p>
+
+</div>
+</body>
+</html>

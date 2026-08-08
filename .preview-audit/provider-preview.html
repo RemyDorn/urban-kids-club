@@ -1,0 +1,1291 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Provider Dashboard – Urban Kids Club</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700;800&family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;1,9..144,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   UKC Provider-Dashboard V2 Design-System
+   Brandbook: UKC (nicht Socialy!)
+   ============================================================ */
+:root {
+  /* ============================================================
+     UKC Palette — Ausgabe 01 · April 2026
+     Brandbook-konform: Sienna = Accent/CTA, Brown = Signal
+     ============================================================ */
+  --bg: #FFEFE1;              /* 01 Linen — Base */
+  --surface: #FFF9F5;          /* 02 Floral White — Cards/Raised */
+  --surface-alt: #FCE7D5;      /* Linen → Floral tinted hover */
+  --ink: #3C2124;              /* 06 Temptress — Primärtext, dunkle Buttons */
+  --ink-2: #5E3D3F;            /* abgeschwächter Ink */
+  --muted: #C49980;            /* 05 Pale Taupe — Sekundär-Text, Divider */
+  --muted-2: #A78776;           /* Taupe dunkler */
+
+  /* Accent = Raw Sienna (CTA, Highlights, Progress) */
+  --primary: #CC895E;          /* 03 Raw Sienna */
+  --primary-hover: #B8784F;
+  --primary-soft: #E2B48E;
+  --primary-tint: #F5DCC5;
+
+  /* Signal = Brown (Alerts, Preise, Destructive) */
+  --signal: #B4523A;           /* 04 Brown */
+  --signal-hover: #9A4432;
+  --signal-tint: #F5D5C9;
+
+  --sage: #93A388;
+  --sage-deep: #627A5A;
+  --sage-tint: #E4EBDE;
+  --danger: #B4523A;           /* alias für Signal */
+  --warning: #CC895E;          /* alias für Accent */
+  --success: #627A5A;
+  --border: rgba(60,33,36,0.10);
+  --border-strong: rgba(60,33,36,0.18);
+  --shadow: 0 2px 8px rgba(60,33,36,0.04);
+  --shadow-lg: 0 8px 32px rgba(60,33,36,0.08);
+  --font-heading: "Barlow Condensed", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-accent: "Fraunces", ui-serif, Georgia, serif;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+  --sidebar-w: 248px;
+  /* Motion (Brandbook 09.2) */
+  --motion-fast: 140ms cubic-bezier(.2,.8,.2,1);
+  --motion-base: 220ms cubic-bezier(.2,.8,.2,1);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+em.italic-accent, .italic {
+  font-family: var(--font-accent);
+  font-style: italic;
+  font-weight: 400;
+}
+
+/* ============================================================
+   LAYOUT: Sidebar + Main
+   ============================================================ */
+.app {
+  display: flex;
+  min-height: 100vh;
+}
+
+.sidebar {
+  width: var(--sidebar-w);
+  background: var(--ink);
+  color: var(--bg);
+  position: fixed;
+  top: 0; left: 0; bottom: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 22px 16px 18px;
+  z-index: 20;
+  transition: transform .25s ease;
+}
+
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 6px 20px;
+  border-bottom: 1px solid rgba(255,239,225,0.08);
+  margin-bottom: 20px;
+}
+.brand-mark {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  background: #FDE4D3;
+  padding: 6px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.brand-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.brand-name {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 0.06em;
+  color: var(--bg);
+}
+.brand-name em {
+  font-family: var(--font-accent);
+  font-style: italic;
+  font-weight: 400;
+  color: var(--primary-soft);
+  letter-spacing: 0;
+}
+
+.sidebar-nav {
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  padding-right: 4px;
+}
+.sidebar-nav::-webkit-scrollbar { width: 3px; }
+.sidebar-nav::-webkit-scrollbar-thumb { background: rgba(255,239,225,0.2); border-radius: 2px; }
+
+.nav-group {
+  margin-bottom: 22px;
+}
+.nav-group-label {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 0 8px 8px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid rgba(196,153,128,0.18);
+}
+.nav-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  background: none;
+  border: none;
+  color: rgba(255,239,225,0.7);
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all .15s;
+  text-align: left;
+  margin-bottom: 2px;
+}
+.nav-item:hover {
+  background: rgba(255,239,225,0.06);
+  color: var(--bg);
+}
+.nav-item.active {
+  background: var(--primary);
+  color: var(--bg);
+  font-weight: 600;
+}
+.nav-item .badge {
+  background: rgba(255,239,225,0.15);
+  color: var(--bg);
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  padding: 3px 7px;
+  min-width: 22px;
+  text-align: center;
+  border-radius: var(--radius-pill);
+  letter-spacing: 0;
+}
+.nav-item.active .badge { background: rgba(255,239,225,0.25); }
+
+.sidebar-footer {
+  border-top: 1px solid rgba(255,239,225,0.08);
+  padding-top: 14px;
+}
+.plan-badge {
+  background: rgba(180,82,58,0.18);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+.plan-badge-label {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  color: var(--primary-soft);
+  margin-bottom: 2px;
+}
+.plan-badge-sub {
+  font-size: 11px;
+  color: rgba(255,239,225,0.6);
+}
+.logout-btn {
+  width: 100%;
+  background: none;
+  border: none;
+  color: rgba(255,239,225,0.5);
+  font-family: var(--font-body);
+  font-size: 12px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  transition: color .2s;
+}
+.logout-btn:hover { color: var(--bg); }
+
+/* ============================================================
+   TOP-BAR + MAIN
+   ============================================================ */
+.main {
+  flex: 1;
+  margin-left: var(--sidebar-w);
+  min-width: 0;
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  background: rgba(255,239,225,0.88);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  z-index: 10;
+}
+
+.search {
+  flex: 1;
+  max-width: 420px;
+  position: relative;
+}
+.search input {
+  width: 100%;
+  padding: 9px 14px 9px 38px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--ink);
+  transition: all .2s;
+}
+.search input::placeholder { color: var(--muted); }
+.search input:focus {
+  outline: none;
+  border-color: var(--primary);
+  background: #fff;
+}
+.search::before {
+  content: '';
+  position: absolute;
+  left: 14px; top: 50%;
+  transform: translateY(-50%);
+  width: 14px; height: 14px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23C49980' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.icon-btn {
+  position: relative;
+  width: 36px; height: 36px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink);
+  transition: all .2s;
+}
+.icon-btn:hover {
+  background: var(--surface-alt);
+  border-color: var(--border-strong);
+}
+.icon-btn .dot {
+  position: absolute;
+  top: 7px; right: 8px;
+  width: 7px; height: 7px;
+  background: var(--primary);
+  border-radius: 50%;
+  border: 2px solid var(--surface);
+}
+
+.user-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 14px 4px 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: all .2s;
+}
+.user-chip:hover { border-color: var(--border-strong); }
+.user-avatar {
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--sage) 0%, var(--sage-deep) 100%);
+  color: var(--bg);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-accent);
+  font-style: italic;
+  font-size: 15px;
+  font-weight: 400;
+}
+.user-chip-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* ============================================================
+   PAGE SHELL
+   ============================================================ */
+.page {
+  padding: 30px 28px 48px;
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+.page-head {
+  margin-bottom: 26px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.page-head-text {
+  flex: 1;
+  min-width: 280px;
+}
+
+.page-kicker {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  color: var(--primary);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.page-title {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: clamp(30px, 3.5vw, 40px);
+  letter-spacing: 0.01em;
+  line-height: 1;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+.page-title em {
+  font-family: var(--font-accent);
+  font-style: italic;
+  font-weight: 400;
+  text-transform: none;
+  color: var(--primary);
+  letter-spacing: 0;
+}
+
+.page-sub {
+  font-size: 14px;
+  color: var(--muted-2);
+  margin-top: 8px;
+}
+
+/* ============================================================
+   BUTTONS
+   ============================================================ */
+.btn {
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 600;
+  border: none;
+  border-radius: var(--radius-pill);
+  padding: 10px 20px;
+  cursor: pointer;
+  transition: background var(--motion-base), transform var(--motion-fast), box-shadow var(--motion-base);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  letter-spacing: 0.01em;
+}
+/* Primary = Temptress dark ink (Brandbook 07.1) */
+.btn-primary {
+  background: var(--ink);
+  color: var(--bg);
+  box-shadow: 0 2px 8px rgba(60,33,36,0.18);
+}
+.btn-primary:hover {
+  background: #2A1619;
+  transform: translateY(-1px);
+}
+/* Accent = Raw Sienna (secondary CTA, "Jetzt starten"-Typ) */
+.btn-accent {
+  background: var(--primary);
+  color: var(--bg);
+  box-shadow: 0 2px 8px rgba(204,137,94,0.25);
+}
+.btn-accent:hover {
+  background: var(--primary-hover);
+  transform: translateY(-1px);
+}
+/* Destructive = Brown Signal */
+.btn-destructive {
+  background: transparent;
+  color: var(--signal);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  padding: 10px 12px;
+}
+.btn-destructive:hover { color: var(--signal-hover); }
+.btn-ghost {
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--border-strong);
+}
+.btn-ghost:hover {
+  background: var(--surface-alt);
+}
+.btn-sm { padding: 7px 14px; font-size: 12px; }
+
+/* ============================================================
+   STATS GRID
+   ============================================================ */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 26px;
+}
+
+.stat {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 18px 20px;
+  position: relative;
+  overflow: hidden;
+}
+
+.stat-label {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.stat-value {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 32px;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+  line-height: 1.05;
+}
+.stat-value em {
+  font-family: var(--font-accent);
+  font-style: italic;
+  font-weight: 400;
+  font-size: 20px;
+  color: var(--primary);
+  margin-left: 4px;
+  letter-spacing: 0;
+}
+
+.stat-delta {
+  font-size: 11px;
+  margin-top: 6px;
+  color: var(--muted-2);
+  letter-spacing: 0.02em;
+}
+.stat-delta.up { color: var(--sage-deep); }
+.stat-delta.down { color: var(--danger); }
+.stat-delta strong { font-weight: 600; }
+
+/* "Heute zu tun" Stat — dunkel */
+.stat.dark {
+  background: linear-gradient(135deg, var(--ink) 0%, var(--ink-2) 100%);
+  color: var(--bg);
+  border-color: var(--ink);
+}
+.stat.dark::before {
+  content: '';
+  position: absolute;
+  right: -30px; bottom: -30px;
+  width: 120px; height: 120px;
+  background: radial-gradient(circle, rgba(204,137,94,0.35), transparent 70%);
+  pointer-events: none;
+}
+.stat.dark .stat-label { color: var(--primary-soft); }
+.stat.dark .stat-value { color: var(--bg); }
+.stat.dark .stat-value em { color: var(--primary-soft); }
+.stat.dark .stat-delta { color: rgba(255,239,225,0.7); }
+
+/* ============================================================
+   2-COLUMN LAYOUT
+   ============================================================ */
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr;
+  gap: 18px;
+  margin-bottom: 26px;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px 22px;
+}
+
+.card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  gap: 10px;
+}
+
+.card-title {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+.card-title em {
+  font-family: var(--font-accent);
+  font-style: italic;
+  font-weight: 400;
+  color: var(--primary);
+  text-transform: none;
+  letter-spacing: 0;
+  margin-left: 3px;
+}
+
+.card-link {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--primary);
+  text-decoration: none;
+  letter-spacing: 0.02em;
+}
+.card-link:hover { text-decoration: underline; }
+
+/* ============================================================
+   AGENDA / HEUTE
+   ============================================================ */
+.agenda-item {
+  display: grid;
+  grid-template-columns: 64px 1fr auto;
+  gap: 14px;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.agenda-item:last-child { border-bottom: none; }
+
+.agenda-time {
+  text-align: center;
+}
+.agenda-time-hour {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 22px;
+  color: var(--ink);
+  line-height: 1;
+}
+.agenda-time-min {
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-top: 3px;
+}
+
+.agenda-body {
+  min-width: 0;
+}
+.agenda-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 2px;
+}
+.agenda-meta {
+  font-size: 12px;
+  color: var(--muted-2);
+}
+.agenda-meta strong { color: var(--ink); font-weight: 600; }
+
+.agenda-status {
+  padding: 4px 10px;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: var(--radius-pill);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-family: var(--font-heading);
+}
+.agenda-status.full { background: rgba(180,82,58,0.12); color: var(--danger); }
+.agenda-status.ok { background: var(--sage-tint); color: var(--sage-deep); }
+.agenda-status.warn { background: rgba(216,138,95,0.18); color: var(--warning); }
+
+/* ============================================================
+   ACTION LIST (Zu Tun) / WARTELISTE
+   ============================================================ */
+.action-item {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.action-item:last-child { border-bottom: none; }
+
+.action-icon {
+  flex-shrink: 0;
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  background: var(--primary-tint);
+  color: var(--primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-accent);
+  font-style: italic;
+  font-size: 16px;
+}
+.action-icon.sage { background: var(--sage-tint); color: var(--sage-deep); }
+
+.action-body {
+  flex: 1;
+  min-width: 0;
+}
+.action-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.3;
+  margin-bottom: 2px;
+}
+.action-meta {
+  font-size: 11px;
+  color: var(--muted-2);
+}
+.action-countdown {
+  font-family: var(--font-accent);
+  font-style: italic;
+  font-size: 12px;
+  color: var(--primary);
+  margin-top: 3px;
+}
+
+/* ============================================================
+   BUCHUNGEN TABLE
+   ============================================================ */
+.table-wrap {
+  margin-top: 8px;
+  overflow-x: auto;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.data-table th {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  text-align: left;
+  padding: 8px 12px 10px;
+  border-bottom: 1px solid var(--border-strong);
+}
+.data-table td {
+  padding: 13px 12px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border);
+  color: var(--ink);
+  vertical-align: middle;
+}
+.data-table tr:last-child td { border-bottom: none; }
+.data-table tr:hover td { background: var(--surface-alt); }
+
+.cust {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.cust-av {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: var(--primary-tint);
+  color: var(--primary);
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-accent);
+  font-style: italic;
+  font-size: 13px;
+}
+.cust-av.sage { background: var(--sage-tint); color: var(--sage-deep); }
+.cust-info { min-width: 0; }
+.cust-name { font-weight: 600; font-size: 13px; color: var(--ink); }
+.cust-sub { font-size: 11px; color: var(--muted-2); margin-top: 1px; }
+
+.pill {
+  display: inline-block;
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 10px;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.pill-ok { background: var(--sage-tint); color: var(--sage-deep); }
+.pill-pending { background: rgba(216,138,95,0.18); color: var(--warning); }
+.pill-fail { background: rgba(180,82,58,0.12); color: var(--danger); }
+
+/* ============================================================
+   BOTTOM: WEEK GLANCE (einfacher Kalender)
+   ============================================================ */
+.week {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 8px;
+  margin-top: 8px;
+}
+.week-day {
+  background: var(--bg);
+  border-radius: var(--radius-md);
+  padding: 10px 8px;
+  min-height: 120px;
+  border: 1px solid transparent;
+  transition: all .2s;
+}
+.week-day.today {
+  background: var(--primary-tint);
+  border-color: var(--primary);
+}
+.week-label {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  text-align: center;
+}
+.week-day.today .week-label { color: var(--primary); }
+.week-date {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--ink);
+  text-align: center;
+  margin: 2px 0 6px;
+}
+.week-day.today .week-date {
+  font-family: var(--font-accent);
+  font-style: italic;
+  font-weight: 400;
+  color: var(--primary);
+}
+.week-event {
+  background: var(--surface);
+  border-left: 2px solid var(--primary);
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  margin-bottom: 3px;
+  line-height: 1.3;
+  color: var(--ink);
+}
+.week-event.sage { border-left-color: var(--sage-deep); }
+
+/* ============================================================
+   EMPTY STATE (Beispiel)
+   ============================================================ */
+.empty {
+  text-align: center;
+  padding: 36px 20px;
+  color: var(--muted-2);
+}
+.empty-mark {
+  font-family: var(--font-accent);
+  font-style: italic;
+  font-size: 44px;
+  color: var(--primary);
+  margin-bottom: 6px;
+}
+.empty-title {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--ink);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.empty-sub {
+  font-size: 13px;
+  max-width: 32ch;
+  margin: 0 auto 14px;
+}
+
+/* ============================================================
+   MOBILE MENU TOGGLE
+   ============================================================ */
+.menu-toggle {
+  display: none;
+  width: 36px; height: 36px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--ink);
+}
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+@media (max-width: 1100px) {
+  .stats { grid-template-columns: repeat(2, 1fr); }
+  .grid-2 { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 900px) {
+  .sidebar {
+    transform: translateX(-100%);
+    width: 280px;
+  }
+  .sidebar.open { transform: translateX(0); }
+  .main { margin-left: 0; }
+  .menu-toggle { display: inline-flex; }
+  .search { max-width: none; }
+}
+
+@media (max-width: 640px) {
+  .topbar { padding: 10px 16px; gap: 10px; }
+  .search { flex-basis: 100%; order: 3; }
+  .page { padding: 22px 16px 40px; }
+  .stats { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat { padding: 14px 16px; }
+  .stat-value { font-size: 26px; }
+  .week { grid-template-columns: repeat(4, 1fr); }
+  .user-chip-name { display: none; }
+}
+
+/* ============================================================
+   OVERLAY for mobile sidebar
+   ============================================================ */
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(60,33,36,0.4);
+  backdrop-filter: blur(4px);
+  z-index: 15;
+}
+.sidebar-overlay.open { display: block; }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-mark"><img src="/assets/brand/ukc-logo-icon.png" alt="Urban Kids Club"></div>
+      <div class="brand-name">URBAN KIDS <em>Club</em></div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-group">
+        <div class="nav-group-label">Überblick</div>
+        <button class="nav-item active" onclick="window.location.href='/provider-preview'">Dashboard</button>
+        <button class="nav-item" onclick="window.location.href='/kurse-preview'">Kurse<span class="badge">8</span></button>
+        <button class="nav-item" onclick="window.location.href='/buchungen-preview'">Buchungen<span class="badge">142</span></button>
+        <button class="nav-item" onclick="window.location.href='/kursbloecke-preview'">Kursblöcke</button>
+      </div>
+      <div class="nav-group">
+        <div class="nav-group-label">Menschen</div>
+        <button class="nav-item" onclick="window.location.href='/kunden-preview'">Kunden<span class="badge">96</span></button>
+        <button class="nav-item" onclick="window.location.href='/probestunden-preview'">Probestunden <span class="badge">4</span></button>
+        <button class="nav-item" onclick="window.location.href='/team-preview'">Team</button>
+      </div>
+      <div class="nav-group">
+        <div class="nav-group-label">Finanzen</div>
+        <button class="nav-item" onclick="window.location.href='/rechnungen-preview'">Rechnungen</button>
+        <button class="nav-item" onclick="window.location.href='/berichte-preview'">Berichte</button>
+      </div>
+      <div class="nav-group">
+        <div class="nav-group-label">Tools</div>
+        <button class="nav-item" onclick="window.location.href='/ferien-preview'">Ferien &amp; Saisons</button>
+        <button class="nav-item" onclick="window.location.href='/embed-preview'">Einbettung</button>
+        <button class="nav-item" onclick="window.location.href='/marketing-preview'">Marketing</button>
+        <button class="nav-item" onclick="window.location.href='/einstellungen-preview'">Einstellungen</button>
+      </div>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="plan-badge">
+        <div class="plan-badge-label">FREE PLAN</div>
+        <div class="plan-badge-sub">Upgrade verfügbar →</div>
+      </div>
+      <button class="logout-btn">Abmelden</button>
+    </div>
+  </aside>
+  <div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleSidebar()"></div>
+
+  <!-- MAIN -->
+  <div class="main">
+
+    <!-- TOP-BAR -->
+    <header class="topbar">
+      <button class="menu-toggle" onclick="toggleSidebar()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+      <div class="search"><input type="search" placeholder="Kunden, Kurse, Rechnungen suchen…"></div>
+      <div class="topbar-right">
+        <button class="icon-btn" title="Benachrichtigungen">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          <span class="dot"></span>
+        </button>
+        <div class="user-chip">
+          <div class="user-avatar">S</div>
+          <span class="user-chip-name">Sophie</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- PAGE -->
+    <div class="page">
+
+      <div class="page-head">
+        <div class="page-head-text">
+          <div class="page-kicker">Freitag, 24. April</div>
+          <h1 class="page-title">Guten Morgen, <em>Sophie</em>.</h1>
+          <p class="page-sub">Heute: 3 Termine · 2 offene Wartelisten-Angebote · 1 Rechnung fällig.</p>
+        </div>
+        <div>
+          <button class="btn btn-primary">+ Neuer Kurs</button>
+        </div>
+      </div>
+
+      <!-- STATS -->
+      <div class="stats">
+        <div class="stat">
+          <div class="stat-label">Buchungen · April</div>
+          <div class="stat-value">47 <em>Stück</em></div>
+          <div class="stat-delta up"><strong>+12 %</strong> vs. März</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Umsatz · April</div>
+          <div class="stat-value">8.420<em>€</em></div>
+          <div class="stat-delta up"><strong>+8 %</strong> vs. März</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Aktive Kurse</div>
+          <div class="stat-value">8 <em>laufend</em></div>
+          <div class="stat-delta">2 starten nächste Woche</div>
+        </div>
+        <div class="stat dark">
+          <div class="stat-label">Heute zu tun</div>
+          <div class="stat-value">5 <em>Aufgaben</em></div>
+          <div class="stat-delta">2 dringend · 3 heute fällig</div>
+        </div>
+      </div>
+
+      <!-- HEUTE + ZU TUN -->
+      <div class="grid-2">
+        <!-- Heute -->
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title">Heute · <em>Freitag</em></div>
+            <a href="#" class="card-link">Voller Kalender →</a>
+          </div>
+
+          <div class="agenda-item">
+            <div class="agenda-time">
+              <div class="agenda-time-hour">09:30</div>
+              <div class="agenda-time-min">60 Min</div>
+            </div>
+            <div class="agenda-body">
+              <div class="agenda-name">PEKiP Basis</div>
+              <div class="agenda-meta"><strong>8 von 10</strong> Teilnehmern · Raum 1</div>
+            </div>
+            <span class="agenda-status warn">Fast voll</span>
+          </div>
+
+          <div class="agenda-item">
+            <div class="agenda-time">
+              <div class="agenda-time-hour">10:00</div>
+              <div class="agenda-time-min">45 Min</div>
+            </div>
+            <div class="agenda-body">
+              <div class="agenda-name">Eltern-Kind-Turnen</div>
+              <div class="agenda-meta"><strong>6 von 8</strong> Teilnehmern · Raum 2</div>
+            </div>
+            <span class="agenda-status ok">Alles gut</span>
+          </div>
+
+          <div class="agenda-item">
+            <div class="agenda-time">
+              <div class="agenda-time-hour">15:30</div>
+              <div class="agenda-time-min">45 Min</div>
+            </div>
+            <div class="agenda-body">
+              <div class="agenda-name">Musikgarten</div>
+              <div class="agenda-meta"><strong>10 von 10</strong> Teilnehmern · Raum 1</div>
+            </div>
+            <span class="agenda-status full">Ausgebucht</span>
+          </div>
+        </div>
+
+        <!-- Zu Tun -->
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title">Zu <em>tun</em></div>
+            <a href="#" class="card-link">Alle →</a>
+          </div>
+
+          <div class="action-item">
+            <div class="action-icon">!</div>
+            <div class="action-body">
+              <div class="action-title">Warteliste-Angebot läuft ab</div>
+              <div class="action-meta">Familie Müller · Krabbelgruppe</div>
+              <div class="action-countdown">noch 1h 42min</div>
+            </div>
+          </div>
+
+          <div class="action-item">
+            <div class="action-icon">!</div>
+            <div class="action-body">
+              <div class="action-title">2 Warteliste-Angebote offen</div>
+              <div class="action-meta">PEKiP Basis · noch Plätze</div>
+            </div>
+          </div>
+
+          <div class="action-item">
+            <div class="action-icon sage">€</div>
+            <div class="action-body">
+              <div class="action-title">Rechnung 2026-0041 fällig</div>
+              <div class="action-meta">A. Schmidt · 180,00 €</div>
+            </div>
+          </div>
+
+          <div class="action-item">
+            <div class="action-icon sage">✦</div>
+            <div class="action-body">
+              <div class="action-title">4 Probestunden diese Woche</div>
+              <div class="action-meta">2 haben noch keinen Folgekurs gebucht</div>
+            </div>
+          </div>
+
+          <div class="action-item">
+            <div class="action-icon sage">·</div>
+            <div class="action-body">
+              <div class="action-title">Block "Frühjahr" endet in 4 Wochen</div>
+              <div class="action-meta">Folge-Block noch nicht angelegt</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RECENT BUCHUNGEN -->
+      <div class="card" style="margin-bottom:26px">
+        <div class="card-head">
+          <div class="card-title">Letzte <em>Buchungen</em></div>
+          <a href="#" class="card-link">Alle Buchungen →</a>
+        </div>
+
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Kunde</th>
+                <th>Kurs</th>
+                <th>Gebucht am</th>
+                <th>Betrag</th>
+                <th>Zahlung</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>
+                  <div class="cust">
+                    <div class="cust-av">A</div>
+                    <div class="cust-info">
+                      <div class="cust-name">Anna Schmidt</div>
+                      <div class="cust-sub">Kind: Mia (2)</div>
+                    </div>
+                  </div>
+                </td>
+                <td>PEKiP Basis</td>
+                <td>heute, 08:14</td>
+                <td>180,00 €</td>
+                <td><span class="pill pill-ok">Bezahlt</span></td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="cust">
+                    <div class="cust-av sage">J</div>
+                    <div class="cust-info">
+                      <div class="cust-name">Julia Weber</div>
+                      <div class="cust-sub">Kind: Noah (3)</div>
+                    </div>
+                  </div>
+                </td>
+                <td>Eltern-Kind-Turnen</td>
+                <td>gestern, 19:42</td>
+                <td>150,00 €</td>
+                <td><span class="pill pill-pending">Offen</span></td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="cust">
+                    <div class="cust-av">S</div>
+                    <div class="cust-info">
+                      <div class="cust-name">Sarah Klein</div>
+                      <div class="cust-sub">Kind: Emil (4)</div>
+                    </div>
+                  </div>
+                </td>
+                <td>Musikgarten · Warteliste</td>
+                <td>gestern, 14:21</td>
+                <td>—</td>
+                <td><span class="pill pill-pending">Warteliste</span></td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="cust">
+                    <div class="cust-av sage">M</div>
+                    <div class="cust-info">
+                      <div class="cust-name">Maria Fischer</div>
+                      <div class="cust-sub">Kind: Lina (3)</div>
+                    </div>
+                  </div>
+                </td>
+                <td>Eltern-Kind-Turnen</td>
+                <td>22.04., 11:03</td>
+                <td>150,00 €</td>
+                <td><span class="pill pill-ok">Bezahlt</span></td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="cust">
+                    <div class="cust-av">L</div>
+                    <div class="cust-info">
+                      <div class="cust-name">Lisa Müller</div>
+                      <div class="cust-sub">Kind: Ben (2)</div>
+                    </div>
+                  </div>
+                </td>
+                <td>Krabbelgruppe</td>
+                <td>21.04., 16:47</td>
+                <td>160,00 €</td>
+                <td><span class="pill pill-fail">Fehlgeschlagen</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- WOCHE IM BLICK -->
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">Diese <em>Woche</em></div>
+          <a href="#" class="card-link">Kalender öffnen →</a>
+        </div>
+        <div class="week">
+          <div class="week-day">
+            <div class="week-label">Mo</div>
+            <div class="week-date">21</div>
+            <div class="week-event">PEKiP · 09:30</div>
+            <div class="week-event sage">Turnen · 10:00</div>
+          </div>
+          <div class="week-day">
+            <div class="week-label">Di</div>
+            <div class="week-date">22</div>
+            <div class="week-event">Krabbel · 09:30</div>
+            <div class="week-event">Musik · 15:30</div>
+          </div>
+          <div class="week-day">
+            <div class="week-label">Mi</div>
+            <div class="week-date">23</div>
+            <div class="week-event sage">Turnen · 10:00</div>
+          </div>
+          <div class="week-day today">
+            <div class="week-label">Do · Heute</div>
+            <div class="week-date">24</div>
+            <div class="week-event">PEKiP · 09:30</div>
+            <div class="week-event sage">Turnen · 10:00</div>
+            <div class="week-event">Musik · 15:30</div>
+          </div>
+          <div class="week-day">
+            <div class="week-label">Fr</div>
+            <div class="week-date">25</div>
+            <div class="week-event">PEKiP · 09:30</div>
+            <div class="week-event">Café · 10:00</div>
+          </div>
+          <div class="week-day">
+            <div class="week-label">Sa</div>
+            <div class="week-date">26</div>
+            <div class="empty" style="padding:10px 0;font-size:11px;">frei</div>
+          </div>
+          <div class="week-day">
+            <div class="week-label">So</div>
+            <div class="week-date">27</div>
+            <div class="empty" style="padding:10px 0;font-size:11px;">frei</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('sidebar-overlay').classList.toggle('open');
+}
+</script>
+<script src="/assets/dashboard-ui.js"></script>
+</body>
+</html>

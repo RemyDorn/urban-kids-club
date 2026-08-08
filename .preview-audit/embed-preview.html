@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kursangebot – Socialy</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300;12..96,400;12..96,500;12..96,600;12..96,700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+
+<style>
+/* ============================================================
+   Public Embed Widget — Nur Kursangebot
+   Wird als iFrame auf Provider-Website eingebunden (z.B. socialy.club)
+   Kein persönlicher Bereich — Buchung leitet zum Portal-Login
+   ============================================================ */
+
+:root {
+  --bg: #FBF5EA;
+  --surface: #F4E9D1;
+  --surface-alt: #EBDCC3;
+  --ink: #1F1D18;
+  --ink-muted: #67625A;
+  --primary: #D96C45;
+  --primary-hover: #C45A35;
+  --primary-soft: #F7B79C;
+  --accent: #A8B6A3;
+  --accent-deep: #6A7863;
+  --accent-dark: #4A5546;
+  --warning: #E28862;
+  --danger: #B8392A;
+  --border: rgba(31, 29, 24, 0.08);
+  --border-strong: rgba(31, 29, 24, 0.14);
+  --shadow-sm: 0 1px 2px rgba(31, 29, 24, 0.04);
+  --shadow-md: 0 4px 16px rgba(31, 29, 24, 0.06);
+
+  --font-body: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  --font-accent: "Instrument Serif", ui-serif, Georgia, serif;
+
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-pill: 999px;
+
+  --max-width: 860px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.5;
+}
+
+body { padding: 20px 16px 24px; }
+
+.widget {
+  max-width: var(--max-width);
+  margin: 0 auto;
+}
+
+/* ============================================================
+   MINIMAL HEADER — nur Login-Link, dezent
+   ============================================================ */
+.head-strip {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 18px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.strip-kicker {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--accent-deep);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.login-link {
+  background: none;
+  border: none;
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  padding: 4px 0;
+  transition: color .2s;
+}
+.login-link:hover { color: var(--primary); }
+.login-link::after { content: ' →'; opacity: 0.6; }
+
+/* ============================================================
+   TOOLBAR — Filter + View-Toggle
+   ============================================================ */
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Mobile: horizontal scroll statt umbrechen */
+@media (max-width: 640px) {
+  .chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    margin: 0 -12px;
+    padding: 0 12px 2px;
+    width: calc(100% + 24px);
+  }
+  .chips::-webkit-scrollbar { display: none; }
+  .chip { flex-shrink: 0; }
+}
+
+.chip {
+  background: var(--surface);
+  border: 1px solid transparent;
+  color: var(--ink);
+  padding: 7px 14px;
+  border-radius: var(--radius-pill);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: all .2s;
+}
+.chip:hover { background: var(--surface-alt); }
+.chip.active {
+  background: var(--ink);
+  color: var(--bg);
+  border-color: var(--ink);
+}
+
+.view-toggle {
+  display: inline-flex;
+  background: var(--surface);
+  border-radius: var(--radius-pill);
+  padding: 3px;
+}
+.view-toggle button {
+  background: none;
+  border: none;
+  padding: 6px 14px;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-muted);
+  cursor: pointer;
+  transition: all .2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.view-toggle button.active {
+  background: var(--bg);
+  color: var(--ink);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ============================================================
+   GRID VIEW — Kurskarten
+   ============================================================ */
+.grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+@media (min-width: 640px) {
+  .grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+.course-card {
+  background: linear-gradient(180deg, #FFFDF8 0%, var(--bg) 100%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 18px 18px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  transition: all .25s ease;
+  position: relative;
+  overflow: hidden;
+}
+.course-card:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+
+.course-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+.course-title {
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  line-height: 1.15;
+}
+.course-title em {
+  font-family: var(--font-accent);
+  font-style: italic;
+  font-weight: 400;
+  color: var(--primary);
+}
+.course-season {
+  font-size: 13px;
+  color: var(--ink-muted);
+  margin-top: 2px;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: var(--radius-pill);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+.pill-active { background: rgba(168, 182, 163, 0.22); color: var(--accent-dark); }
+.pill-upcoming { background: rgba(226, 136, 98, 0.18); color: var(--primary); }
+.pill-full { background: rgba(184, 57, 42, 0.12); color: var(--danger); }
+
+.course-meta {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px 16px;
+  padding: 12px 0;
+  border-top: 1px dashed var(--border);
+  border-bottom: 1px dashed var(--border);
+}
+.meta {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.meta-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+.meta-val {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.course-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+.spots {
+  font-size: 13px;
+  color: var(--ink-muted);
+}
+.spots-good { color: var(--accent-deep); font-weight: 600; }
+.spots-warn { color: var(--warning); font-weight: 600; }
+.spots-full { color: var(--danger); font-weight: 600; }
+
+.btn {
+  font-family: var(--font-body);
+  border: none;
+  border-radius: var(--radius-pill);
+  padding: 10px 20px;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all .2s;
+  letter-spacing: 0.01em;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.btn-primary { background: var(--ink); color: var(--bg); }
+.btn-primary:hover { background: var(--primary); }
+.btn-ghost { background: transparent; color: var(--ink); border: 1px solid var(--border-strong); }
+.btn-ghost:hover { background: var(--surface); }
+.btn-sm { padding: 8px 16px; font-size: 13px; }
+
+/* ============================================================
+   CALENDAR VIEW
+   ============================================================ */
+.cal-wrap {
+  background: linear-gradient(180deg, #FFFDF8 0%, var(--bg) 100%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  overflow: hidden;
+}
+
+.cal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+.cal-month {
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+.cal-month em { font-family: var(--font-accent); font-style: italic; font-weight: 400; color: var(--primary); }
+
+.cal-nav { display: inline-flex; gap: 4px; }
+.cal-nav button {
+  width: 32px; height: 32px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all .2s;
+}
+.cal-nav button:hover {
+  background: var(--ink);
+  color: var(--bg);
+  border-color: var(--ink);
+}
+
+.cal-grid {
+  display: grid;
+  grid-template-columns: 56px repeat(7, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.cal-dayhead {
+  background: var(--bg);
+  padding: 10px 6px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+.cal-dayhead-num {
+  display: block;
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--ink);
+  letter-spacing: -0.02em;
+  margin-top: 2px;
+  text-transform: none;
+}
+.cal-dayhead.today .cal-dayhead-num {
+  color: var(--primary);
+  font-family: var(--font-accent);
+  font-style: italic;
+  font-size: 20px;
+}
+
+.cal-timecol {
+  background: var(--bg);
+  padding: 10px 6px;
+  text-align: right;
+  font-size: 10px;
+  color: var(--ink-muted);
+  font-weight: 500;
+}
+
+.cal-cell {
+  background: var(--bg);
+  min-height: 64px;
+  padding: 3px;
+  position: relative;
+}
+.cal-event {
+  background: rgba(217, 108, 69, 0.1);
+  border-left: 3px solid var(--primary);
+  border-radius: 6px;
+  padding: 5px 7px;
+  font-size: 11px;
+  line-height: 1.25;
+  cursor: pointer;
+  margin-bottom: 2px;
+  transition: all .2s;
+}
+.cal-event:hover {
+  background: rgba(217, 108, 69, 0.18);
+  transform: translateX(1px);
+}
+.cal-event-title { font-weight: 600; color: var(--ink); margin-bottom: 1px; }
+.cal-event-time { color: var(--ink-muted); font-size: 10px; }
+.cal-event.sage { background: rgba(168, 182, 163, 0.2); border-left-color: var(--accent-deep); }
+.cal-event.sage:hover { background: rgba(168, 182, 163, 0.32); }
+
+.cal-legend {
+  display: flex;
+  gap: 16px;
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--ink-muted);
+  flex-wrap: wrap;
+}
+.cal-legend-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+/* ============================================================
+   POWERED BY
+   ============================================================ */
+.powered-by {
+  margin-top: 28px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  text-align: center;
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+.powered-by a { color: var(--ink); text-decoration: none; font-weight: 500; transition: color .2s; }
+.powered-by a:hover { color: var(--primary); }
+.powered-by .heart { color: var(--primary); font-family: var(--font-accent); font-style: italic; }
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+@media (max-width: 640px) {
+  body { padding: 16px 12px 20px; }
+  .course-meta { grid-template-columns: 1fr 1fr; }
+  .toolbar { gap: 10px; }
+  .view-toggle { align-self: flex-end; }
+
+  /* Kalender horizontal scrollbar statt quetschen — Events bleiben lesbar */
+  .cal-wrap { padding: 12px 10px; }
+  .cal-grid-scroll { overflow-x: auto; scrollbar-width: thin; margin: 0 -4px; padding: 0 4px 8px; }
+  .cal-grid {
+    min-width: 640px;
+    grid-template-columns: 48px repeat(7, minmax(78px, 1fr));
+  }
+  .cal-scroll-hint {
+    text-align: center;
+    font-size: 11px;
+    color: var(--ink-muted);
+    margin-top: 6px;
+    font-family: var(--font-accent);
+    font-style: italic;
+  }
+}
+@media (min-width: 641px) {
+  .cal-scroll-hint { display: none; }
+}
+</style>
+</head>
+<body>
+
+<div class="widget">
+
+  <!-- Minimaler Header-Strip -->
+  <div class="head-strip">
+    <div class="strip-kicker">Kursangebot · Frühjahr 2026</div>
+    <button class="login-link" onclick="openLogin()">Mein Bereich</button>
+  </div>
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <div class="chips" role="group" aria-label="Filter">
+      <button class="chip active">Alle</button>
+      <button class="chip">PEKiP</button>
+      <button class="chip">Eltern-Kind-Turnen</button>
+      <button class="chip">Musik</button>
+      <button class="chip">0–3 Jahre</button>
+      <button class="chip">3–6 Jahre</button>
+    </div>
+    <div class="view-toggle" role="tablist" aria-label="Ansicht">
+      <button class="active" onclick="toggleView('grid')" id="vt-grid">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        Liste
+      </button>
+      <button onclick="toggleView('cal')" id="vt-cal">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        Woche
+      </button>
+    </div>
+  </div>
+
+  <!-- GRID VIEW -->
+  <div id="view-grid">
+    <div class="grid">
+
+      <article class="course-card">
+        <div class="course-card-top">
+          <div>
+            <div class="course-title">PEKiP <em>Basis</em></div>
+            <div class="course-season">Frühjahrsblock · Mai – Juli</div>
+          </div>
+          <span class="pill pill-active">Laufend</span>
+        </div>
+        <div class="course-meta">
+          <div class="meta"><span class="meta-label">Tag &amp; Uhrzeit</span><span class="meta-val">Montag, 09:30</span></div>
+          <div class="meta"><span class="meta-label">Zeitraum</span><span class="meta-val">06.05. – 08.07.</span></div>
+          <div class="meta"><span class="meta-label">Termine</span><span class="meta-val">10 × 60 Min</span></div>
+          <div class="meta"><span class="meta-label">Preis</span><span class="meta-val">180,00 €</span></div>
+        </div>
+        <div class="course-footer">
+          <span class="spots spots-warn">Noch 2 Plätze</span>
+          <button class="btn btn-primary btn-sm" onclick="startBooking('pekip')">Jetzt buchen</button>
+        </div>
+      </article>
+
+      <article class="course-card">
+        <div class="course-card-top">
+          <div>
+            <div class="course-title">Eltern-Kind-<em>Turnen</em></div>
+            <div class="course-season">Frühjahrsblock · Mai – Juli</div>
+          </div>
+          <span class="pill pill-upcoming">Demnächst</span>
+        </div>
+        <div class="course-meta">
+          <div class="meta"><span class="meta-label">Tag &amp; Uhrzeit</span><span class="meta-val">Dienstag, 10:00</span></div>
+          <div class="meta"><span class="meta-label">Zeitraum</span><span class="meta-val">07.05. – 09.07.</span></div>
+          <div class="meta"><span class="meta-label">Termine</span><span class="meta-val">10 × 45 Min</span></div>
+          <div class="meta"><span class="meta-label">Preis</span><span class="meta-val">150,00 €</span></div>
+        </div>
+        <div class="course-footer">
+          <span class="spots spots-good">5 Plätze frei</span>
+          <button class="btn btn-primary btn-sm" onclick="startBooking('turnen')">Jetzt buchen</button>
+        </div>
+      </article>
+
+      <article class="course-card">
+        <div class="course-card-top">
+          <div>
+            <div class="course-title">Krabbel-<em>gruppe</em></div>
+            <div class="course-season">Frühjahrsblock · Mai – Juli</div>
+          </div>
+          <span class="pill pill-active">Laufend</span>
+        </div>
+        <div class="course-meta">
+          <div class="meta"><span class="meta-label">Tag &amp; Uhrzeit</span><span class="meta-val">Mittwoch, 09:30</span></div>
+          <div class="meta"><span class="meta-label">Zeitraum</span><span class="meta-val">08.05. – 10.07.</span></div>
+          <div class="meta"><span class="meta-label">Termine</span><span class="meta-val">10 × 60 Min</span></div>
+          <div class="meta"><span class="meta-label">Preis</span><span class="meta-val">160,00 €</span></div>
+        </div>
+        <div class="course-footer">
+          <span class="spots spots-full">Ausgebucht</span>
+          <button class="btn btn-ghost btn-sm" onclick="startBooking('krabbel')">Auf Warteliste</button>
+        </div>
+      </article>
+
+      <article class="course-card">
+        <div class="course-card-top">
+          <div>
+            <div class="course-title">Musik-<em>garten</em></div>
+            <div class="course-season">Frühjahrsblock · Mai – Juli</div>
+          </div>
+          <span class="pill pill-upcoming">Demnächst</span>
+        </div>
+        <div class="course-meta">
+          <div class="meta"><span class="meta-label">Tag &amp; Uhrzeit</span><span class="meta-val">Donnerstag, 15:30</span></div>
+          <div class="meta"><span class="meta-label">Zeitraum</span><span class="meta-val">09.05. – 11.07.</span></div>
+          <div class="meta"><span class="meta-label">Termine</span><span class="meta-val">10 × 45 Min</span></div>
+          <div class="meta"><span class="meta-label">Preis</span><span class="meta-val">140,00 €</span></div>
+        </div>
+        <div class="course-footer">
+          <span class="spots spots-good">6 Plätze frei</span>
+          <button class="btn btn-primary btn-sm" onclick="startBooking('musik')">Jetzt buchen</button>
+        </div>
+      </article>
+
+    </div>
+  </div>
+
+  <!-- CALENDAR VIEW -->
+  <div id="view-cal" style="display:none">
+    <div class="cal-wrap">
+      <div class="cal-head">
+        <div class="cal-month">Woche vom 6. bis 12. <em>Mai</em></div>
+        <div class="cal-nav">
+          <button aria-label="Vorherige Woche">&lsaquo;</button>
+          <button aria-label="Heute">·</button>
+          <button aria-label="Nächste Woche">&rsaquo;</button>
+        </div>
+      </div>
+
+      <div class="cal-grid-scroll">
+      <div class="cal-grid">
+        <div></div>
+        <div class="cal-dayhead today">Mo<span class="cal-dayhead-num">6</span></div>
+        <div class="cal-dayhead">Di<span class="cal-dayhead-num">7</span></div>
+        <div class="cal-dayhead">Mi<span class="cal-dayhead-num">8</span></div>
+        <div class="cal-dayhead">Do<span class="cal-dayhead-num">9</span></div>
+        <div class="cal-dayhead">Fr<span class="cal-dayhead-num">10</span></div>
+        <div class="cal-dayhead">Sa<span class="cal-dayhead-num">11</span></div>
+        <div class="cal-dayhead">So<span class="cal-dayhead-num">12</span></div>
+
+        <div class="cal-timecol">09:00</div>
+        <div class="cal-cell"><div class="cal-event"><div class="cal-event-title">PEKiP Basis</div><div class="cal-event-time">09:30 – 10:30</div></div></div>
+        <div class="cal-cell"><div class="cal-event sage"><div class="cal-event-title">Eltern-Kind-Turnen</div><div class="cal-event-time">10:00 – 10:45</div></div></div>
+        <div class="cal-cell"><div class="cal-event"><div class="cal-event-title">Krabbelgruppe</div><div class="cal-event-time">09:30 – 10:30</div></div></div>
+        <div class="cal-cell"></div>
+        <div class="cal-cell"><div class="cal-event sage"><div class="cal-event-title">PEKiP Aufbau</div><div class="cal-event-time">09:30 – 10:30</div></div></div>
+        <div class="cal-cell"></div>
+        <div class="cal-cell"></div>
+
+        <div class="cal-timecol">10:00</div>
+        <div class="cal-cell"></div>
+        <div class="cal-cell"></div>
+        <div class="cal-cell"></div>
+        <div class="cal-cell"></div>
+        <div class="cal-cell"></div>
+        <div class="cal-cell"><div class="cal-event"><div class="cal-event-title">Familien-Brunch</div><div class="cal-event-time">10:00 – 12:00</div></div></div>
+        <div class="cal-cell"></div>
+
+        <div class="cal-timecol">15:00</div>
+        <div class="cal-cell"></div>
+        <div class="cal-cell"></div>
+        <div class="cal-cell"></div>
+        <div class="cal-cell"><div class="cal-event sage"><div class="cal-event-title">Musikgarten</div><div class="cal-event-time">15:30 – 16:15</div></div></div>
+        <div class="cal-cell"></div>
+        <div class="cal-cell"></div>
+        <div class="cal-cell"></div>
+
+        <div class="cal-timecol">16:00</div>
+        <div class="cal-cell"></div>
+        <div class="cal-cell"><div class="cal-event"><div class="cal-event-title">Kleinkind-Tanz</div><div class="cal-event-time">16:00 – 16:45</div></div></div>
+        <div class="cal-cell"></div>
+        <div class="cal-cell"></div>
+        <div class="cal-cell"><div class="cal-event"><div class="cal-event-title">Eltern-Café</div><div class="cal-event-time">16:30 – 18:00</div></div></div>
+        <div class="cal-cell"></div>
+        <div class="cal-cell"></div>
+
+      </div>
+      </div>
+
+      <div class="cal-scroll-hint">← wische seitwärts für mehr Tage →</div>
+
+      <div class="cal-legend">
+        <span><span class="cal-legend-dot" style="background:rgba(217,108,69,0.4);border-left:3px solid var(--primary)"></span>Eltern-Kind</span>
+        <span><span class="cal-legend-dot" style="background:rgba(168,182,163,0.5);border-left:3px solid var(--accent-deep)"></span>Bewegung &amp; Musik</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Powered by -->
+  <div class="powered-by">
+    Powered by <a href="https://urbankidsclub.de" target="_blank" rel="noopener">Urban Kids Club</a> <span class="heart">·</span> mit Nähe gemacht
+  </div>
+
+</div>
+
+<script>
+function toggleView(v) {
+  document.getElementById('view-grid').style.display = v === 'grid' ? '' : 'none';
+  document.getElementById('view-cal').style.display  = v === 'cal'  ? '' : 'none';
+  document.getElementById('vt-grid').classList.toggle('active', v === 'grid');
+  document.getElementById('vt-cal').classList.toggle('active', v === 'cal');
+}
+
+function openLogin() {
+  // Bei iFrame-Einbettung: top-level Navigation — nicht im iFrame öffnen
+  if (window.top && window.top !== window) {
+    window.top.location.href = '/login-preview';
+  } else {
+    window.location.href = '/login-preview';
+  }
+}
+
+function startBooking(slug) {
+  // Bei Klick auf "Jetzt buchen" → Login erforderlich, dann Checkout
+  openLogin();
+}
+</script>
+
+</body>
+</html>

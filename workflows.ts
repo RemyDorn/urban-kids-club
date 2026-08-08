@@ -1,0 +1,715 @@
+// ============================================================
+// Workflow Engine – Automatisierte Geschäftsprozesse
+// ============================================================
+// Verbindet Services miteinander: Events → Aktionen → Benachrichtigungen
+// Enthält Background-Job-Logik die periodisch aufgerufen wird.
+// ============================================================
+
+import { store } from '../domain/store'
+import { generateId } from './id'
+import { createNotification, createAuditEntry } from './helpers'
+import { MarketingService } from './marketing.service'
+import { EmailService } from '../lib/email'
+import type { ID } from '../types'
+
+// ============================================================
+// 1. TRIAL → BOOKING CONVERSION
+// ============================================================
+
+export const TrialConversionWorkflow = {
+
+  /**
+   * Konvertiert eine abgeschlossene Probestunde in eine vollständige Buchung.
+   * Erstellt Buchung, markiert Trial als konvertiert, sendet Benachrichtigung.
+   */
+  convert(trialId: ID, pricingOptionId: ID): { bookingId: ID } | { error: string } {
+    const trial = store.state.trialLessons.get(trialId)
+    if (!trial) return { error: 'Probestunde nicht gefunden' }
+    if (trial.status !== 'completed') return { error: 'Probestunde muss erst abgeschlossen sein' }
+
+    const activity = store.state.activities.get(trial.activityId)
+    if (!activity) return { error: 'Aktivität nicht gefunden' }
+
+    const pricing = activity.pricing.find((p) => p.id === pricingOptionId)
+    if (!pricing) return { error: 'Preisoption nicht gefunden' }
+
+    // Buchung erstellen
+    const bookingId = generateId('book')
+    const now = new Date()
+
+    const booking = {
+      id: bookingId,
+      activityId: trial.activityId,
+      providerId: trial.providerId,
+      parentId: trial.parentId,
+      child: trial.child,
+      pricingOptionId,
+      status: 'confirmed' as const,
+      paymentStatus: 'unpaid' as const,
+      amountPaid: 0,
+      currency: pricing.currency,
+      source: 'direct' as const,
+      notes: `Konvertiert aus Probestunde ${trialId}`,
+      createdAt: now,
+      updatedAt: now,
+    }
+
+    store.state.bookings.set(bookingId, booking)
+    store.addToIndex(store.indexes.bookingsByActivity, trial.activityId, bookingId)
+    store.addToIndex(store.indexes.bookingsByProvider, trial.providerId, bookingId)
+    store.addToIndex(store.indexes.bookingsByParent, trial.parentId, bookingId)
+
+    // Trial als konvertiert markieren
+    trial.status = 'converted'
+    trial.convertedToBookingId = bookingId
+    trial.updatedAt = now
+
+    createNotification({
+      recipientType: 'parent',
+      recipientId: trial.parentId,
+      type: 'booking_confirmed',
+      title: 'Willkommen im Kurs!',
+      body: `"${trial.child.name}" ist jetzt fest für "${activity.title}" angemeldet. Probestunde erfolgreich konvertiert.`,
+      data: { bookingId, activityId: trial.activityId, trialId },
+    })
+
+    createAuditEntry({
+      providerId: trial.providerId,
+      userId: trial.parentId,
+      userType: 'parent',
+      action: 'trial.converted',
+      entityType: 'trial',
+      entityId: trialId,
+      changes: { bookingId: { old: null, new: bookingId } },
+    })
+
+    return { bookingId }
+  },
+}
+
+// ============================================================
+// 2. WAITLIST → BOOKING CONVERSION
+// ============================================================
+
+export const WaitlistConversionWorkflow = {
+
+  /**
+   * Wenn ein Wartelisten-Eintrag akzeptiert wird → Buchung erstellen.
+   */
+  acceptAndBook(waitlistEntryId: ID, pricingOptionId: ID): { bookingId: ID } | { error: string } {
+    const entry = store.state.waitlistEntries.get(waitlistEntryId)
+    if (!entry) return { error: 'Wartelisten-Eintrag nicht gefunden' }
+    if (entry.status !== 'offered') return { error: 'Platz wurde nicht angeboten' }
+
+    // Frist prüfen
+    if (entry.expiresAt && new Date() > entry.expiresAt) {
+      entry.status = 'expired'
+      return { error: 'Angebotsfrist ist abgelaufen' }
+    }
+
+    const activity = store.state.activities.get(entry.activityId)
+    if (!activity) return { error: 'Aktivität nicht gefunden' }
+
+    const pricing = activity.pricing.find((p) => p.id === pricingOptionId)
+    if (!pricing) return { error: 'Preisoption nicht gefunden' }
+
+    // Buchung erstellen
+    const bookingId = generateId('book')
+    const now = new Date()
+
+    const booking = {
+      id: bookingId,
+      activityId: entry.activityId,
+      providerId: activity.providerId,
+      parentId: entry.parentId,
+      child: entry.child,
+      pricingOptionId,
+      status: 'confirmed' as const,
+      paymentStatus: 'unpaid' as const,
+      amountPaid: 0,
+      currency: pricing.currency,
+      source: 'direct' as const,
+      notes: `Von Warteliste nachrückt (${waitlistEntryId})`,
+      createdAt: now,
+      updatedAt: now,
+    }
+
+    store.state.bookings.set(bookingId, booking)
+    store.addToIndex(store.indexes.bookingsByActivity, entry.activityId, bookingId)
+    store.addToIndex(store.indexes.bookingsByProvider, activity.providerId, bookingId)
+    store.addToIndex(store.indexes.bookingsByParent, entry.parentId, bookingId)
+
+    // Warteliste aktualisieren
+    entry.status = 'accepted'
+
+    createNotification({
+      recipientType: 'parent',
+      recipientId: entry.parentId,
+      type: 'booking_confirmed',
+      title: 'Buchung bestätigt – Platz von Warteliste',
+      body: `"${entry.child.name}" hat einen Platz in "${activity.title}" erhalten!`,
+      data: { bookingId, activityId: entry.activityId },
+    })
+
+    return { bookingId }
+  },
+}
+
+// ============================================================
+// 3. BACKGROUND JOBS – Periodisch aufzurufen
+// ============================================================
+
+export const BackgroundJobs = {
+
+  /**
+   * TÄGLICH aufrufen: Prüft alle zeitbasierten Aktionen.
+   * Returns Zusammenfassung der durchgeführten Aktionen.
+   */
+  runDaily(): {
+    expiredWaitlistOffers: number
+    overdueInvoices: number
+    expiringDocuments: number
+    trialReminders: number
+    bookingReminders: number
+  } {
+    const today = new Date().toISOString().split('T')[0]
+    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    const now = new Date()
+
+    let expiredWaitlistOffers = 0
+    let overdueInvoices = 0
+    let expiringDocuments = 0
+    let trialReminders = 0
+    let bookingReminders = 0
+
+    // 1. Abgelaufene Wartelisten-Angebote
+    for (const entry of store.state.waitlistEntries.values()) {
+      if (entry.status === 'offered' && entry.expiresAt && now > entry.expiresAt) {
+        entry.status = 'expired'
+        expiredWaitlistOffers++
+
+        const waitlistIds = store.getFromIndex(store.indexes.waitlistByActivity, entry.activityId)
+        const nextWaiting = Array.from(waitlistIds)
+          .map((id) => store.state.waitlistEntries.get(id)!)
+          .filter((e) => e && e.status === 'waiting')
+          .sort((a, b) => a.position - b.position)[0]
+
+        if (nextWaiting) {
+          nextWaiting.status = 'offered'
+          nextWaiting.notifiedAt = now
+          nextWaiting.expiresAt = new Date(now.getTime() + 48 * 60 * 60 * 1000)
+
+          createNotification({
+            recipientType: 'parent',
+            recipientId: nextWaiting.parentId,
+            type: 'waitlist_promoted',
+            title: 'Platz frei geworden!',
+            body: 'Ein Platz ist frei geworden. Bitte bestätigen Sie innerhalb von 48 Stunden.',
+            data: { waitlistEntryId: nextWaiting.id, activityId: nextWaiting.activityId },
+          })
+        }
+      }
+    }
+
+    // 2. ��berfällige Rechnungen
+    for (const invoice of store.state.invoices.values()) {
+      if (invoice.status === 'sent' && invoice.dueDate < now) {
+        invoice.status = 'overdue'
+        overdueInvoices++
+        createNotification({
+          recipientType: 'parent',
+          recipientId: invoice.parentId,
+          type: 'payment_overdue',
+          title: `Zahlungserinnerung – ${invoice.number}`,
+          body: `Die Rechnung ${invoice.number} über ${invoice.total} ${invoice.currency} ist überfällig.`,
+          data: { invoiceId: invoice.id, invoiceNumber: invoice.number },
+        })
+      }
+    }
+
+    // 3. Ablaufende Dokumente
+    for (const doc of store.state.documents.values()) {
+      if (!doc.expiresAt) continue
+      const daysUntilExpiry = (doc.expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+
+      if (daysUntilExpiry < 0 && doc.status !== 'expired') {
+        doc.status = 'expired'
+        expiringDocuments++
+        createNotification({
+          recipientType: 'provider', recipientId: doc.providerId,
+          type: 'document_expiring', channel: 'in_app',
+          title: 'Dokument abgelaufen!',
+          body: `"${doc.name}" ist abgelaufen. Bitte erneuern Sie es umgehend.`,
+          data: { documentId: doc.id },
+        })
+      } else if (daysUntilExpiry > 0 && daysUntilExpiry <= 30 && doc.status !== 'expiring_soon') {
+        doc.status = 'expiring_soon'
+        expiringDocuments++
+        createNotification({
+          recipientType: 'provider', recipientId: doc.providerId,
+          type: 'document_expiring', channel: 'in_app',
+          title: 'Dokument läuft bald ab',
+          body: `"${doc.name}" läuft in ${Math.ceil(daysUntilExpiry)} Tagen ab.`,
+          data: { documentId: doc.id },
+        })
+      }
+    }
+
+    // 4. Probestunden-Erinnerungen (morgen)
+    for (const trial of store.state.trialLessons.values()) {
+      if (trial.status === 'scheduled' && trial.scheduledDate === tomorrow) {
+        trialReminders++
+        const activity = store.state.activities.get(trial.activityId)
+        createNotification({
+          recipientType: 'parent', recipientId: trial.parentId,
+          type: 'booking_reminder',
+          title: 'Erinnerung: Probestunde morgen',
+          body: `"${trial.child.name}" hat morgen um ${trial.scheduledTime} eine Probestunde bei "${activity?.title ?? ''}".`,
+          data: { trialId: trial.id },
+        })
+      }
+    }
+
+    // 5. Kurs-Erinnerungen (morgen) – In-App + E-Mail
+    for (const calEvent of store.state.calendarEvents.values()) {
+      if (calEvent.type !== 'activity' || calEvent.date !== tomorrow || !calEvent.activityId) continue
+
+      const activity = store.state.activities.get(calEvent.activityId)
+      const provider = activity ? store.state.providers.get(activity.providerId) : undefined
+
+      const bookingIds = store.getFromIndex(store.indexes.bookingsByActivity, calEvent.activityId)
+      for (const bid of bookingIds) {
+        const booking = store.state.bookings.get(bid)
+        if (!booking || booking.status !== 'confirmed') continue
+
+        // Skip if reminder was already sent for this booking+date (persisted check, survives restarts)
+        if (wasReminderAlreadySent(bid, calEvent.date)) continue
+
+        // In-App Notification (includes eventDate for deduplication)
+        bookingReminders++
+        createNotification({
+          recipientType: 'parent', recipientId: booking.parentId,
+          type: 'booking_reminder',
+          title: 'Erinnerung: Kurs morgen',
+          body: `"${booking.child.name}" hat morgen um ${calEvent.startTime} Kurs: "${calEvent.title}".`,
+          data: { bookingId: bid, activityId: calEvent.activityId, eventDate: calEvent.date },
+        })
+
+        // E-Mail Erinnerung (wenn Provider es aktiviert hat)
+        const reminderEnabled = provider?.reminderEmailsEnabled !== false // Default: true
+        if (reminderEnabled) {
+          const parent = store.state.parents.get(booking.parentId)
+          if (parent?.email) {
+            const location = activity?.locationId ? store.state.locations.get(activity.locationId) : undefined
+            // Format date: "YYYY-MM-DD" → "DD.MM.YYYY"
+            const [y, m, d] = calEvent.date.split('-')
+            const formattedDate = `${d}.${m}.${y}`
+
+            EmailService.sendCourseReminder(parent.email, {
+              parentName: parent.name.split(' ')[0],
+              childName: booking.child.name,
+              courseName: calEvent.title,
+              providerName: provider?.name ?? '',
+              courseDate: formattedDate,
+              courseTime: calEvent.startTime,
+              location: location?.name,
+              providerId: (provider as any)?.id || activity?.providerId,
+            }).catch((err) => console.error(`[CourseReminder] E-Mail an ${parent.email} fehlgeschlagen:`, err))
+          }
+        }
+      }
+    }
+
+    return { expiredWaitlistOffers, overdueInvoices, expiringDocuments, trialReminders, bookingReminders }
+  },
+
+  runWeekly(): { sepaCollections: number; paymentReminders: number } {
+    let sepaCollections = 0
+    let paymentReminders = 0
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+
+    for (const booking of store.state.bookings.values()) {
+      if (booking.status === 'confirmed' && booking.paymentStatus === 'unpaid' && booking.createdAt < sevenDaysAgo) {
+        // Idempotenz: Prüfe ob bereits eine Benachrichtigung für diese Buchung in dieser Woche gesendet wurde
+        const existingNotifs = store.getFromIndex(store.indexes.notificationsByRecipient, booking.parentId)
+        let alreadyNotified = false
+        for (const nid of existingNotifs) {
+          const n = store.state.notifications.get(nid)
+          if (n && n.type === 'payment_overdue' && n.data?.bookingId === booking.id &&
+              n.sentAt.getTime() > sevenDaysAgo.getTime()) {
+            alreadyNotified = true
+            break
+          }
+        }
+        if (alreadyNotified) continue
+
+        paymentReminders++
+        const activity = store.state.activities.get(booking.activityId)
+        createNotification({
+          recipientType: 'parent', recipientId: booking.parentId,
+          type: 'payment_overdue',
+          title: 'Zahlungserinnerung',
+          body: `Die Zahlung für "${activity?.title ?? ''}" (${booking.child.name}) steht noch aus.`,
+          data: { bookingId: booking.id },
+        })
+      }
+    }
+
+    // SEPA-Einzüge für alle Provider ausführen
+    for (const provider of store.state.providers.values()) {
+      if (provider.status !== 'active') continue
+      // Import PaymentService dynamisch um zirkuläre Abhängigkeiten zu vermeiden
+      const invoiceIds = store.getFromIndex(store.indexes.invoicesByProvider, provider.id)
+      for (const invId of invoiceIds) {
+        const invoice = store.state.invoices.get(invId)
+        if (!invoice || invoice.status !== 'sent') continue
+
+        // Prüfe ob bereits eine SEPA-Zahlung existiert
+        const existingPayments = store.getFromIndex(store.indexes.paymentsByInvoice, invId)
+        let hasPayment = false
+        for (const pid of existingPayments) {
+          const p = store.state.payments.get(pid)
+          if (p && (p.status === 'pending' || p.status === 'completed')) {
+            hasPayment = true
+            break
+          }
+        }
+        if (!hasPayment) sepaCollections++
+      }
+    }
+
+    return { sepaCollections, paymentReminders }
+  },
+
+  /**
+   * STÜNDLICH aufrufen: Verarbeitet Trial-Follow-Up-E-Mails für alle aktiven Provider.
+   * Prüft abgeschlossene Probestunden und sendet Follow-Up-Sequenz:
+   * - 24h nach Probestunde: Feedback-Email
+   * - 3 Tage ohne Buchung: Buchungs-Erinnerung
+   * - 7 Tage ohne Buchung: Letzte Chance
+   */
+  async processTrialFollowups(): Promise<{
+    providersProcessed: number
+    totalFeedbackSent: number
+    totalReminderSent: number
+    totalLastChanceSent: number
+  }> {
+    let providersProcessed = 0
+    let totalFeedbackSent = 0
+    let totalReminderSent = 0
+    let totalLastChanceSent = 0
+
+    for (const provider of store.state.providers.values()) {
+      if (provider.status !== 'active') continue
+      providersProcessed++
+
+      try {
+        const result = await MarketingService.processTrialFollowups(provider.id)
+        totalFeedbackSent += result.feedbackSent
+        totalReminderSent += result.reminderSent
+        totalLastChanceSent += result.lastChanceSent
+      } catch (e) {
+        console.error(`[BackgroundJobs] Trial follow-up failed for provider ${provider.id}:`, e)
+      }
+    }
+
+    if (totalFeedbackSent + totalReminderSent + totalLastChanceSent > 0) {
+      console.log(`[BackgroundJobs] Trial follow-ups: ${totalFeedbackSent} feedback, ${totalReminderSent} reminder, ${totalLastChanceSent} last-chance emails sent`)
+    }
+
+    return { providersProcessed, totalFeedbackSent, totalReminderSent, totalLastChanceSent }
+  },
+}
+
+// ============================================================
+// 4. COURSE REMINDER EMAILS – Stündlich aufrufen
+// ============================================================
+
+/**
+ * Checks if a booking_reminder notification was already sent for a given booking+date.
+ * Uses the persisted notifications store instead of in-memory Set, so it survives restarts.
+ */
+function wasReminderAlreadySent(bookingId: ID, eventDate: string): boolean {
+  // Check notifications store for an existing booking_reminder with matching bookingId and date
+  for (const notif of store.state.notifications.values()) {
+    if (
+      notif.type === 'booking_reminder' &&
+      notif.data?.bookingId === bookingId &&
+      notif.data?.eventDate === eventDate
+    ) {
+      return true
+    }
+  }
+  return false
+}
+
+/**
+ * Sends course reminder emails for sessions starting in the next 24-26 hours.
+ * Designed to be called every hour. Uses persisted notifications for deduplication
+ * (survives server restarts, unlike the previous in-memory Set approach).
+ * Respects provider.reminderEmailsEnabled setting (default: true).
+ */
+export async function sendCourseReminders(): Promise<{ sent: number; skipped: number; errors: number }> {
+  const now = Date.now()
+  const windowStart = now + 24 * 60 * 60 * 1000  // 24h from now
+  const windowEnd = now + 26 * 60 * 60 * 1000    // 26h from now
+
+  let sent = 0
+  let skipped = 0
+  let errors = 0
+
+  for (const calEvent of store.state.calendarEvents.values()) {
+    if (calEvent.type !== 'activity' || !calEvent.activityId) continue
+
+    // Parse event datetime
+    const eventDateTime = new Date(`${calEvent.date}T${calEvent.startTime}:00`).getTime()
+    if (isNaN(eventDateTime) || eventDateTime < windowStart || eventDateTime > windowEnd) continue
+
+    const activity = store.state.activities.get(calEvent.activityId)
+    if (!activity) continue
+    const provider = store.state.providers.get(activity.providerId)
+    if (!provider) continue
+
+    // Respect provider setting (default: true)
+    if (provider.reminderEmailsEnabled === false) {
+      skipped++
+      continue
+    }
+
+    const location = activity.locationId ? store.state.locations.get(activity.locationId) : undefined
+    const [y, m, d] = calEvent.date.split('-')
+    const formattedDate = `${d}.${m}.${y}`
+
+    const bookingIds = store.getFromIndex(store.indexes.bookingsByActivity, calEvent.activityId)
+    for (const bid of bookingIds) {
+      const booking = store.state.bookings.get(bid)
+      if (!booking || booking.status !== 'confirmed') continue
+
+      if (wasReminderAlreadySent(bid, calEvent.date)) {
+        skipped++
+        continue
+      }
+
+      const parent = store.state.parents.get(booking.parentId)
+      if (!parent?.email) {
+        skipped++
+        continue
+      }
+
+      try {
+        const result = await EmailService.sendCourseReminder(parent.email, {
+          parentName: parent.name.split(' ')[0],
+          childName: booking.child.name,
+          courseName: calEvent.title,
+          providerName: provider.name,
+          courseDate: formattedDate,
+          courseTime: calEvent.startTime,
+          location: location?.name,
+          providerId: (provider as any)?.id || activity?.providerId,
+        })
+
+        if (result.success) {
+          sent++
+
+          // Create in-app notification with eventDate for deduplication (survives restarts)
+          createNotification({
+            recipientType: 'parent',
+            recipientId: booking.parentId,
+            type: 'booking_reminder',
+            title: 'Erinnerung: Kurs morgen',
+            body: `"${booking.child.name}" hat morgen um ${calEvent.startTime} Kurs: "${calEvent.title}".`,
+            data: { bookingId: bid, activityId: calEvent.activityId, eventDate: calEvent.date },
+          })
+        } else {
+          console.error(`[CourseReminder] E-Mail an ${parent.email} fehlgeschlagen:`, result.error)
+          errors++
+        }
+      } catch (err) {
+        console.error(`[CourseReminder] Unerwarteter Fehler für ${parent.email}:`, err)
+        errors++
+      }
+    }
+  }
+
+  if (sent > 0 || errors > 0) {
+    console.log(`[CourseReminder] Ergebnis: ${sent} gesendet, ${skipped} übersprungen, ${errors} Fehler`)
+  }
+
+  return { sent, skipped, errors }
+}
+
+// ============================================================
+// 5. CASCADE DELETE – Konsistentes Löschen
+// ============================================================
+
+export const CascadeDelete = {
+
+  /**
+   * Löscht eine Aktivität und alle abhängigen Daten.
+   */
+  deleteActivity(activityId: ID): { deleted: Record<string, number> } {
+    const activity = store.state.activities.get(activityId)
+    if (!activity) return { deleted: {} }
+
+    const deleted: Record<string, number> = { activities: 0, bookings: 0, reviews: 0, trials: 0, waitlist: 0, calendar: 0 }
+
+    // Buchungen löschen
+    const bookingIds = Array.from(store.getFromIndex(store.indexes.bookingsByActivity, activityId))
+    for (const bid of bookingIds) {
+      const booking = store.state.bookings.get(bid)
+      if (booking) {
+        store.removeFromIndex(store.indexes.bookingsByProvider, booking.providerId, bid)
+        store.removeFromIndex(store.indexes.bookingsByParent, booking.parentId, bid)
+        store.state.bookings.delete(bid)
+        deleted.bookings++
+      }
+    }
+    store.indexes.bookingsByActivity.delete(activityId)
+
+    // Reviews löschen
+    const reviewIds = Array.from(store.getFromIndex(store.indexes.reviewsByActivity, activityId))
+    for (const rid of reviewIds) {
+      const review = store.state.reviews.get(rid)
+      if (review) {
+        store.removeFromIndex(store.indexes.reviewsByProvider, review.providerId, rid)
+        store.state.reviews.delete(rid)
+        deleted.reviews++
+      }
+    }
+    store.indexes.reviewsByActivity.delete(activityId)
+
+    // Probestunden löschen
+    const trialIds = Array.from(store.getFromIndex(store.indexes.trialsByActivity, activityId))
+    for (const tid of trialIds) {
+      const trial = store.state.trialLessons.get(tid)
+      if (trial) {
+        store.removeFromIndex(store.indexes.trialsByProvider, trial.providerId, tid)
+        store.removeFromIndex(store.indexes.trialsByParent, trial.parentId, tid)
+        store.state.trialLessons.delete(tid)
+        deleted.trials++
+      }
+    }
+    store.indexes.trialsByActivity.delete(activityId)
+
+    // Warteliste löschen
+    const wlIds = Array.from(store.getFromIndex(store.indexes.waitlistByActivity, activityId))
+    for (const wid of wlIds) {
+      const entry = store.state.waitlistEntries.get(wid)
+      if (entry) {
+        store.removeFromIndex(store.indexes.waitlistByParent, entry.parentId, wid)
+        store.state.waitlistEntries.delete(wid)
+        deleted.waitlist++
+      }
+    }
+    store.indexes.waitlistByActivity.delete(activityId)
+
+    // Kalender-Events löschen
+    const calIds = Array.from(store.getFromIndex(store.indexes.calendarByProvider, activity.providerId))
+    for (const cid of calIds) {
+      const event = store.state.calendarEvents.get(cid)
+      if (event && event.activityId === activityId) {
+        store.removeFromIndex(store.indexes.calendarByDate, event.date, cid)
+        if (event.locationId) store.removeFromIndex(store.indexes.calendarByLocation, event.locationId, cid)
+        if (event.instructorId) store.removeFromIndex(store.indexes.calendarByInstructor, event.instructorId, cid)
+        store.state.calendarEvents.delete(cid)
+        deleted.calendar++
+      }
+    }
+
+    // Aktivität selbst löschen
+    store.removeFromIndex(store.indexes.activitiesByProvider, activity.providerId, activityId)
+    store.removeFromIndex(store.indexes.activitiesByCategory, activity.category, activityId)
+    if (activity.locationId) {
+      store.removeFromIndex(store.indexes.activitiesByLocation, activity.locationId, activityId)
+    }
+    store.state.activities.delete(activityId)
+    deleted.activities = 1
+
+    return { deleted }
+  },
+
+  /**
+   * Löscht einen Standort und entkoppelt alle Aktivitäten.
+   */
+  deleteLocation(locationId: ID): { deleted: Record<string, number>; unlinkedActivities: number } {
+    const location = store.state.locations.get(locationId)
+    if (!location) return { deleted: {}, unlinkedActivities: 0 }
+
+    let unlinkedActivities = 0
+
+    // Aktivitäten entkoppeln (nicht löschen!)
+    const activityIds = store.getFromIndex(store.indexes.activitiesByLocation, locationId)
+    for (const aid of activityIds) {
+      const activity = store.state.activities.get(aid)
+      if (activity) {
+        activity.locationId = undefined
+        unlinkedActivities++
+      }
+    }
+    store.indexes.activitiesByLocation.delete(locationId)
+
+    // Kalender-Events entkoppeln
+    const calIds = store.getFromIndex(store.indexes.calendarByLocation, locationId)
+    for (const cid of calIds) {
+      const event = store.state.calendarEvents.get(cid)
+      if (event) event.locationId = undefined
+    }
+    store.indexes.calendarByLocation.delete(locationId)
+
+    // Standort löschen
+    store.removeFromIndex(store.indexes.locationsByProvider, location.providerId, locationId)
+    store.state.locations.delete(locationId)
+
+    return { deleted: { locations: 1 }, unlinkedActivities }
+  },
+
+  /**
+   * Löscht ein Teammitglied und entkoppelt alle Zuweisungen.
+   */
+  deleteTeamMember(memberId: ID): { deleted: Record<string, number>; unlinkedActivities: number } {
+    const member = store.state.teamMembers.get(memberId)
+    if (!member) return { deleted: {}, unlinkedActivities: 0 }
+
+    let unlinkedActivities = 0
+
+    // Aktivitäten entkoppeln
+    for (const activity of store.state.activities.values()) {
+      if (activity.instructorId === memberId) {
+        activity.instructorId = undefined
+        unlinkedActivities++
+      }
+    }
+
+    // Kalender-Events entkoppeln
+    const calIds = store.getFromIndex(store.indexes.calendarByInstructor, memberId)
+    for (const cid of calIds) {
+      const event = store.state.calendarEvents.get(cid)
+      if (event) event.instructorId = undefined
+    }
+    store.indexes.calendarByInstructor.delete(memberId)
+
+    // Dokumente löschen
+    const docIds = Array.from(store.getFromIndex(store.indexes.documentsByTeamMember, memberId))
+    for (const did of docIds) {
+      store.state.documents.delete(did)
+    }
+    store.indexes.documentsByTeamMember.delete(memberId)
+
+    // Verträge löschen
+    const contractIds = Array.from(store.getFromIndex(store.indexes.contractsByTeamMember, memberId))
+    for (const cid of contractIds) {
+      const contract = store.state.instructorContracts.get(cid)
+      if (contract) {
+        store.removeFromIndex(store.indexes.contractsByProvider, contract.providerId, cid)
+      }
+      store.state.instructorContracts.delete(cid)
+    }
+    store.indexes.contractsByTeamMember.delete(memberId)
+
+    // Teammitglied löschen
+    store.removeFromIndex(store.indexes.teamByProvider, member.providerId, memberId)
+    store.state.teamMembers.delete(memberId)
+
+    return { deleted: { teamMembers: 1, documents: docIds.length, contracts: contractIds.length }, unlinkedActivities }
+  },
+}

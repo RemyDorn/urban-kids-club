@@ -1,0 +1,2090 @@
+// ============================================================
+// HTTP Server – Provider Dashboard API + Frontend
+// ============================================================
+
+import { createServer } from 'node:http'
+import { readFileSync, readdirSync } from 'node:fs'
+import { resolve, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import zlib from 'node:zlib'
+import { Router } from './router'
+import { handlePortalPwa } from './portal-pwa'
+import { handleParentAuth } from './parent-auth-routes'
+import { handlePushRoutes } from './push.service'
+import { handleCancelBooking } from './cancel-booking.service'
+import { handleBookCourse } from './book-course.service'
+import { registerRoutes } from './routes'
+import { logger, setLastJobRun } from '../lib/logger'
+import { EmailPreview } from '../lib/email'
+import { renderPdf } from '../lib/pdf'
+import { runExpireWaitlistJob, runSendRemindersJob, runTrialFollowupsJob } from './routes/admin'
+
+const PORT = parseInt(process.env.PORT ?? '3000')
+const __dirname = dirname(fileURLToPath(import.meta.url))
+const USE_SUPABASE = process.env.USE_SUPABASE === 'true'
+
+// ============================================================
+// Startup env var validation
+// ============================================================
+if (USE_SUPABASE) {
+  const required = ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']
+  const recommended = ['ENCRYPTION_KEY', 'CALENDAR_TOKEN_SECRET', 'RESEND_API_KEY']
+  for (const key of required) {
+    if (!process.env[key]) { console.error(`FATAL: Missing required env var: ${key}`); process.exit(1) }
+  }
+  for (const key of recommended) {
+    if (!process.env[key]) console.warn(`WARNING: Missing recommended env var: ${key} — some features will be disabled`)
+  }
+}
+
+// ============================================================
+// Job tracking & retry logic
+// ============================================================
+async function runWithRetry(name: string, fn: () => Promise<void>, maxRetries = 3) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      await fn()
+      setLastJobRun(new Date().toISOString())
+      return
+    } catch (e) {
+      logger.error('Job', `${name} attempt ${attempt}/${maxRetries} failed`, { error: String(e) })
+      if (attempt === maxRetries) logger.error('Job', `${name} FAILED after ${maxRetries} attempts`)
+    }
+  }
+}
+
+// ============================================================
+// Persistence: Nur im In-Memory-Modus
+// ============================================================
+let hasPersistedData = false
+
+if (!USE_SUPABASE) {
+  const { loadFromDisk, startAutoSave } = await import('../domain/persistence')
+  const { seedDemoData } = await import('./seed')
+
+  const loadResult = loadFromDisk()
+  hasPersistedData = loadResult.success && loadResult.entries > 0
+
+  if (hasPersistedData) {
+    logger.info('Server', `${loadResult.entries} Einträge aus Disk geladen – überspringe Demo-Daten.`)
+  } else {
+    // Nur Demo-Daten laden wenn keine persistierten Daten vorhanden
+    seedDemoData()
+    logger.info('Server', 'Demo-Daten geladen (keine persistierten Daten gefunden).')
+  }
+
+  // Auto-Save starten (alle 30 Sek oder via SAVE_INTERVAL env)
+  startAutoSave()
+} else {
+  logger.info('Server', 'Supabase-Modus – Persistence deaktiviert')
+}
+
+// Dashboard HTML laden + pre-compress for gzip
+let dashboardHtml: string
+let dashboardGzip: Buffer
+try {
+  dashboardHtml = readFileSync(resolve(__dirname, '../frontend/dashboard.html'), 'utf-8')
+} catch {
+  dashboardHtml = '<html><body><h1>Frontend not found</h1></body></html>'
+}
+dashboardGzip = zlib.gzipSync(Buffer.from(dashboardHtml))
+
+// Admin HTML laden + pre-compress
+let adminHtml: string
+let adminGzip: Buffer
+try {
+  adminHtml = readFileSync(resolve(__dirname, '../frontend/admin.html'), 'utf-8')
+} catch {
+  adminHtml = '<html><body><h1>Admin not found</h1></body></html>'
+}
+adminGzip = zlib.gzipSync(Buffer.from(adminHtml))
+
+// Portal HTML laden + Supabase-Key injizieren + pre-compress
+let portalHtml: string
+let portalGzip: Buffer
+try {
+  portalHtml = readFileSync(resolve(__dirname, '../frontend/portal.html'), 'utf-8')
+  const _sbUrlPortal = process.env.SUPABASE_URL || ''
+  const _sbKeyPortal = process.env.SUPABASE_ANON_KEY || ''
+  if (_sbUrlPortal) {
+    portalHtml = portalHtml.replace(
+      /<meta name="supabase-url" content="[^"]*">/,
+      `<meta name="supabase-url" content="${_sbUrlPortal}">`
+    )
+  }
+  if (_sbKeyPortal) {
+    portalHtml = portalHtml.replace(
+      /<meta name="supabase-anon-key" content="[^"]*">/,
+      `<meta name="supabase-anon-key" content="${_sbKeyPortal}">`
+    )
+  }
+} catch {
+  portalHtml = '<html><body><h1>Portal not found</h1></body></html>'
+}
+portalGzip = zlib.gzipSync(Buffer.from(portalHtml))
+
+// Widget HTML laden
+let parentWidgetHtml: string
+try {
+  parentWidgetHtml = readFileSync(resolve(__dirname, '../widgets/parent-course-widget.html'), 'utf-8')
+} catch {
+  parentWidgetHtml = '<html><body><h1>Widget not found</h1></body></html>'
+}
+
+// PWA Assets laden
+let manifestJson: string
+let swJs: string
+const pwaIcons = new Map<string, Buffer>()
+const brandAssets = new Map<string, Buffer>()
+try {
+  manifestJson = readFileSync(resolve(__dirname, '../frontend/manifest.json'), 'utf-8')
+  swJs = readFileSync(resolve(__dirname, '../frontend/sw.js'), 'utf-8')
+  // Load all icon files
+  const iconsDir = resolve(__dirname, '../frontend/icons')
+  for (const file of readdirSync(iconsDir)) {
+    pwaIcons.set(file, readFileSync(resolve(iconsDir, file)))
+  }
+  // Load brand assets (UKC logos)
+  const brandDir = resolve(__dirname, '../frontend/brand')
+  for (const file of readdirSync(brandDir)) {
+    brandAssets.set(file, readFileSync(resolve(brandDir, file)))
+  }
+} catch {
+  manifestJson = '{}'
+  swJs = ''
+}
+
+// Router erstellen und Routen registrieren
+const router = new Router()
+registerRoutes(router)
+
+// Embed HTML generator for public iframe widgets
+function generateEmbedHtml(slug: string, type: string, _url: string, activityId?: string): string {
+  // Sanitize slug to prevent XSS — only allow alphanumeric, hyphens, underscores
+  slug = slug.replace(/[^a-zA-Z0-9_-]/g, '')
+  const apiBase = '' // relative to same origin
+  const brandColor = '#d96c45'
+
+  if (type === 'booking-success') {
+    return `<!DOCTYPE html>
+<html lang="de"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300;12..96,400;12..96,500;12..96,600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Bricolage Grotesque',system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#fbf5ea;color:#1f1d18}
+.success{text-align:center;padding:48px 32px;max-width:440px;width:100%}
+.check{width:72px;height:72px;border-radius:50%;background:#059669;color:#fff;display:flex;align-items:center;justify-content:center;font-size:36px;margin:0 auto 24px;animation:pop 0.5s cubic-bezier(0.2,0.8,0.2,1)}
+@keyframes pop{0%{transform:scale(0)}60%{transform:scale(1.15)}100%{transform:scale(1)}}
+h1{color:#1f1d18;font-family:'Instrument Serif',serif;font-weight:400;font-size:32px;margin-bottom:10px;letter-spacing:-0.5px}
+p{color:#5e564a;font-size:15px;line-height:1.65;margin-bottom:8px}
+.sub{font-size:13px;color:#94886e;margin-top:18px}
+.back-btn{display:inline-block;margin-top:24px;padding:12px 24px;background:${brandColor};color:#fff;text-decoration:none;border-radius:10px;font-weight:600;font-size:14px;transition:opacity 0.2s}
+.back-btn:hover{opacity:0.85}
+.powered{margin-top:32px;font-size:11px;color:#c4b5ab}
+.powered a{color:#94886e;text-decoration:none}
+</style>
+</head><body>
+<div class="success">
+  <div class="check">✓</div>
+  <h1>Buchung <em style="font-family:'Instrument Serif',serif;font-style:italic">bestätigt</em>!</h1>
+  <p>Vielen Dank — wir haben deine Buchung erhalten.</p>
+  <p>Eine Bestätigung mit allen Details kommt gleich per E-Mail.</p>
+  <div id="back-section"></div>
+  <div class="sub" id="sub-info"></div>
+  <div class="powered">Powered by <a href="https://urbankidsclub.de" target="_blank" rel="noopener">Urban Kids Club</a></div>
+</div>
+<script>
+// Conversion-Tracking: Sende Event an Parent-Window (cross-domain via postMessage)
+(function(){
+  try {
+    var qp = new URLSearchParams(window.location.search);
+    var payload = {
+      type: 'ukc-booking-success',
+      provider: ${JSON.stringify(slug)},
+      bookingId: qp.get('booking_id') || qp.get('bookingId') || null,
+      activityId: qp.get('activity_id') || qp.get('activityId') || null,
+      sessionId: qp.get('session_id') || null,
+      amount: qp.get('amount') ? parseFloat(qp.get('amount')) : null,
+      currency: qp.get('currency') || 'EUR',
+      utm_source: qp.get('utm_source') || null,
+      utm_medium: qp.get('utm_medium') || null,
+      utm_campaign: qp.get('utm_campaign') || null,
+      timestamp: Date.now()
+    };
+    if (window.parent && window.parent !== window) window.parent.postMessage(payload, '*');
+    if (window.top && window.top !== window && window.top !== window.parent) window.top.postMessage(payload, '*');
+    document.dispatchEvent(new CustomEvent('ukc:booking-success', { detail: payload }));
+  } catch(e) {}
+
+  // Detect: are we standalone (Stripe broke out of iFrame) or still in iFrame?
+  var inIframe = (window.self !== window.top);
+  var sub = document.getElementById('sub-info');
+  if (inIframe) {
+    if (sub) sub.textContent = 'Du kannst dieses Fenster jetzt schließen.';
+  } else {
+    // Standalone: provider may have a custom redirect URL configured
+    // Falls Provider eine Website hat: "Zurück zu ..."-Button (sonst nur Hinweis "Du kannst schließen")
+    fetch('/api/providers/by-slug/' + ${JSON.stringify(slug)} + '/branding').then(function(r){ return r.ok ? r.json() : null }).then(function(res){
+      var prov = res && (res.data || res);
+      var name = (prov && prov.name) || 'unsere Website';
+      // referrer fallback: wenn der Browser die Provider-Seite als referrer hat, nutzen wir die
+      var ref = document.referrer || '';
+      var refOrigin = '';
+      try { if (ref) refOrigin = new URL(ref).origin } catch(e){}
+      if (refOrigin && refOrigin.indexOf('app.urbankids.club') < 0) {
+        var bs = document.getElementById('back-section');
+        if (bs) bs.innerHTML = '<a href="' + refOrigin + '" class="back-btn">Zurück zu ' + name + '</a>';
+      } else if (sub) {
+        sub.textContent = 'Du kannst dieses Fenster jetzt schließen.';
+      }
+    }).catch(function(){});
+  }
+})();
+</script>
+</body></html>`
+  }
+
+  if (type === 'calendar') {
+    return `<!DOCTYPE html>
+<html lang="de"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' https:; script-src 'unsafe-inline' https://cdn.jsdelivr.net https://js.stripe.com https://www.paypal.com; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' https: data:; connect-src 'self' https://*.supabase.co https://api.stripe.com https://api.paypal.com">
+<title>Kurskalender</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300;12..96,400;12..96,500;12..96,600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Bricolage Grotesque',system-ui,sans-serif;background:#fbf5ea;color:#1f1d18}
+.cal-wrap{max-width:100%;margin:0 auto;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);background:#fff;border:1px solid #f0ebe8}
+.cal-header{display:flex;align-items:center;justify-content:space-between;padding:24px 32px 20px;background:linear-gradient(135deg,#1f1d18 0%,#3a3630 100%)}
+.cal-header h2{font-size:20px;font-weight:700;color:#fff;letter-spacing:-0.3px}
+.cal-header button{width:38px;height:38px;border-radius:10px;border:none;background:rgba(255,255,255,0.15);color:#fff;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.2s}
+.cal-header button:hover{background:rgba(255,255,255,0.25)}
+.cal-days{display:grid;grid-template-columns:repeat(7,1fr);padding:16px 24px 8px;gap:0}
+.cal-days span{text-align:center;font-size:13px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;padding:4px 0}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);padding:0 24px 16px;gap:6px}
+.cal-cell{position:relative;aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:12px;cursor:default;font-size:16px;font-weight:500;color:#64748b;transition:all 0.2s}
+.cal-cell.other{color:#d1d5db}
+.cal-cell.today{background:#fbf5ea;font-weight:700;color:#1f1d18}
+.cal-cell.has-course{cursor:pointer;color:#1f2937;font-weight:600}
+.cal-cell.has-course:hover{background:${brandColor}12;transform:scale(1.08)}
+.cal-cell.has-course .dot{width:7px;height:7px;border-radius:50%;background:${brandColor};margin-top:3px}
+.cal-cell.selected{background:${brandColor};color:#fff;border-radius:12px;transform:scale(1.05);box-shadow:0 2px 8px ${brandColor}40}
+.cal-cell.selected .dot{background:#ffffff}
+.cal-cell.past{color:#d1d5db}
+.cal-cell.past .dot{background:#d1d5db}
+.slots-panel{padding:0 28px 28px;animation:slideUp 0.25s ease}
+@keyframes slideUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.slots-date{font-size:14px;font-weight:600;color:#64748b;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.3px}
+.slot-card{display:flex;flex-direction:column;gap:8px;padding:16px;border-radius:12px;border:1px solid #f0ebe8;margin-bottom:8px;transition:all 0.2s;background:#ffffff}
+.slot-card:hover{border-color:${brandColor};background:#FFF9F5}
+.slot-time{font-size:15px;font-weight:700;color:${brandColor}}
+.slot-info{flex:1}
+.slot-title{font-size:16px;font-weight:700;color:#1f1d18}
+.slot-meta{font-size:12px;color:#94a3b8;margin-top:2px}
+.slot-badge{display:inline-block;padding:2px 8px;border-radius:99px;font-size:10px;font-weight:600;background:${brandColor}15;color:${brandColor}}
+.empty-state{text-align:center;padding:24px;color:#94a3b8;font-size:13px}
+.book-btn{padding:12px 24px;border-radius:10px;border:none;background:${brandColor};color:#fff;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap;transition:all 0.2s;letter-spacing:0.3px;width:100%;text-align:center}
+.book-btn:hover{opacity:0.85;transform:scale(1.03)}
+.book-modal{position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:100;animation:fadeIn 0.2s}
+.book-modal-inner{background:#fff;border-radius:16px;padding:28px;max-width:440px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.15)}
+.book-modal h3{font-size:16px;font-weight:700;color:#1f2937;margin-bottom:4px}
+.book-modal p{font-size:13px;color:#64748b;margin-bottom:16px}
+.book-modal input,.book-modal textarea{width:100%;padding:10px 12px;border:1px solid #e2e8f0;border-radius:10px;font-size:13px;font-family:inherit;margin-bottom:10px;outline:none;transition:border 0.2s}
+.book-modal input:focus,.book-modal textarea:focus{border-color:${brandColor}}
+.book-modal .btn-row{display:flex;gap:8px;margin-top:4px}
+.book-modal .btn-send{flex:1;padding:10px;border:none;border-radius:10px;background:${brandColor};color:#fff;font-weight:600;font-size:13px;cursor:pointer;transition:opacity 0.2s}
+.book-modal .btn-send:hover{opacity:0.85}
+.book-modal .btn-cancel{padding:10px 16px;border:1px solid #e2e8f0;border-radius:10px;background:#fff;color:#64748b;font-size:13px;cursor:pointer}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.powered{text-align:center;padding:8px;font-size:10px;color:#c4b5ab}
+.powered a{color:#94a3b8;text-decoration:none;transition:color 0.2s}
+.powered a:hover{color:#6B7280}
+@media(max-width:480px){.cal-header{padding:16px 20px 12px}.cal-header h2{font-size:16px}.cal-header button{width:30px;height:30px}.cal-days{padding:10px 12px 4px}.cal-days span{font-size:11px}.cal-grid{padding:0 12px 10px;gap:3px}.cal-cell{font-size:13px;border-radius:8px}.slots-panel{padding:0 16px 16px}.slot-time{font-size:13px}.slot-title{font-size:14px}.book-btn{padding:10px 16px;font-size:13px}}
+</style>
+</head><body>
+<div id="app"><div style="text-align:center;padding:60px;color:#94a3b8;font-size:13px">Wird geladen...</div></div>
+<script>
+(async()=>{
+const slug=${JSON.stringify(slug)},app=document.getElementById('app'),BC='${brandColor}'
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
+function showMsg(msg,type){const e=document.querySelector('.wdg-toast');if(e)e.remove();const t=document.createElement('div');t.className='wdg-toast';t.style.cssText='position:fixed;bottom:16px;left:50%;transform:translateX(-50%);padding:10px 20px;border-radius:10px;font-size:13px;font-weight:500;z-index:9999;color:#fff;background:'+(type==='error'?'#dc2626':'#059669')+';box-shadow:0 4px 16px rgba(0,0,0,.15);animation:fadeIn .3s ease';t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),3500)}
+const DN={MO:1,TU:2,WE:3,TH:4,FR:5,SA:6,SU:0,DI:2,MI:3,DO:4,SO:0}
+const ML=['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember']
+const DL=['Mo','Di','Mi','Do','Fr','Sa','So']
+const DLong=['Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag','Sonntag']
+let courses=[],curMonth=new Date().getMonth(),curYear=new Date().getFullYear(),selDate=null
+
+// --- Tracking-Bridge (Match-Quality Booster) ---
+// Zwei Sender-Kanäle parallel:
+//  (A) UKC-Provider-Listener-Snippet (\`ukc-tracking-context\`, nested) → liefert fbp/fbc/gclid/UTMs aus Provider-Cookies
+//  (B) Socialy-Bridge (\`socialy:tracking\` v1, flat) → liefert fbp/fbc/external_id von socialy.club mit Origin-Check
+// Beim Submit gewinnt Socialy für fbp/fbc/external_id, UKC ergänzt gclid + UTMs.
+// Siehe project_socialy_ukc_bridge.md
+window._ukcTrack={fbp:null,fbc:null,gclid:null,utm_source:null,utm_medium:null,utm_campaign:null,utm_content:null,utm_term:null}
+window._socialyBridge={fbp:null,fbc:null,external_id:null,received_at:null}
+var _ALLOWED_SOCIALY=['https://socialy.club','https://dev.socialy.club']
+window.addEventListener('message',function(e){
+  var d=e&&e.data;if(!d||typeof d!=='object')return
+  // (A) UKC-Provider-Listener
+  if(d.type==='ukc-tracking-context'&&d.tracking){
+    var t=d.tracking
+    if(t.fbp)window._ukcTrack.fbp=String(t.fbp)
+    if(t.fbc)window._ukcTrack.fbc=String(t.fbc)
+    if(t.gclid)window._ukcTrack.gclid=String(t.gclid)
+    if(t.utm_source)window._ukcTrack.utm_source=String(t.utm_source)
+    if(t.utm_medium)window._ukcTrack.utm_medium=String(t.utm_medium)
+    if(t.utm_campaign)window._ukcTrack.utm_campaign=String(t.utm_campaign)
+    if(t.utm_content)window._ukcTrack.utm_content=String(t.utm_content)
+    if(t.utm_term)window._ukcTrack.utm_term=String(t.utm_term)
+  }
+  // (B) Socialy-Bridge (Cross-Domain mit Origin-Check)
+  if(d.type==='socialy:tracking'&&d.v===1&&_ALLOWED_SOCIALY.indexOf(e.origin)!==-1){
+    if(d.fbp)window._socialyBridge.fbp=String(d.fbp)
+    if(d.fbc)window._socialyBridge.fbc=String(d.fbc)
+    if(d.external_id)window._socialyBridge.external_id=String(d.external_id)
+    window._socialyBridge.received_at=Date.now()
+    try{e.source.postMessage({type:'ukc:tracking-ack',v:1,ok:true},e.origin)}catch(err){}
+  }
+})
+try{if(window.parent&&window.parent!==window){window.parent.postMessage({type:'ukc-iframe-ready',source:'embed-calendar'},'*')}}catch(e){}
+
+// Helper: merged Tracking-Context für Submit. Socialy-Bridge (cross-domain) hat Vorrang für fbp/fbc/external_id.
+window._buildTracking=function(){
+  var sb=window._socialyBridge||{};var ut=window._ukcTrack||{}
+  return{
+    fbp:sb.fbp||ut.fbp||null,
+    fbc:sb.fbc||ut.fbc||null,
+    external_id:sb.external_id||null,
+    gclid:ut.gclid||null,
+    utm_source:ut.utm_source||null,utm_medium:ut.utm_medium||null,
+    utm_campaign:ut.utm_campaign||null,utm_content:ut.utm_content||null,utm_term:ut.utm_term||null
+  }
+}
+
+// Session dates map: date → [{title, start, end, ...}]
+let sessionDates={}
+try{
+  const [actRes, blockRes]=await Promise.all([
+    fetch('/api/providers/by-slug/'+slug+'/activities').then(r=>r.json()),
+    fetch('/api/widget/providers/'+slug+'/course-blocks').then(r=>r.json()).catch(()=>({data:[]}))
+  ])
+  if(!actRes.data){app.innerHTML='<div class="empty-state">Anbieter nicht gefunden.</div>';return}
+  const filterActivityId=new URLSearchParams(window.location.search).get('activity')
+  courses=actRes.data.filter(a=>(a.status==='published'||a.status==='active')&&a.schedule?.slots&&(!filterActivityId||a.id===filterActivityId))
+  const actMap={}; courses.forEach(a=>{actMap[a.id]=a})
+  const activeBlocks=(blockRes.data||[]).filter(b=>b.status==='active'||b.status==='upcoming')
+  const activitiesWithSessions=new Set()
+
+  // Load actual sessions for each active block
+  await Promise.all(activeBlocks.map(async block=>{
+    try{
+      const sr=await fetch('/api/widget/course-blocks/'+block.id+'/sessions').then(r=>r.json())
+      const act=actMap[block.activityId]
+      if(!act)return
+      activitiesWithSessions.add(block.activityId)
+      ;(sr.data||[]).forEach(sess=>{
+        if(sess.status==='cancelled'||sess.status==='cancelled_by_provider')return
+        const d=sess.date
+        if(!sessionDates[d])sessionDates[d]=[]
+        const slot=act.schedule?.slots?.[0]||{}
+        sessionDates[d].push({title:act.title,start:sess.startTime||slot.startTime||block.recurringTime,end:sess.endTime||slot.endTime||'',cat:act.category,age:(act.ageRange?.min||0)+'-'+(act.ageRange?.max||0)+' J.',price:act.pricing?.[0]?.amount?act.pricing[0].amount.toFixed(0)+'\\u20AC':'',color:act.color||BC,desc:act.description||'',hasActiveBlock:true,blockId:block.id,activityId:act.id})
+      })
+    }catch(e){}
+  }))
+
+  // For activities WITHOUT sessions (no block), fall back to schedule
+  courses.forEach(a=>{
+    if(activitiesWithSessions.has(a.id))return
+    if(a.schedule.type!=='recurring')return
+    const sd=a.schedule.startDate||'',ed=a.schedule.endDate||'9999-12-31'
+    // Generate dates for next 3 months
+    const start=new Date(),end=new Date();end.setMonth(end.getMonth()+3)
+    for(let cur=new Date(start);cur<=end;cur.setDate(cur.getDate()+1)){
+      const ds=fmtD(cur)
+      if(ds<sd||ds>ed)continue
+      a.schedule.slots.forEach(s=>{
+        if(DN[s.day]===cur.getDay()){
+          if(!sessionDates[ds])sessionDates[ds]=[]
+          sessionDates[ds].push({title:a.title,start:s.startTime,end:s.endTime,cat:a.category,age:(a.ageRange?.min||0)+'-'+(a.ageRange?.max||0)+' J.',price:a.pricing?.[0]?.amount?a.pricing[0].amount.toFixed(0)+'\\u20AC':'',color:a.color||BC,desc:a.description||'',hasActiveBlock:false})
+        }
+      })
+    }
+  })
+  render()
+}catch(e){app.innerHTML='<div class="empty-state">Fehler beim Laden.</div>'}
+
+function fmtD(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+function getCoursesForDate(d){
+  const ds=fmtD(d)
+  const res=sessionDates[ds]||[]
+  // Deduplicate
+  const seen=new Set()
+  return res.filter(e=>{const k=e.title+e.start+e.end;if(seen.has(k))return false;seen.add(k);return true}).sort((a,b)=>a.start.localeCompare(b.start))
+}
+function render(){
+  const today=new Date(),todayStr=fmtD(today)
+  const first=new Date(curYear,curMonth,1)
+  const startDay=(first.getDay()+6)%7
+  const daysInMonth=new Date(curYear,curMonth+1,0).getDate()
+  const prevDays=new Date(curYear,curMonth,0).getDate()
+  let cells=''
+  for(let i=startDay-1;i>=0;i--){cells+='<div class="cal-cell other">'+(prevDays-i)+'</div>'}
+  for(let d=1;d<=daysInMonth;d++){
+    const dt=new Date(curYear,curMonth,d),ds=fmtD(dt)
+    const evts=getCoursesForDate(dt)
+    const isPast=ds<todayStr
+    const isToday=ds===todayStr
+    const isSel=selDate===ds
+    const cls=['cal-cell']
+    if(isPast)cls.push('past')
+    if(isToday)cls.push('today')
+    if(evts.length&&!isPast)cls.push('has-course')
+    if(isSel)cls.push('selected')
+    const dot=evts.length?'<div class="dot"></div>':''
+    const click=evts.length&&!isPast?' onclick="window._selectDay(\\'' +ds+ '\\')"':''
+    cells+='<div class="'+cls.join(' ')+'"'+click+'>'+d+dot+'</div>'
+  }
+  const remaining=7-((startDay+daysInMonth)%7)
+  if(remaining<7){for(let i=1;i<=remaining;i++){cells+='<div class="cal-cell other">'+i+'</div>'}}
+  let slotsHtml=''
+  if(selDate){
+    const sd=new Date(+selDate.split('-')[0],+selDate.split('-')[1]-1,+selDate.split('-')[2])
+    const dayName=DLong[(sd.getDay()+6)%7]
+    const evts=getCoursesForDate(sd)
+    slotsHtml='<div class="slots-panel"><div class="slots-date">'+dayName+', '+sd.getDate()+'. '+ML[sd.getMonth()]+'</div>'
+    if(evts.length){
+      slotsHtml+=evts.map(e=>{
+        const hasBlock=e.hasActiveBlock
+        var dur=''
+        if(e.start&&e.end){var sp=e.start.split(':').map(Number),ep=e.end.split(':').map(Number);var mins=(ep[0]*60+(ep[1]||0))-(sp[0]*60+(sp[1]||0));if(mins>0)dur=mins+' Min.'}
+        if (hasBlock) {
+          return '<div class="slot-card"><div class="slot-title">'+esc(e.title)+'</div><div class="slot-meta">'+(dur?dur+' · ':'')+'<span class="slot-badge">'+esc(e.cat)+'</span> · '+esc(e.age)+(e.price?' · '+esc(e.price):'')+'</div><div class="slot-time">'+esc(e.start)+' – '+esc(e.end)+' Uhr</div><button class="book-btn" data-title="'+esc(e.title)+'" data-date="'+selDate+'" data-time="'+esc(e.start)+'" onclick="window._bookCourse(this.dataset.title,this.dataset.date,this.dataset.time)">Jetzt buchen</button></div>'
+        } else {
+          return '<div class="slot-card"><div class="slot-title">'+esc(e.title)+'</div><div class="slot-meta">'+(dur?dur+' · ':'')+'<span class="slot-badge">'+esc(e.cat)+'</span> · '+esc(e.age)+'</div><div class="slot-time">'+esc(e.start)+' – '+esc(e.end)+' Uhr</div><button class="book-btn" style="background:#6b7280" data-title="'+esc(e.title)+'" data-date="'+selDate+'" onclick="window._waitlistCourse(this.dataset.title,this.dataset.date)">Warteliste</button></div>'
+        }
+      }).join('')
+    }else{slotsHtml+='<div class="empty-state">Keine Kurse an diesem Tag.</div>'}
+    slotsHtml+='</div>'
+  }
+  app.innerHTML='<div class="cal-wrap"><div class="cal-header"><button onclick="window._navMonth(-1)">‹</button><h2>'+ML[curMonth]+' '+curYear+'</h2><button onclick="window._navMonth(1)">›</button></div><div class="cal-days">'+DL.map(d=>'<span>'+d+'</span>').join('')+'</div><div class="cal-grid">'+cells+'</div>'+slotsHtml+'<div class="powered">Powered by <a href="https://urbankidsclub.de" target="_blank" rel="noopener">Urban Kids Club</a></div></div>'
+}
+window._navMonth=function(dir){curMonth+=dir;if(curMonth>11){curMonth=0;curYear++}if(curMonth<0){curMonth=11;curYear--};selDate=null;render()}
+window._selectDay=function(ds){selDate=selDate===ds?null:ds;render()}
+window._waitlistCourse=async function(title,date){
+  const sd=new Date(+date.split('-')[0],+date.split('-')[1]-1,+date.split('-')[2])
+  const dateStr=sd.getDate()+'. '+ML[sd.getMonth()]+' '+sd.getFullYear()
+  const course=courses.find(c=>c.title===title)
+  if(!course){showMsg('Kurs nicht gefunden','error');return}
+  window._wlActId=course.id
+  window._wlTitle=title
+  window._wlDate=dateStr
+  // Use same multi-step booking UI but for waitlist
+  var html='<div class="book-modal"><div class="book-modal-inner">'+
+    '<h3>Warteliste</h3>'+
+    '<p style="margin-bottom:16px;color:#64748b;font-size:13px">'+esc(title)+' — '+dateStr+'<br>Dieser Kurs hat aktuell noch keinen festen Termin. Trag dich gerne ein — wir geben dir Bescheid, sobald es losgeht!</p>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><input id="wlChildFirst" placeholder="Vorname Kind *"><input id="wlChildLast" placeholder="Nachname Kind *"></div>'+
+    '<input id="wlChildYear" type="number" placeholder="Geburtsjahr Kind (z.B. 2019) *" min="2010" max="2025">'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><input id="wlParentFirst" placeholder="Vorname Elternteil *"><input id="wlParentLast" placeholder="Nachname Elternteil *"></div>'+
+    '<input id="wlEmail" type="email" placeholder="E-Mail-Adresse *">'+
+    '<input id="wlPhone" type="tel" placeholder="Telefon (optional)">'+
+    '<div class="btn-row">'+
+    '<button class="btn-send" onclick="window._submitWaitlist()">Auf Warteliste eintragen</button>'+
+    '<button class="btn-cancel" onclick="var m=document.querySelector(String.fromCharCode(46,98,111,111,107,45,109,111,100,97,108));if(m)m.remove()">Abbrechen</button>'+
+    '</div></div></div>'
+  app.insertAdjacentHTML('beforeend',html)
+}
+window._submitWaitlist=async function(){
+  var activityId=window._wlActId
+  var f=function(s){var el=document.getElementById(s);return el?el.value.trim():''}
+  var childFirst=f('wlChildFirst'),childLast=f('wlChildLast'),childYear=f('wlChildYear')
+  var parentFirst=f('wlParentFirst'),parentLast=f('wlParentLast'),email=f('wlEmail'),phone=f('wlPhone')
+  if(!childFirst||!childLast||!childYear||!parentFirst||!parentLast||!email){showMsg('Bitte alle Pflichtfelder ausfüllen','error');return}
+  var btn=document.querySelector('.book-modal .btn-send')
+  if(btn){btn.textContent='Wird eingetragen...';btn.disabled=true}
+  try{
+    var r=await fetch('/api/widget/waitlist',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({slug:slug,activityId:activityId,child:{firstName:childFirst,lastName:childLast,birthYear:parseInt(childYear)},parent:{firstName:parentFirst,lastName:parentLast,email:email,phone:phone},tracking:(window._buildTracking?window._buildTracking():(window._ukcTrack||{}))})})
+    var data=await r.json()
+    var modal=document.querySelector('.book-modal')
+    if(modal)modal.remove()
+    app.insertAdjacentHTML('beforeend','<div class="book-modal"><div class="book-modal-inner" style="text-align:center"><div style="font-size:48px;margin-bottom:12px">✅</div><h3>'+(data.alreadyExists?'Bereits eingetragen':'Auf der Warteliste!')+'</h3><p style="margin:12px 0;color:#64748b;font-size:13px">'+(data.alreadyExists?'Du bist bereits auf der Warteliste für diesen Kurs.':'Super! Wir benachrichtigen dich, sobald ein Kursblock verfügbar ist.')+'</p><button class="btn-send" onclick="var m=document.querySelector(String.fromCharCode(46,98,111,111,107,45,109,111,100,97,108));if(m)m.remove()">Alles klar</button></div></div>')
+  }catch(e){showMsg('Verbindungsfehler','error');if(btn){btn.textContent='Auf Warteliste eintragen';btn.disabled=false}}
+}
+window._bookCourse=async function(title,date,time){
+  const sd=new Date(+date.split('-')[0],+date.split('-')[1]-1,+date.split('-')[2])
+  const dateStr=sd.getDate()+'. '+ML[sd.getMonth()]+' '+sd.getFullYear()
+  window._checkoutDate=date // Store booked date (YYYY-MM-DD)
+
+  // Find activity ID from courses array
+  const course=courses.find(c=>c.title===title)
+  if(!course){showMsg('Kurs nicht gefunden','error');return}
+
+  // Fetch activity checkout details
+  let actData
+  try{
+    const r=await fetch('/api/checkout/activity/'+course.id)
+    actData=await r.json()
+  }catch(e){showMsg('Fehler beim Laden der Kursdaten','error');return}
+
+  const act=actData.activity
+  const prov=actData.provider
+  const cancel=actData.cancellation
+  const price=act.pricing?.[0]?.amount||0
+  const priceStr=price.toFixed(2).replace('.',',')+' €'
+  const hasOnline=act.paymentOnline&&(prov.stripeConnected||prov.paypalConnected)
+  const hasOnsite=act.paymentOnsite
+
+  let step=1
+  const m=document.createElement('div');m.className='book-modal'
+  m.onclick=function(e){if(e.target===m)m.remove()}
+
+  function renderStep(){
+    let html='<div class="book-modal-inner" style="max-width:400px">'
+    html+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><h3 style="font-size:16px;font-weight:700;color:#1f2937;margin:0">'+esc(title)+'</h3><button onclick="this.closest(\\'.book-modal\\').remove()" style="background:none;border:none;font-size:20px;color:#94a3b8;cursor:pointer">×</button></div>'
+    html+='<p style="font-size:13px;color:#64748b;margin-bottom:16px">'+dateStr+' um '+esc(time)+' Uhr · '+priceStr+'</p>'
+
+    // Progress bar
+    const totalSteps=hasOnline&&hasOnsite?4:3
+    html+='<div style="display:flex;gap:4px;margin-bottom:20px">'
+    for(let i=1;i<=totalSteps;i++){
+      html+='<div style="flex:1;height:3px;border-radius:2px;background:'+(i<=step?'${brandColor}':'#e2e8f0')+'"></div>'
+    }
+    html+='</div>'
+
+    if(step===1){
+      var ck=window._checkoutChild||{};var cp=window._checkoutParent||{}
+      html+='<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:12px">Kind</div>'
+      html+='<div style="display:flex;gap:8px;margin-bottom:8px"><input id="ckFirst" placeholder="Vorname" value="'+esc(ck.firstName||'')+'" style="flex:1;padding:10px 12px;border:1px solid #e2e8f0;border-radius:10px;font-size:13px;outline:none" required><input id="ckLast" placeholder="Nachname" value="'+esc(ck.lastName||'')+'" style="flex:1;padding:10px 12px;border:1px solid #e2e8f0;border-radius:10px;font-size:13px;outline:none" required></div>'
+      html+='<input id="ckYear" type="number" placeholder="Geburtsjahr (z.B. 2020)" value="'+esc(ck.birthYear||'')+'" min="2005" max="2026" style="width:100%;padding:10px 12px;border:1px solid #e2e8f0;border-radius:10px;font-size:13px;outline:none;margin-bottom:16px">'
+      html+='<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:12px">Elternteil</div>'
+      html+='<div style="display:flex;gap:8px;margin-bottom:8px"><input id="cpFirst" placeholder="Vorname" value="'+esc(cp.firstName||'')+'" style="flex:1;padding:10px 12px;border:1px solid #e2e8f0;border-radius:10px;font-size:13px;outline:none" required><input id="cpLast" placeholder="Nachname" value="'+esc(cp.lastName||'')+'" style="flex:1;padding:10px 12px;border:1px solid #e2e8f0;border-radius:10px;font-size:13px;outline:none" required></div>'
+      html+='<input id="cpEmail" type="email" placeholder="E-Mail" value="'+esc(cp.email||'')+'" style="width:100%;padding:10px 12px;border:1px solid #e2e8f0;border-radius:10px;font-size:13px;outline:none;margin-bottom:8px" required>'
+      html+='<input id="cpPhone" type="tel" placeholder="Telefon" value="'+esc(cp.phone||'')+'" style="width:100%;padding:10px 12px;border:1px solid #e2e8f0;border-radius:10px;font-size:13px;outline:none;margin-bottom:16px" required>'
+      html+='<button id="btnNext1" style="width:100%;padding:12px;border:none;border-radius:10px;background:${brandColor};color:#fff;font-weight:600;font-size:14px;cursor:pointer">Weiter</button>'
+    }
+
+    if(step===2&&hasOnline&&hasOnsite){
+      html+='<button id="btnBack2" style="margin-bottom:12px;padding:6px 12px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;color:#64748b;font-size:12px;cursor:pointer">← Zurück</button>'
+      html+='<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:12px">Zahlungsart wählen</div>'
+      if(hasOnline){
+        if(prov.stripeConnected){
+          html+='<button class="pay-opt" data-method="stripe" style="width:100%;padding:14px 16px;border:2px solid #e2e8f0;border-radius:12px;background:#fff;cursor:pointer;display:flex;align-items:center;gap:12px;margin-bottom:8px;transition:all 0.2s"><span style="font-size:24px">💳</span><div style="text-align:left"><div style="font-weight:600;font-size:14px;color:#1f2937">Kreditkarte / Apple Pay</div><div style="font-size:12px;color:#64748b">Sicher bezahlen via Stripe</div></div></button>'
+        }
+        if(prov.paypalConnected){
+          html+='<button class="pay-opt" data-method="paypal" style="width:100%;padding:14px 16px;border:2px solid #e2e8f0;border-radius:12px;background:#fff;cursor:pointer;display:flex;align-items:center;gap:12px;margin-bottom:8px;transition:all 0.2s"><span style="font-size:24px">🅿️</span><div style="text-align:left"><div style="font-weight:600;font-size:14px;color:#1f2937">PayPal</div><div style="font-size:12px;color:#64748b">Mit PayPal-Konto bezahlen</div></div></button>'
+        }
+      }
+      if(hasOnsite){
+        html+='<button class="pay-opt" data-method="onsite" style="width:100%;padding:14px 16px;border:2px solid #e2e8f0;border-radius:12px;background:#fff;cursor:pointer;display:flex;align-items:center;gap:12px;margin-bottom:8px;transition:all 0.2s"><span style="font-size:24px">🏠</span><div style="text-align:left"><div style="font-weight:600;font-size:14px;color:#1f2937">Vor Ort bezahlen</div><div style="font-size:12px;color:#64748b">Zahlung beim ersten Termin</div></div></button>'
+      }
+    }
+
+    // AGB step (step 2 if only one payment method, step 3 if both)
+    const agbStep=hasOnline&&hasOnsite?3:2
+    if(step===agbStep){
+      const payLabel=window._checkoutPayMethod==='onsite'?'Vor Ort bezahlen':'Online bezahlen ('+priceStr+')'
+      html+='<button id="btnBackAgb" style="margin-bottom:12px;padding:6px 12px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;color:#64748b;font-size:12px;cursor:pointer">← Zurück</button>'
+      html+='<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:12px">Bestätigung</div>'
+      const pkg=act.pricing?.[0]
+      const pkgSize=pkg?.packageSize||0
+      const pkgLabel=pkg?.label||''
+      const slot=act.schedule?.slots?.[0]
+      const dayMap={MO:'Montags',TU:'Dienstags',WE:'Mittwochs',TH:'Donnerstags',FR:'Freitags',SA:'Samstags',SU:'Sonntags'}
+      const dayName=slot?dayMap[slot.day]||slot.day:''
+      const duration=slot?(parseInt(slot.endTime)-parseInt(slot.startTime))*60+((parseInt(slot.endTime.split(':')[1])||0)-(parseInt(slot.startTime.split(':')[1])||0)):0
+      let detailLines='<div>'+esc(title)+'</div>'
+      detailLines+='<div style="color:#64748b">'+dateStr+' · '+esc(time)+' Uhr</div>'
+      if(pkgSize>1){
+        detailLines+='<div style="color:#64748b;margin-top:4px">'+pkgSize+' Termine · '+(dayName?dayName+' · ':'')+(slot?slot.startTime+'–'+slot.endTime+' Uhr':'')+'</div>'
+        detailLines+='<div style="background:#FFF9F5;border:1px solid #F2E6E2;border-radius:8px;padding:8px 10px;margin-top:6px;font-size:12px;color:#92400e">Dieser Kurs umfasst <strong>'+pkgSize+' Termine</strong>'+(pkgLabel?' ('+esc(pkgLabel)+')':'')+ '. Der Gesamtpreis von <strong>'+priceStr+'</strong> gilt für alle '+pkgSize+' Termine.</div>'
+      }
+      detailLines+='<div style="font-weight:700;margin-top:6px">'+priceStr+'</div>'
+      if(pkgSize>1){
+        detailLines+='<div style="color:#64748b;font-size:12px;margin-top:6px">Falls du mal nicht kannst — kein Stress! Sag rechtzeitig Bescheid und wir verschieben deinen Termin.</div>'
+      }
+      html+='<div style="background:#f8fafc;border-radius:10px;padding:12px;margin-bottom:16px;font-size:13px;color:#374151">'+detailLines+'</div>'
+      html+='<label style="display:flex;align-items:start;gap:8px;margin-bottom:10px;cursor:pointer"><input type="checkbox" id="agbCheck" style="margin-top:3px"><span style="font-size:12px;color:#374151">Ich stimme den <a href="#" style="color:${brandColor}">AGB</a> zu.</span></label>'
+      if(cancel.custom_text){
+        html+='<label style="display:flex;align-items:start;gap:8px;margin-bottom:16px;cursor:pointer"><input type="checkbox" id="stornoCheck" style="margin-top:3px"><span style="font-size:12px;color:#374151">'+esc(cancel.custom_text)+'</span></label>'
+      }
+      html+='<button id="btnSubmit" style="width:100%;padding:12px;border:none;border-radius:10px;background:${brandColor};color:#fff;font-weight:600;font-size:14px;cursor:pointer">'+(window._checkoutPayMethod==='onsite'?'Verbindlich buchen':'Kostenpflichtig buchen')+'</button>'
+    }
+
+    html+='</div>'
+    m.innerHTML=html
+
+    // Attach event handlers
+    if(step===1){
+      m.querySelector('#btnNext1').onclick=function(){
+        const ckF=m.querySelector('#ckFirst').value.trim()
+        const ckL=m.querySelector('#ckLast').value.trim()
+        const ckY=m.querySelector('#ckYear').value
+        const cpF=m.querySelector('#cpFirst').value.trim()
+        const cpL=m.querySelector('#cpLast').value.trim()
+        const cpE=m.querySelector('#cpEmail').value.trim()
+        const cpP=m.querySelector('#cpPhone').value.trim()
+        if(!ckF||!ckL||!ckY||!cpF||!cpL||!cpE||!cpP){showMsg('Bitte alle Felder ausfüllen.','error');return}
+        window._checkoutChild={firstName:ckF,lastName:ckL,birthYear:parseInt(ckY)}
+        window._checkoutParent={firstName:cpF,lastName:cpL,email:cpE,phone:cpP}
+        if(!hasOnline){window._checkoutPayMethod='onsite'}
+        else if(!hasOnsite){window._checkoutPayMethod=prov.stripeConnected?'stripe':'paypal'}
+        step=2;renderStep()
+      }
+    }
+    if(step===2&&hasOnline&&hasOnsite){
+      var backBtn2=m.querySelector('#btnBack2')
+      if(backBtn2) backBtn2.onclick=function(){step=1;renderStep()}
+      m.querySelectorAll('.pay-opt').forEach(btn=>{
+        btn.onmouseover=function(){this.style.borderColor='${brandColor}'}
+        btn.onmouseout=function(){this.style.borderColor='#e2e8f0'}
+        btn.onclick=function(){
+          const m=this.dataset.method
+          window._checkoutPayMethod=m==='stripe'?'stripe':m==='paypal'?'paypal':'onsite'
+          step=3;renderStep()
+        }
+      })
+    }
+    var backBtnAgb=m.querySelector('#btnBackAgb')
+    if(backBtnAgb) backBtnAgb.onclick=function(){step=step-1;renderStep()}
+    if(step===agbStep){
+      m.querySelector('#btnSubmit').onclick=async function(){
+        if(!m.querySelector('#agbCheck').checked){showMsg('Bitte AGB akzeptieren.','error');return}
+        if(cancel.custom_text&&!m.querySelector('#stornoCheck')?.checked){showMsg('Bitte Stornierungsbedingungen akzeptieren.','error');return}
+        this.textContent='Wird verarbeitet...'
+        this.disabled=true
+        try{
+          const r=await fetch('/api/checkout/create-session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({slug:slug,activityId:course.id,blockId:course.blockId||null,bookedDate:window._checkoutDate||null,child:window._checkoutChild,parent:window._checkoutParent,paymentMethod:window._checkoutPayMethod,tracking:(window._buildTracking?window._buildTracking():(window._ukcTrack||{}))})})
+          const data=await r.json()
+          if(!r.ok){var errMsg=data.error||'Fehler beim Buchen';if(errMsg.includes('Warteliste')||errMsg.includes('warteliste')||errMsg.includes('voll')){m.querySelector('.book-modal-inner').innerHTML='<div style="text-align:center;padding:24px"><div style="width:56px;height:56px;border-radius:50%;background:#f59e0b;color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto 16px">📋</div><h3 style="font-size:18px;font-weight:700;color:#1f2937;margin-bottom:8px">Auf der Warteliste!</h3><p style="font-size:13px;color:#64748b;line-height:1.6">'+errMsg+'</p><button onclick="this.closest(\\'.book-modal\\').remove()" style="margin-top:16px;padding:10px 24px;border:1px solid #e2e8f0;border-radius:10px;background:#fff;color:#374151;font-size:13px;cursor:pointer">Schließen</button></div>'}else{showMsg(errMsg,'error');this.textContent='Erneut versuchen';this.disabled=false}return}
+          if(data.redirect){window.top.location.href=data.redirect}
+          else{
+            // Onsite/free booking: navigate iFrame to dedicated booking-success page (kein Modal mehr).
+            // Pass booking-id + activity-id + amount durch URL → postMessage liefert Tracking-Daten an Parent-Window.
+            var bid = data.bookingId || (data.data && data.data.id) || data.id || ''
+            var amount = data.amount || 0
+            var qp = '?activity_id='+encodeURIComponent(course.id)+(bid?'&booking_id='+encodeURIComponent(bid):'')+(amount?'&amount='+encodeURIComponent(amount):'')
+            window.location.href = '/embed/'+slug+'/booking-success'+qp
+          }
+        }catch(e){showMsg('Netzwerkfehler','error');this.textContent='Erneut versuchen';this.disabled=false}
+      }
+    }
+  }
+
+  document.body.appendChild(m)
+  renderStep()
+}
+// Apply URL customization params
+const params=new URLSearchParams(window.location.search)
+if(params.get('color')){document.documentElement.style.setProperty('--brand',params.get('color'));document.querySelectorAll('.cal-header').forEach(h=>{h.style.background='linear-gradient(135deg,'+params.get('color')+' 0%,'+params.get('color')+'cc 100%)'})}
+if(params.get('radius')){document.querySelector('.cal-wrap').style.borderRadius=params.get('radius')}
+if(params.get('font')){document.body.style.fontFamily=params.get('font')+',system-ui,sans-serif'}
+})()
+</script></body></html>`
+  }
+
+  if (type === 'courses') {
+    return `<!DOCTYPE html>
+<html lang="de"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kursliste</title>
+<style>
+  body{margin:0;font-family:Inter,system-ui,sans-serif;background:#ffffff}
+  .course{padding:16px;border:1px solid #F2E6E2;border-radius:12px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:12px}
+  .course-info{flex:1}
+  .course-title{font-weight:700;color:#3C2225;font-size:16px}
+  .course-meta{font-size:13px;color:#64748B;margin-top:4px}
+  .badge{display:inline-block;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:600;background:#FFEFE1;color:${brandColor}}
+  .book-btn{padding:8px 20px;background:linear-gradient(135deg,${brandColor},#8B3A28);color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;text-decoration:none}
+  .book-btn:hover{opacity:0.9}
+  .empty{text-align:center;padding:40px;color:#64748B}
+</style>
+</head><body>
+<div id="app" style="padding:16px"><div style="text-align:center;padding:40px;color:#64748B">Wird geladen...</div></div>
+<script>
+(async()=>{
+  const slug='${slug}'
+  const app=document.getElementById('app')
+  function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
+  try{
+    const r=await fetch('${apiBase}/api/providers/by-slug/'+slug+'/activities')
+    if(!r.ok){app.innerHTML='<div class="empty">Kein Anbieter gefunden.</div>';return}
+    const{data}=await r.json()
+    const published=data.filter(a=>a.status==='published'||a.status==='active')
+    if(!published.length){app.innerHTML='<div class="empty">Aktuell keine Kurse.</div>';return}
+    var trimS=function(t){return t?t.split(':').slice(0,2).join(':'):''};var schedule=function(a){if(a.schedule?.type!=='recurring'||!a.schedule.slots)return '';var days={MO:'Mo',TU:'Di',WE:'Mi',TH:'Do',FR:'Fr',SA:'Sa',SU:'So'};return a.schedule.slots.map(function(s){return (days[s.day]||s.day)+' '+trimS(s.startTime)+'-'+trimS(s.endTime)}).join(', ')}
+    app.innerHTML=published.map(a=>'<div class="course"><div class="course-info"><div class="course-title">'+esc(a.title)+'</div><div class="course-meta"><span class="badge">'+esc(a.category)+'</span> '+(a.ageRange?.min||'?')+'-'+(a.ageRange?.max||'?')+' Jahre'+(schedule(a)?' · '+schedule(a):'')+(a.pricing?.[0]?.amount?' · '+a.pricing[0].amount+'\\u20AC':'')+'<span id="rb-'+a.id+'" style="margin-left:6px"></span></div>'+(a.description?'<p style="font-size:13px;color:#3C2225;margin-top:8px;margin-bottom:0">'+esc(a.description.substring(0,120))+(a.description.length>120?'...':'')+'</p>':'')+'</div><a class="book-btn" href="/embed/'+slug+'/calendar?activity='+a.id+'">Buchen</a></div>').join('')+'<div style="text-align:center;padding:8px 0;font-size:10px"><a href="https://urbankidsclub.de" target="_blank" rel="noopener" style="color:#94a3b8;text-decoration:none">Powered by Urban Kids Club</a></div>'
+    published.forEach(a=>{fetch('/api/public/activities/'+a.id+'/rating').then(r=>r.json()).then(res=>{var d=res.data||res;if(d.count>0){var el=document.getElementById('rb-'+a.id);if(el)el.innerHTML='<span style="color:#d97706;font-weight:600">\\u2605 '+d.average.toFixed(1)+' \\u00B7 '+d.count+' Bewertung'+(d.count!==1?'en':'')+'</span>'}}).catch(()=>{})})
+  }catch(e){app.innerHTML='<div class="empty">Fehler beim Laden.</div>'}
+})()
+</script></body></html>`
+  }
+
+  // Single course embed: /embed/:slug/course/:activityId
+  if (type === 'course' && activityId) {
+    const safeActId = activityId.replace(/[^a-zA-Z0-9-]/g, '')
+    return `<!DOCTYPE html>
+<html lang="de"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kurs</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300;12..96,400;12..96,500;12..96,600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Bricolage Grotesque',system-ui,sans-serif;background:#fbf5ea;color:#1f1d18;padding:16px}
+.card{background:#fff;border-radius:16px;box-shadow:0 2px 12px rgba(0,0,0,0.06);border:1px solid #f0ebe8;overflow:hidden;max-width:500px;margin:0 auto}
+.card-header{padding:20px 24px;border-bottom:1px solid #f0ebe8}
+.card-body{padding:20px 24px}
+.title{font-size:18px;font-weight:700;color:#3C2225}
+.meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;font-size:13px;color:#64748b}
+.badge{background:#f0ebe8;color:#8B3A28;padding:2px 8px;border-radius:6px;font-size:12px;font-weight:500}
+.desc{font-size:14px;color:#3C2225;margin-top:12px;line-height:1.6}
+.price{font-size:20px;font-weight:700;color:#B5533A;margin-top:12px}
+.btn{display:block;width:100%;padding:12px;background:linear-gradient(135deg,#B5533A,#8B3A28);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;text-align:center;text-decoration:none;margin-top:16px}
+.btn:hover{opacity:0.9}
+.empty{text-align:center;padding:40px;color:#94a3b8}
+#rating{margin-top:8px}
+</style>
+</head><body>
+<div id="app"><div class="empty">Wird geladen...</div></div>
+<script>
+(async function(){
+  const slug=${JSON.stringify(slug)},actId='${safeActId}',app=document.getElementById('app')
+  function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+  try{
+    const r=await fetch('/api/providers/by-slug/'+slug+'/activities')
+    if(!r.ok){app.innerHTML='<div class="empty">Kurs nicht gefunden.</div>';return}
+    const{data}=await r.json()
+    const a=data.find(function(x){return x.id===actId&&(x.status==='published'||x.status==='active')})
+    if(!a){app.innerHTML='<div class="empty">Kurs nicht verfügbar.</div>';return}
+    const schedule=a.schedule?.type==='recurring'?a.schedule.slots?.map(function(s){
+      var days={MO:'Mo',TU:'Di',WE:'Mi',TH:'Do',FR:'Fr',SA:'Sa',SU:'So'}
+      return (days[s.day]||s.day)+' '+s.startTime+'-'+s.endTime
+    }).join(', '):''
+    const price=a.pricing?.[0]?.amount?a.pricing[0].amount.toFixed(2).replace('.',',')+' \\u20AC':''
+    const pkg=a.pricing?.[0]?.packageSize?' ('+a.pricing[0].packageSize+'er-Paket)':''
+    app.innerHTML='<div class="card"><div class="card-header"><div class="title">'+esc(a.title)+'</div><div class="meta"><span class="badge">'+esc(a.category)+'</span><span>'+(a.ageRange?.min||'?')+'-'+(a.ageRange?.max||'?')+' Jahre</span>'+(schedule?'<span>'+esc(schedule)+'</span>':'')+'</div><div id="rating"></div></div><div class="card-body">'+(a.description?'<div class="desc">'+esc(a.description)+'</div>':'')+(price?'<div class="price">'+price+pkg+'</div>':'')+'<a class="btn" href="/embed/'+slug+'/calendar?activity='+esc(a.id)+'">Jetzt buchen</a></div></div>'
+    fetch('/api/public/activities/'+a.id+'/rating').then(function(r){return r.json()}).then(function(res){var d=res.data||res;if(d.count>0){var el=document.getElementById('rating');if(el)el.innerHTML='<span style="color:#d97706;font-size:13px;font-weight:600">\\u2605 '+d.average.toFixed(1)+' \\u00B7 '+d.count+' Bewertung'+(d.count!==1?'en':'')+'</span>'}}).catch(function(){})
+  }catch(e){app.innerHTML='<div class="empty">Fehler beim Laden.</div>'}
+})()
+</script></body></html>`
+  }
+
+  return `<!DOCTYPE html><html><body><p>Widget-Typ "${type}" nicht gefunden. Verfügbar: calendar, courses, course</p></body></html>`
+}
+
+// QR Check-in Page – mobile-optimized two-step flow
+function generateCheckinHtml(providerId: string): string {
+  const safeId = providerId.replace(/[^a-zA-Z0-9-]/g, '')
+  const rawUrl = process.env.APP_PUBLIC_URL || ''
+  const apiBase = rawUrl.replace(/[^a-zA-Z0-9:/.@_-]/g, '')
+  return `<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Check-in</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300;12..96,400;12..96,500;12..96,600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter',sans-serif;min-height:100vh;background:linear-gradient(135deg,#faf9f8 0%,#f0ebe6 100%);display:flex;align-items:center;justify-content:center;padding:20px}
+.card{background:#fff;border-radius:24px;box-shadow:0 8px 32px rgba(0,0,0,0.08);max-width:420px;width:100%;padding:40px 32px;text-align:center}
+.logo{width:56px;height:56px;background:#D4956A;border-radius:16px;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:28px;color:#fff}
+h1{font-size:22px;color:#3C2225;margin-bottom:8px;font-weight:700}
+.subtitle{color:#8B7355;font-size:14px;margin-bottom:28px}
+.input-group{text-align:left;margin-bottom:16px}
+.input-group label{display:block;font-size:13px;font-weight:500;color:#3C2225;margin-bottom:6px}
+.input-group input[type=email]{width:100%;padding:14px 16px;border:2px solid #e8e0d8;border-radius:12px;font-size:16px;font-family:inherit;outline:none;transition:border-color .2s}
+.input-group input[type=email]:focus{border-color:#D4956A}
+.btn{width:100%;padding:16px;background:#D4956A;color:#fff;border:none;border-radius:14px;font-size:16px;font-weight:600;cursor:pointer;transition:background .2s;margin-top:8px;font-family:inherit}
+.btn:hover{background:#c4854a}
+.btn:disabled{background:#ccc;cursor:not-allowed}
+.child-list{text-align:left;margin:20px 0}
+.child-item{display:flex;align-items:center;gap:12px;padding:14px 16px;border:2px solid #e8e0d8;border-radius:14px;margin-bottom:10px;cursor:pointer;transition:all .2s}
+.child-item:hover{border-color:#D4956A;background:#faf5f0}
+.child-item.selected{border-color:#D4956A;background:#fdf4ed}
+.child-item.already{border-color:#a7f3d0;background:#ecfdf5;cursor:default;opacity:.7}
+.child-cb{width:22px;height:22px;border-radius:6px;border:2px solid #ccc;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:14px;transition:all .2s}
+.child-item.selected .child-cb{background:#D4956A;border-color:#D4956A;color:#fff}
+.child-item.already .child-cb{background:#059669;border-color:#059669;color:#fff}
+.child-info{flex:1}
+.child-name{font-weight:600;font-size:15px;color:#3C2225}
+.child-course{font-size:13px;color:#8B7355;margin-top:2px}
+.child-payment{font-size:12px;margin-top:4px}
+.paid{color:#059669}.unpaid{color:#d97706}
+.result-item{padding:16px;border-radius:14px;margin-bottom:10px;display:flex;align-items:center;gap:12px}
+.result-ok{background:#ecfdf5;border:1px solid #a7f3d0}
+.result-pay{background:#fffbeb;border:1px solid #fde68a}
+.result-icon{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
+.result-ok .result-icon{background:#d1fae5;color:#059669}
+.result-pay .result-icon{background:#fef3c7;color:#d97706}
+.result-text{flex:1}
+.result-text .title{font-weight:600;font-size:14px;color:#1f2937}
+.result-text .detail{font-size:13px;color:#6b7280;margin-top:2px}
+.error-msg{color:#ef4444;font-size:14px;margin-top:16px;padding:12px;background:#fef2f2;border-radius:10px}
+.spinner{display:none;width:24px;height:24px;border:3px solid #fff;border-top-color:transparent;border-radius:50%;animation:spin .6s linear infinite;margin:0 auto}
+@keyframes spin{to{transform:rotate(360deg)}}
+.footer{font-size:11px;color:#94a3b8;margin-top:24px}
+</style></head><body>
+<div class="card" id="card">
+
+  <!-- Step 1: Email -->
+  <div id="step1">
+    <div class="logo">📋</div>
+    <h1>Check-in</h1>
+    <p class="subtitle">Gib deine E-Mail-Adresse ein</p>
+    <form id="emailForm">
+      <div class="input-group">
+        <label for="email">E-Mail-Adresse</label>
+        <input type="email" id="email" placeholder="deine@email.de" required autocomplete="email" inputmode="email">
+      </div>
+      <button type="submit" class="btn" id="lookupBtn">
+        <span id="lookupText">Weiter</span>
+        <div class="spinner" id="lookupSpinner"></div>
+      </button>
+    </form>
+    <div id="lookupError"></div>
+  </div>
+
+  <!-- Step 2: Select children (hidden initially) -->
+  <div id="step2" style="display:none">
+    <div class="logo">👋</div>
+    <h1>Willkommen!</h1>
+    <p class="subtitle">Wähle aus, wen du einchecken möchtest</p>
+    <div id="childList" class="child-list"></div>
+    <button onclick="doCheckin()" class="btn" id="checkinBtn">
+      <span id="checkinText">Einchecken</span>
+      <div class="spinner" id="checkinSpinner"></div>
+    </button>
+  </div>
+
+  <div class="footer">Powered by Urban Kids Club</div>
+</div>
+
+<script>
+const PID='${safeId}',API='${apiBase}';
+let _email='',_bookings=[];
+
+document.getElementById('emailForm').addEventListener('submit',async function(e){
+  e.preventDefault();
+  _email=document.getElementById('email').value.trim();
+  if(!_email)return;
+  const btn=document.getElementById('lookupBtn'),txt=document.getElementById('lookupText'),sp=document.getElementById('lookupSpinner');
+  btn.disabled=true;txt.style.display='none';sp.style.display='block';
+  document.getElementById('lookupError').innerHTML='';
+  try{
+    const r=await fetch(API+'/api/public/checkin/lookup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({providerId:PID,email:_email})});
+    const d=(await r.json()).data;
+    if(!d.success){
+      document.getElementById('lookupError').innerHTML='<div class="error-msg">'+esc(d.error)+'</div>';
+      btn.disabled=false;txt.style.display='';sp.style.display='none';return;
+    }
+    _bookings=d.bookings;
+    renderChildren();
+    document.getElementById('step1').style.display='none';
+    document.getElementById('step2').style.display='';
+  }catch(err){
+    document.getElementById('lookupError').innerHTML='<div class="error-msg">Verbindungsfehler. Bitte versuche es erneut.</div>';
+    btn.disabled=false;txt.style.display='';sp.style.display='none';
+  }
+});
+
+function renderChildren(){
+  const el=document.getElementById('childList');
+  let html='';
+  for(let i=0;i<_bookings.length;i++){
+    const b=_bookings[i];
+    const done=b.alreadyCheckedIn;
+    const cls=done?'child-item already':'child-item'+(b._selected?' selected':'');
+    html+='<div class="'+cls+'" '+(done?'':'onclick="toggleChild('+i+')"')+'>';
+    html+='<div class="child-cb">'+(done?'✓':(b._selected?'✓':''))+'</div>';
+    html+='<div class="child-info">';
+    html+='<div class="child-name">'+esc(b.childName)+'</div>';
+    html+='<div class="child-course">'+esc(b.activityTitle)+'</div>';
+    if(done){
+      html+='<div class="child-payment paid">Bereits eingecheckt ✓</div>';
+    }else if(b.paymentStatus==='paid'){
+      html+='<div class="child-payment paid">Bezahlt ✓</div>';
+    }else{
+      html+='<div class="child-payment unpaid">'+b.amountDue.toFixed(2).replace('.',',')+' € offen</div>';
+    }
+    html+='</div></div>';
+  }
+  el.innerHTML=html;
+  // Update button state
+  const anySelected=_bookings.some(function(b){return b._selected&&!b.alreadyCheckedIn});
+  document.getElementById('checkinBtn').disabled=!anySelected;
+}
+
+function toggleChild(i){
+  if(_bookings[i].alreadyCheckedIn)return;
+  _bookings[i]._selected=!_bookings[i]._selected;
+  renderChildren();
+}
+
+async function doCheckin(){
+  const ids=_bookings.filter(function(b){return b._selected&&!b.alreadyCheckedIn}).map(function(b){return b.bookingId});
+  if(!ids.length)return;
+  const btn=document.getElementById('checkinBtn'),txt=document.getElementById('checkinText'),sp=document.getElementById('checkinSpinner');
+  btn.disabled=true;txt.style.display='none';sp.style.display='block';
+  try{
+    const r=await fetch(API+'/api/public/checkin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({providerId:PID,email:_email,bookingIds:ids})});
+    const d=(await r.json()).data;
+    if(!d.success){
+      showMsg(d.error||'Fehler','error');btn.disabled=false;txt.style.display='';sp.style.display='none';return;
+    }
+    // Show confirmation
+    const card=document.getElementById('card');
+    let items='',hasUnpaid=false;
+    for(const item of d.checkedIn){
+      const isPaid=item.paymentStatus==='paid';
+      if(!isPaid)hasUnpaid=true;
+      items+='<div class="result-item '+(isPaid?'result-ok':'result-pay')+'">';
+      items+='<div class="result-icon">'+(isPaid?'✓':'💳')+'</div>';
+      items+='<div class="result-text">';
+      items+='<div class="title">'+esc(item.activityTitle)+'</div>';
+      items+='<div class="detail">'+esc(item.childName)+' — ';
+      items+=isPaid?'Alles erledigt — viel Spaß! 🎉':'Noch '+item.amountDue.toFixed(2).replace('.',',')+' € offen. Kurz vor Ort begleichen — dann kann\\'s losgehen! 💪';
+      items+='</div></div></div>';
+    }
+    card.innerHTML='<div class="logo" style="background:'+(hasUnpaid?'#d97706':'#059669')+'">'+(hasUnpaid?'💳':'✓')+'</div>'+
+      '<h1>'+(hasUnpaid?'Fast geschafft!':'Du bist drin!')+'</h1>'+
+      '<p class="subtitle">'+(hasUnpaid?'Nur noch eine Kleinigkeit…':'Check-in erfolgreich — hab eine tolle Zeit!')+'</p>'+
+      '<div style="text-align:left;margin-top:20px">'+items+'</div>'+
+      (d.redirectUrl?'<p style="color:#94a3b8;font-size:12px;margin-top:16px">Du wirst in 5 Sekunden weitergeleitet...</p>':'')+
+      '<div class="footer">Powered by Urban Kids Club</div>';
+    if(d.redirectUrl)setTimeout(function(){window.location.href=d.redirectUrl},5000);
+  }catch(err){
+    showMsg('Verbindungsfehler','error');btn.disabled=false;txt.style.display='';sp.style.display='none';
+  }
+}
+
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
+function showMsg(msg,type){const e=document.querySelector('.wdg-toast');if(e)e.remove();const t=document.createElement('div');t.className='wdg-toast';t.style.cssText='position:fixed;bottom:16px;left:50%;transform:translateX(-50%);padding:10px 20px;border-radius:10px;font-size:13px;font-weight:500;z-index:9999;color:#fff;background:'+(type==='error'?'#dc2626':'#059669')+';box-shadow:0 4px 16px rgba(0,0,0,.15)';t.textContent=msg;document.body.appendChild(t);setTimeout(function(){t.remove()},3500)}
+</script>
+</body></html>`
+}
+
+// Server starten
+const server = createServer(async (req, res) => {
+  // Security Headers — set on ALL responses (before any early returns)
+  res.setHeader('X-Content-Type-Options', 'nosniff')
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+  // X-Frame-Options set per-path (widgets need to be embeddable)
+  const reqPath = (req.url ?? '/').split('?')[0]
+  if (!reqPath.startsWith('/widget/') && !reqPath.startsWith('/embed/')) {
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN')
+  }
+
+  const url = req.url ?? '/'
+
+  // PWA Assets
+  const path = url.split('?')[0]
+  if (path === '/manifest.json') {
+    res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8')
+    res.setHeader('Cache-Control', 'public, max-age=604800') // 7 days
+    res.statusCode = 200
+    res.end(manifestJson)
+    return
+  }
+  if (path === '/assets/dashboard-ui.js') {
+    try {
+      const js = readFileSync(resolve(__dirname, '../frontend/dashboard-ui.js'), 'utf-8')
+      res.setHeader('Content-Type', 'application/javascript; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end(js)
+    } catch (err) {
+      res.statusCode = 404; res.end('UI script not found')
+    }
+    return
+  }
+  if (path === '/assets/dashboard-cmdk.js') {
+    try {
+      const js = readFileSync(resolve(__dirname, '../frontend/dashboard-cmdk.js'), 'utf-8')
+      res.setHeader('Content-Type', 'application/javascript; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end(js)
+    } catch (err) {
+      res.statusCode = 404; res.end('Command-palette script not found')
+    }
+    return
+  }
+  if (path === '/assets/dashboard-topbar.js') {
+    try {
+      const js = readFileSync(resolve(__dirname, '../frontend/dashboard-topbar.js'), 'utf-8')
+      res.setHeader('Content-Type', 'application/javascript; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end(js)
+    } catch (err) {
+      res.statusCode = 404; res.end('Topbar script not found')
+    }
+    return
+  }
+  if (path === '/assets/kurs-creator-v2.js') {
+    try {
+      const js = readFileSync(resolve(__dirname, '../frontend/kurs-creator-v2.js'), 'utf-8')
+      res.setHeader('Content-Type', 'application/javascript; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end(js)
+    } catch (err) {
+      res.statusCode = 404; res.end('Kurs-Creator script not found')
+    }
+    return
+  }
+  if (path === '/assets/portal-pwa-banner.js') {
+    try {
+      const js = readFileSync(resolve(__dirname, '../frontend/portal-pwa-banner.js'), 'utf-8')
+      res.setHeader('Content-Type', 'application/javascript; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end(js)
+    } catch (err) {
+      res.statusCode = 404; res.end('PWA banner not found')
+    }
+    return
+  }
+  if (path === '/assets/dashboard-polish.js') {
+    try {
+      const js = readFileSync(resolve(__dirname, '../frontend/dashboard-polish.js'), 'utf-8')
+      res.setHeader('Content-Type', 'application/javascript; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end(js)
+    } catch (err) {
+      res.statusCode = 404; res.end('Polish script not found')
+    }
+    return
+  }
+  if (path === '/assets/socialy-polish.js') {
+    try {
+      const js = readFileSync(resolve(__dirname, '../frontend/socialy-polish.js'), 'utf-8')
+      res.setHeader('Content-Type', 'application/javascript; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end(js)
+    } catch (err) {
+      res.statusCode = 404; res.end('Socialy polish script not found')
+    }
+    return
+  }
+  if (path === '/assets/calendar-dnd.js') {
+    try {
+      const js = readFileSync(resolve(__dirname, '../frontend/calendar-dnd.js'), 'utf-8')
+      res.setHeader('Content-Type', 'application/javascript; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end(js)
+    } catch (err) {
+      res.statusCode = 404; res.end('Calendar DnD script not found')
+    }
+    return
+  }
+  if (path === '/assets/calendar-extras.js') {
+    try {
+      const js = readFileSync(resolve(__dirname, '../frontend/calendar-extras.js'), 'utf-8')
+      res.setHeader('Content-Type', 'application/javascript; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end(js)
+    } catch (err) {
+      res.statusCode = 404; res.end('Calendar extras script not found')
+    }
+    return
+  }
+  if (path === '/sw.js') {
+    res.setHeader('Content-Type', 'application/javascript; charset=utf-8')
+    res.setHeader('Service-Worker-Allowed', '/')
+    res.setHeader('Cache-Control', 'no-cache') // always revalidate SW
+    res.statusCode = 200
+    res.end(swJs)
+    return
+  }
+  if (path.startsWith('/icons/')) {
+    const fileName = path.split('/').pop() || ''
+    const iconData = pwaIcons.get(fileName)
+    if (iconData) {
+      const ct = fileName.endsWith('.svg') ? 'image/svg+xml' : 'image/png'
+      res.setHeader('Content-Type', ct)
+      res.setHeader('Cache-Control', 'public, max-age=604800') // 7 days
+      res.statusCode = 200
+      res.end(iconData)
+      return
+    }
+  }
+  if (path.startsWith('/assets/brand/')) {
+    const fileName = path.split('/').pop() || ''
+    const assetData = brandAssets.get(fileName)
+    if (assetData) {
+      const ct = fileName.endsWith('.svg') ? 'image/svg+xml' : 'image/png'
+      res.setHeader('Content-Type', ct)
+      res.setHeader('Cache-Control', 'public, max-age=604800') // 7 days
+      res.statusCode = 200
+      res.end(assetData)
+      return
+    }
+  }
+
+  // Frontend: Root-URL → Dashboard HTML ausliefern (gzip if supported)
+  if (path === '/' || path === '/index.html') {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8')
+    res.setHeader('Cache-Control', 'no-cache')
+    res.statusCode = 200
+    if (req.headers['accept-encoding']?.includes('gzip')) {
+      res.setHeader('Content-Encoding', 'gzip')
+      res.end(dashboardGzip)
+    } else {
+      res.end(dashboardHtml)
+    }
+    return
+  }
+
+  // Admin Dashboard (gzip if supported)
+  if (path === '/admin' || path === '/admin/') {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8')
+    res.setHeader('Cache-Control', 'no-cache')
+    res.statusCode = 200
+    if (req.headers['accept-encoding']?.includes('gzip')) {
+      res.setHeader('Content-Encoding', 'gzip')
+      res.end(adminGzip)
+    } else {
+      res.end(adminHtml)
+    }
+    return
+  }
+
+  // Invoice Preview PDF — Server-side PDF-Rendering
+  if (path === '/invoice-preview.pdf' || path === '/invoice-preview.pdf/') {
+    try {
+      let html = readFileSync(resolve(__dirname, '../frontend/invoice-template.html'), 'utf-8')
+      const dummy: Record<string, string | boolean> = {
+        invoiceNumber: '2026-0042',
+        invoiceDate: '24.04.2026',
+        dueDate: '15.05.2026',
+        status: 'offen',
+        providerName: 'Socialy',
+        providerLegalForm: 'Remy Dostal · Einzelunternehmen',
+        providerStreet: 'Beispielstraße 12',
+        providerZip: '22763',
+        providerCity: 'Hamburg',
+        providerTaxId: '12/345/67890',
+        providerVatId: '',
+        providerEmail: 'hallo@socialy.club',
+        providerPhone: '+49 40 1234567',
+        parentName: 'Anna Schmidt',
+        parentEmail: 'anna@example.com',
+        subtotal: '180,00',
+        tax: '0,00',
+        vatPercent: '0',
+        total: '180,00',
+        bankHolder: 'Remy Dostal',
+        bankIban: 'DE12 3456 7890 1234 5678 90',
+        bankBic: 'GENODEF1S12',
+        isKleinunternehmer: true,
+        logoUrl: '',
+        pdfUrl: '/invoice-preview.pdf',
+        lineItemsHtml: '<tr><td>1</td><td class="desc"><strong>PEKiP Basis — Frühjahrsblock</strong><div class="sub">10 Termine · Teilnehmer: Mia · 06.05. – 08.07.</div></td><td>180,00 €</td><td>—</td><td>180,00</td><td>180,00</td></tr>',
+      }
+      html = html.replace(/\{\{#if (\w+)\}\}([\s\S]*?)\{\{\/if\}\}/g, (_, key, inner) => {
+        return dummy[key] ? inner : ''
+      })
+      html = html.replace(/\{\{(\w+)\}\}/g, (_, key) => String(dummy[key] ?? ''))
+      renderPdf({ html, format: 'A4' }).then((pdf) => {
+        res.setHeader('Content-Type', 'application/pdf')
+        res.setHeader('Content-Disposition', 'inline; filename="Rechnung-2026-0042.pdf"')
+        res.setHeader('Cache-Control', 'no-cache')
+        res.statusCode = 200
+        res.end(pdf)
+      }).catch((err) => {
+        console.error('[invoice-pdf] render error:', err)
+        res.statusCode = 500
+        res.end('PDF render error: ' + err.message)
+      })
+    } catch (err) {
+      console.error('[invoice-pdf] prepare error:', err)
+      res.statusCode = 500
+      res.end('Invoice PDF error: ' + (err as Error).message)
+    }
+    return
+  }
+
+  // Invoice Preview — Rechnungs-Template mit Dummy-Daten
+  if (path === '/invoice-preview' || path === '/invoice-preview/') {
+    try {
+      let html = readFileSync(resolve(__dirname, '../frontend/invoice-template.html'), 'utf-8')
+      const dummy: Record<string, string | boolean> = {
+        invoiceNumber: '2026-0042',
+        invoiceDate: '24.04.2026',
+        dueDate: '15.05.2026',
+        status: 'offen',
+        providerName: 'Socialy',
+        providerLegalForm: 'Remy Dostal · Einzelunternehmen',
+        providerStreet: 'Beispielstraße 12',
+        providerZip: '22763',
+        providerCity: 'Hamburg',
+        providerTaxId: '12/345/67890',
+        providerVatId: '',
+        providerEmail: 'hallo@socialy.club',
+        providerPhone: '+49 40 1234567',
+        parentName: 'Anna Schmidt',
+        parentEmail: 'anna@example.com',
+        subtotal: '180,00',
+        tax: '0,00',
+        vatPercent: '0',
+        total: '180,00',
+        bankHolder: 'Remy Dostal',
+        bankIban: 'DE12 3456 7890 1234 5678 90',
+        bankBic: 'GENODEF1S12',
+        isKleinunternehmer: true,
+        logoUrl: '',
+        pdfUrl: '/invoice-preview.pdf',
+        lineItemsHtml: [
+          '<tr>',
+          '<td>1</td>',
+          '<td class="desc"><strong>PEKiP Basis — Frühjahrsblock</strong><div class="sub">10 Termine · Teilnehmer: Mia · 06.05. – 08.07.</div></td>',
+          '<td>180,00 €</td>',
+          '<td>—</td>',
+          '<td>180,00</td>',
+          '<td>180,00</td>',
+          '</tr>',
+        ].join(''),
+      }
+
+      // Handlebars-ähnliche Ersetzung (simpel, für Preview reicht das)
+      // 1. {{#if key}}...{{/if}}-Blöcke auflösen
+      html = html.replace(/\{\{#if (\w+)\}\}([\s\S]*?)\{\{\/if\}\}/g, (_, key, inner) => {
+        return dummy[key] ? inner : ''
+      })
+      // 2. Einfache {{key}}-Ersetzungen
+      html = html.replace(/\{\{(\w+)\}\}/g, (_, key) => String(dummy[key] ?? ''))
+
+      res.setHeader('Content-Type', 'text/html; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end(html)
+    } catch (err) {
+      console.error('Invoice preview error:', err)
+      res.statusCode = 500
+      res.end('Invoice preview error: ' + (err as Error).message)
+    }
+    return
+  }
+
+  // Email Preview Index — Liste aller Templates
+  if (path === '/email-preview' || path === '/email-preview/') {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8')
+    res.setHeader('Cache-Control', 'no-cache')
+    res.statusCode = 200
+    res.end(EmailPreview.renderIndex())
+    return
+  }
+
+  // Email Preview — einzelnes Template rendern
+  if (path.startsWith('/email-preview/')) {
+    const id = path.replace('/email-preview/', '').replace(/\/$/, '')
+    EmailPreview.render(id).then((rendered) => {
+      if (!rendered) {
+        res.statusCode = 404
+        res.end('Template not found: ' + id)
+        return
+      }
+      res.setHeader('Content-Type', 'text/html; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>' + rendered.subject + '</title></head><body style="margin:0;padding:0;background:#eee;"><div style="padding:20px;background:#1F1D18;color:#FBF5EA;font-family:system-ui,sans-serif;font-size:13px;"><strong>Betreff:</strong> ' + rendered.subject + ' &nbsp; · &nbsp; <a href="/email-preview" style="color:#F7B79C;">← zurück zur Liste</a></div>' + rendered.html + '</body></html>')
+    }).catch((err) => {
+      console.error('Email preview render error:', err)
+      res.statusCode = 500
+      res.end('Email preview error: ' + err.message)
+    })
+    return
+  }
+
+  // Checkout Preview — 3 Modi (normal, invite, trial) via URL-Parameter
+  if (path === '/checkout-preview' || path === '/checkout-preview/') {
+    try {
+      const html = readFileSync(resolve(__dirname, '../widgets/checkout-preview.html'), 'utf-8')
+      res.setHeader('Content-Type', 'text/html; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end(html)
+    } catch (err) {
+      res.statusCode = 500; res.end('Checkout preview not found')
+    }
+    return
+  }
+
+  // Provider Dashboard Preview — UKC-Brandbook Design-System
+  // Phase 1c: /v3 → dashboard-v3.html (Sophie-Look mit Backend-Wiring)
+  if (path === '/v3' || path === '/v3/' || path === '/dashboard-v3' || path === '/dashboard-v3/') {
+    try {
+      const html = readFileSync(resolve(__dirname, '../frontend/dashboard-v3.html'), 'utf-8')
+      res.statusCode = 200
+      res.setHeader('Content-Type', 'text/html; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+      res.setHeader('Pragma', 'no-cache')
+      res.setHeader('Expires', '0')
+      res.end(html); return
+    } catch (err) {
+      res.statusCode = 500; res.end('dashboard-v3 not found: ' + (err as Error).message); return
+    }
+  }
+
+  if (path === '/provider-preview' || path === '/provider-preview/') {
+    try {
+      const html = readFileSync(resolve(__dirname, '../widgets/provider-preview.html'), 'utf-8')
+      res.setHeader('Content-Type', 'text/html; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end(html)
+    } catch (err) {
+      res.statusCode = 500; res.end('Provider preview not found')
+    }
+    return
+  }
+
+  // Kurse Subpage Preview
+  if (path === '/kurse-preview' || path === '/kurse-preview/') {
+    try {
+      const html = readFileSync(resolve(__dirname, '../widgets/kurse-preview.html'), 'utf-8')
+      res.setHeader('Content-Type', 'text/html; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end(html)
+    } catch (err) {
+      res.statusCode = 500; res.end('Kurse preview not found')
+    }
+    return
+  }
+
+  // Kurs Detail Preview
+  if (path === '/kurs-detail-preview' || path === '/kurs-detail-preview/') {
+    try {
+      const html = readFileSync(resolve(__dirname, '../widgets/kurs-detail-preview.html'), 'utf-8')
+      res.setHeader('Content-Type', 'text/html; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end(html)
+    } catch (err) {
+      res.statusCode = 500; res.end('Kurs detail preview not found')
+    }
+    return
+  }
+
+  // Kunden Detail Preview
+  if (path === '/kunden-detail-preview' || path === '/kunden-detail-preview/') {
+    try {
+      const html = readFileSync(resolve(__dirname, '../widgets/kunden-detail-preview.html'), 'utf-8')
+      res.setHeader('Content-Type', 'text/html; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end(html)
+    } catch (err) {
+      res.statusCode = 500; res.end('Kunden Detail not found')
+    }
+    return
+  }
+
+  // Buchung Detail Preview
+  if (path === '/buchung-detail-preview' || path === '/buchung-detail-preview/') {
+    try {
+      const html = readFileSync(resolve(__dirname, '../widgets/buchung-detail-preview.html'), 'utf-8')
+      res.setHeader('Content-Type', 'text/html; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end(html)
+    } catch (err) {
+      res.statusCode = 500; res.end('Buchung Detail not found')
+    }
+    return
+  }
+
+  // Rechnung Detail Preview
+  if (path === '/rechnung-detail-preview' || path === '/rechnung-detail-preview/') {
+    try {
+      const html = readFileSync(resolve(__dirname, '../widgets/rechnung-detail-preview.html'), 'utf-8')
+      res.setHeader('Content-Type', 'text/html; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end(html)
+    } catch (err) {
+      res.statusCode = 500; res.end('Rechnung Detail not found')
+    }
+    return
+  }
+
+  // Buchungen Subpage Preview
+  if (path === '/buchungen-preview' || path === '/buchungen-preview/') {
+    try {
+      const html = readFileSync(resolve(__dirname, '../widgets/buchungen-preview.html'), 'utf-8')
+      res.setHeader('Content-Type', 'text/html; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end(html)
+    } catch (err) {
+      res.statusCode = 500; res.end('Buchungen preview not found')
+    }
+    return
+  }
+
+  // Kunden preview
+  if (path === '/kunden-preview' || path === '/kunden-preview/') {
+    try {
+      const html = readFileSync(resolve(__dirname, '../widgets/kunden-preview.html'), 'utf-8')
+      res.setHeader('Content-Type', 'text/html; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end(html)
+    } catch (err) {
+      res.statusCode = 500; res.end('Kunden preview not found')
+    }
+    return
+  }
+
+  // Rechnungen preview
+  if (path === '/rechnungen-preview' || path === '/rechnungen-preview/') {
+    try {
+      const html = readFileSync(resolve(__dirname, '../widgets/rechnungen-preview.html'), 'utf-8')
+      res.setHeader('Content-Type', 'text/html; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end(html)
+    } catch (err) {
+      res.statusCode = 500; res.end('Rechnungen preview not found')
+    }
+    return
+  }
+
+  // Marketing / Mom-Graph Preview
+  if (path === '/marketing-preview' || path === '/marketing-preview/') {
+    try {
+      const html = readFileSync(resolve(__dirname, '../widgets/marketing-preview.html'), 'utf-8')
+      res.setHeader('Content-Type', 'text/html; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end(html)
+    } catch (err) {
+      res.statusCode = 500; res.end('Marketing preview not found')
+    }
+    return
+  }
+
+
+  // Kursblöcke preview
+  if (path === '/kursbloecke-preview' || path === '/kursbloecke-preview/') {
+    try {
+      const html = readFileSync(resolve(__dirname, '../widgets/kursbloecke-preview.html'), 'utf-8')
+      res.setHeader('Content-Type', 'text/html; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end(html)
+    } catch (err) {
+      res.statusCode = 500; res.end('Kursblöcke preview not found')
+    }
+    return
+  }
+
+  // Probestunden preview
+  if (path === '/probestunden-preview' || path === '/probestunden-preview/') {
+    try {
+      const html = readFileSync(resolve(__dirname, '../widgets/probestunden-preview.html'), 'utf-8')
+      res.setHeader('Content-Type', 'text/html; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end(html)
+    } catch (err) {
+      res.statusCode = 500; res.end('Probestunden preview not found')
+    }
+    return
+  }
+
+  // Team preview
+  if (path === '/team-preview' || path === '/team-preview/') {
+    try {
+      const html = readFileSync(resolve(__dirname, '../widgets/team-preview.html'), 'utf-8')
+      res.setHeader('Content-Type', 'text/html; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end(html)
+    } catch (err) {
+      res.statusCode = 500; res.end('Team preview not found')
+    }
+    return
+  }
+
+  // Berichte preview
+  if (path === '/berichte-preview' || path === '/berichte-preview/') {
+    try {
+      const html = readFileSync(resolve(__dirname, '../widgets/berichte-preview.html'), 'utf-8')
+      res.setHeader('Content-Type', 'text/html; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end(html)
+    } catch (err) {
+      res.statusCode = 500; res.end('Berichte preview not found')
+    }
+    return
+  }
+
+  // Ferien & Saisons preview
+  if (path === '/ferien-preview' || path === '/ferien-preview/') {
+    try {
+      const html = readFileSync(resolve(__dirname, '../widgets/ferien-preview.html'), 'utf-8')
+      res.setHeader('Content-Type', 'text/html; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end(html)
+    } catch (err) {
+      res.statusCode = 500; res.end('Ferien preview not found')
+    }
+    return
+  }
+
+  // Kurs-anlegen preview (V2 Modal-Demo)
+  if (path === '/postfach-preview' || path === '/postfach-preview/') {
+    try {
+      const html = readFileSync(resolve(__dirname, '../widgets/postfach-preview.html'), 'utf-8')
+      res.setHeader('Content-Type', 'text/html; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end(html)
+    } catch (err) {
+      res.statusCode = 500
+      res.end('postfach preview error')
+    }
+    return
+  }
+
+  if (path === '/ki-assistent-preview' || path === '/ki-assistent-preview/') {
+    try {
+      const html = readFileSync(resolve(__dirname, '../widgets/ki-assistent-preview.html'), 'utf-8')
+      res.setHeader('Content-Type', 'text/html; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end(html)
+    } catch (err) {
+      res.statusCode = 500
+      res.end('ki-assistent preview error')
+    }
+    return
+  }
+
+  if (path === '/integrationen-preview' || path === '/integrationen-preview/') {
+    try {
+      const html = readFileSync(resolve(__dirname, '../widgets/integrationen-preview.html'), 'utf-8')
+      res.setHeader('Content-Type', 'text/html; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end(html)
+    } catch (err) {
+      res.statusCode = 500
+      res.end('integrationen preview error')
+    }
+    return
+  }
+
+  if (path === '/raeume-preview' || path === '/raeume-preview/') {
+    try {
+      const html = readFileSync(resolve(__dirname, '../widgets/raeume-preview.html'), 'utf-8')
+      res.setHeader('Content-Type', 'text/html; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end(html)
+    } catch (err) {
+      res.statusCode = 500
+      res.end('raeume preview error')
+    }
+    return
+  }
+
+  if (path === '/credits-preview' || path === '/credits-preview/') {
+    try {
+      const html = readFileSync(resolve(__dirname, '../widgets/credits-preview.html'), 'utf-8')
+      res.setHeader('Content-Type', 'text/html; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end(html)
+    } catch (err) {
+      res.statusCode = 500
+      res.end('credits preview error')
+    }
+    return
+  }
+
+  if (path === '/anwesenheit-preview' || path === '/anwesenheit-preview/') {
+    try {
+      const html = readFileSync(resolve(__dirname, '../widgets/anwesenheit-preview.html'), 'utf-8')
+      res.setHeader('Content-Type', 'text/html; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end(html)
+    } catch (err) {
+      res.statusCode = 500
+      res.end('anwesenheit preview error')
+    }
+    return
+  }
+
+  if (path === '/portal-pwa-privacy' || path === '/portal-pwa-privacy/') {
+    try {
+      const html = readFileSync(resolve(__dirname, '../widgets/portal-pwa-privacy.html'), 'utf-8')
+      res.setHeader('Content-Type', 'text/html; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end(html)
+    } catch (err) {
+      res.statusCode = 500; res.end('Privacy page error')
+    }
+    return
+  }
+  if (path === '/portal-pwa-demo' || path === '/portal-pwa-demo/') {
+    try {
+      const html = readFileSync(resolve(__dirname, '../widgets/portal-pwa-demo.html'), 'utf-8')
+      res.setHeader('Content-Type', 'text/html; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end(html)
+    } catch (err) {
+      res.statusCode = 500; res.end('PWA demo render error')
+    }
+    return
+  }
+  if (path === '/kurs-anlegen-preview' || path === '/kurs-anlegen-preview/') {
+    try {
+      const html = readFileSync(resolve(__dirname, '../widgets/kurs-anlegen-preview.html'), 'utf-8')
+      res.setHeader('Content-Type', 'text/html; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end(html)
+    } catch (err) {
+      res.statusCode = 500; res.end('Preview not found')
+    }
+    return
+  }
+
+  // Einstellungen preview
+  if (path === '/einstellungen-preview' || path === '/einstellungen-preview/') {
+    try {
+      const html = readFileSync(resolve(__dirname, '../widgets/einstellungen-preview.html'), 'utf-8')
+      res.setHeader('Content-Type', 'text/html; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end(html)
+    } catch (err) {
+      res.statusCode = 500; res.end('Einstellungen preview not found')
+    }
+    return
+  }
+
+  // Kalender preview
+  if (path === '/kalender-preview' || path === '/kalender-preview/') {
+    try {
+      const html = readFileSync(resolve(__dirname, '../widgets/kalender-preview.html'), 'utf-8')
+      res.setHeader('Content-Type', 'text/html; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end(html)
+    } catch (err) {
+      res.statusCode = 500; res.end('Kalender preview not found')
+    }
+    return
+  }
+
+  // Invite Landing Page — Parent B opens /invite/:code
+  if (path.startsWith('/invite/') && path.length > 8) {
+    try {
+      const html = readFileSync(resolve(__dirname, '../widgets/invite-landing-preview.html'), 'utf-8')
+      res.setHeader('Content-Type', 'text/html; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end(html)
+    } catch (err) {
+      res.statusCode = 500; res.end('Invite landing not found')
+    }
+    return
+  }
+
+  // Kalender Export (.ics) — Downloadable iCalendar for the Preview week
+  if (path === '/kalender-export.ics') {
+    try {
+      const ics = readFileSync(resolve(__dirname, '../frontend/kalender-export.ics'))
+      res.setHeader('Content-Type', 'text/calendar; charset=utf-8')
+      res.setHeader('Content-Disposition', 'attachment; filename="socialy-kalender.ics"')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end(ics)
+    } catch (err) {
+      res.statusCode = 500; res.end('ICS export failed')
+    }
+    return
+  }
+
+  // Login Preview — Socialy-Branded Login Screen
+  if (path === '/login-preview' || path === '/login-preview/') {
+    try {
+      const html = readFileSync(resolve(__dirname, '../widgets/login-preview.html'), 'utf-8')
+      res.setHeader('Content-Type', 'text/html; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end(html)
+    } catch (err) {
+      res.statusCode = 500; res.end('Login preview not found')
+    }
+    return
+  }
+
+  // Portal Preview — Eltern-Portal (Meine Kurse + Guthaben)
+  if (path === '/portal-preview' || path === '/portal-preview/') {
+    try {
+      const html = readFileSync(resolve(__dirname, '../widgets/portal-preview.html'), 'utf-8')
+      res.setHeader('Content-Type', 'text/html; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end(html)
+    } catch (err) {
+      res.statusCode = 500; res.end('Portal preview not found')
+    }
+    return
+  }
+
+  // Embed Preview — schlankes Public Widget (nur Kursangebot)
+  if (path === '/embed-preview' || path === '/embed-preview/') {
+    try {
+      const html = readFileSync(resolve(__dirname, '../widgets/embed-preview.html'), 'utf-8')
+      res.setHeader('Content-Type', 'text/html; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end(html)
+    } catch (err) {
+      res.statusCode = 500; res.end('Embed preview not found')
+    }
+    return
+  }
+
+  // Widget V2 Preview — Design-Sandbox, bei jedem Request frisch aus Datei geladen
+  if (path === '/widget-preview' || path === '/widget-preview/') {
+    try {
+      const previewHtml = readFileSync(resolve(__dirname, '../widgets/parent-course-widget-v2-preview.html'), 'utf-8')
+      res.setHeader('Content-Type', 'text/html; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end(previewHtml)
+    } catch (err) {
+      res.statusCode = 500
+      res.end('Preview not found')
+    }
+    return
+  }
+
+  // Embed V2 Demo-Seite (Generator + Live-Preview)
+  if (path === '/embed-v2-demo' || path === '/embed-v2-demo/') {
+    try {
+      const html = readFileSync(resolve(__dirname, '../widgets/embed-v2-demo.html'), 'utf-8')
+      res.setHeader('Content-Type', 'text/html; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end(html)
+    } catch (err) {
+      res.statusCode = 500; res.end('Demo not found')
+    }
+    return
+  }
+
+  // Parent Auth (Phase-2 Magic-Link, federation-ready stub)
+  if (path.startsWith('/api/parent/') || /^\/portal\/[a-z0-9-]+\/auth$/i.test(path)) {
+    const _url = new URL(req.url || '/', 'https://' + (req.headers.host || 'localhost'))
+    const handled = await handleParentAuth(req, res, _url)
+    if (handled) return
+  }
+
+  // Parent: book trial / block / redeem credit
+  if (path === '/api/parent/book-trial' || path === '/api/parent/book-block' || path === '/api/parent/redeem-credit') {
+    const _url = new URL(req.url || '/', 'https://' + (req.headers.host || 'localhost'))
+    const handled = await handleBookCourse(req, res, _url, () => null)
+    if (handled) return
+  }
+
+  // Parent: cancel booking (24h grace period)
+  if (path === '/api/parent/cancel-booking') {
+    const _url = new URL(req.url || '/', 'https://' + (req.headers.host || 'localhost'))
+    const handled = await handleCancelBooking(req, res, _url, () => null)
+    if (handled) return
+  }
+
+  // Parent Push Notifications (scaffolded — VAPID not configured yet)
+  if (path.startsWith('/api/parent/push/')) {
+    const _url = new URL(req.url || '/', 'https://' + (req.headers.host || 'localhost'))
+    const handled = await handlePushRoutes(req, res, _url, () => null) // session getter wired in next pass
+    if (handled) return
+  }
+
+  // Portal PWA: white-label per-provider installable web app
+  // Routes: /portal/:slug, /portal/:slug/manifest.json, /portal/:slug/sw.js, /portal/:slug/icons/*, /portal/:slug/install
+  if (path.startsWith('/portal/')) {
+    const widgetsDir = resolve(__dirname, '../widgets')
+    if (handlePortalPwa(req, res, path, widgetsDir)) return
+  }
+
+  // Embed V2: Single-Course Session-Picker im Socialy-Brand
+  // Route: /embed-v2/:slug/course/:activityId
+  if (path.startsWith('/embed-v2/')) {
+    const parts = path.split('/').filter(Boolean) // ['embed-v2', slug, 'course', activityId]
+    if (parts.length >= 4 && parts[2] === 'course') {
+      try {
+        const html = readFileSync(resolve(__dirname, '../widgets/course-session-picker-v2.html'), 'utf-8')
+        res.setHeader('Content-Type', 'text/html; charset=utf-8')
+        res.setHeader('Cache-Control', 'no-cache')
+        // Iframe-fähig: allow embedding on any origin (socialy.club etc.)
+        res.setHeader('Content-Security-Policy', "frame-ancestors *")
+        res.setHeader('X-Content-Type-Options', 'nosniff')
+        res.statusCode = 200
+        res.end(html)
+      } catch (err) {
+        res.statusCode = 500
+        res.end('Embed V2 not found')
+      }
+      return
+    }
+    res.statusCode = 400
+    res.end('Invalid embed-v2 path. Expected: /embed-v2/:slug/course/:activityId')
+    return
+  }
+
+  // Embed: Public embeddable widgets (calendar, courses, etc.)
+  if (path.startsWith('/embed/')) {
+    const parts = path.split('/').filter(Boolean) // ['embed', slug, type, ...extra]
+    const slug = parts[1] || ''
+    let embedType = parts[2] || 'calendar'
+    const embedExtra = parts[3] || '' // e.g. activityId for single course view
+    // Normalize: 'course' (singular) with activityId → single course embed
+    if (embedType === 'course' && embedExtra) embedType = 'course'
+    res.setHeader('Content-Type', 'text/html; charset=utf-8')
+    res.setHeader('Cache-Control', 'no-cache')
+    res.statusCode = 200
+    res.end(generateEmbedHtml(slug, embedType, url, embedExtra))
+    return
+  }
+
+  // Parent Portal (gzip if supported)
+  if (path === '/portal' || path === '/portal/' || path.startsWith('/portal/?')) {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8')
+    res.setHeader('Cache-Control', 'no-cache')
+    res.statusCode = 200
+    if (req.headers['accept-encoding']?.includes('gzip')) {
+      res.setHeader('Content-Encoding', 'gzip')
+      res.end(portalGzip)
+    } else {
+      res.end(portalHtml)
+    }
+    return
+  }
+
+  // QR Check-in: Public page for parents to check in via QR code
+  if (path.startsWith('/checkin/')) {
+    const providerId = path.split('/')[2] || ''
+    if (providerId) {
+      res.setHeader('Content-Type', 'text/html; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.statusCode = 200
+      res.end(generateCheckinHtml(providerId))
+      return
+    }
+  }
+
+  // Widget: Parent-Course-Widget ausliefern
+  if (url.startsWith('/widget/')) {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8')
+    res.setHeader('Cache-Control', 'no-cache')
+    res.statusCode = 200
+    // Inject Supabase config so widget auth (Google/Apple/Magic Link) works
+    const sbUrl = process.env.SUPABASE_URL || ''
+    const sbKey = process.env.SUPABASE_ANON_KEY || ''
+    const injectedHtml = parentWidgetHtml.replace(
+      "const SUPABASE_URL = window.UKC_SUPABASE_URL || ''",
+      `const SUPABASE_URL = window.UKC_SUPABASE_URL || '${sbUrl}'`
+    ).replace(
+      "const SUPABASE_ANON_KEY = window.UKC_SUPABASE_ANON_KEY || ''",
+      `const SUPABASE_ANON_KEY = window.UKC_SUPABASE_ANON_KEY || '${sbKey}'`
+    )
+    res.end(injectedHtml)
+    return
+  }
+
+  // POST/PUT/PATCH/DELETE → markDirty für Auto-Save (nur im In-Memory-Modus)
+  if (!USE_SUPABASE && req.method && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) {
+    // Nach Response markieren wir dirty
+    const origEnd = res.end.bind(res)
+    res.end = function (...args: Parameters<typeof res.end>) {
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        import('../domain/persistence').then(({ markDirty }) => markDirty())
+      }
+      return origEnd(...args)
+    } as typeof res.end
+  }
+
+  // Alles andere → API Router (no-store: don't cache API responses)
+  res.setHeader('Cache-Control', 'no-store')
+  router.handle(req, res)
+})
+
+const modeLabel = USE_SUPABASE ? 'Supabase' : 'In-Memory'
+
+// ============================================================
+// Background job interval IDs (for graceful shutdown)
+// ============================================================
+const jobIntervals: ReturnType<typeof setInterval>[] = []
+
+// Production hardening: request timeouts
+server.requestTimeout = 30_000
+server.headersTimeout = 10_000
+
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`
+┌─────────────────────────────────────────────────┐
+│  Urban Kids Club – Provider Dashboard           │
+│  http://0.0.0.0:${PORT}                           │
+│                                                 │
+│  Dashboard: http://localhost:${PORT}               │
+│  API:       http://localhost:${PORT}/api/health    │
+│  Widget:    http://localhost:${PORT}/widget/       │
+│                                                 │
+│  Modus:      ${modeLabel.padEnd(35)}│
+│  Persistence: ${USE_SUPABASE ? 'Supabase (extern)' : hasPersistedData ? 'Daten geladen' : 'Neuer Start (Demo-Daten)'}${' '.repeat(Math.max(0, 34 - (USE_SUPABASE ? 'Supabase (extern)' : hasPersistedData ? 'Daten geladen' : 'Neuer Start (Demo-Daten)').length))}│
+│  Auto-Save:  ${USE_SUPABASE ? 'n/a (Supabase)' : 'aktiv'}${' '.repeat(Math.max(0, 35 - (USE_SUPABASE ? 'n/a (Supabase)' : 'aktiv').length))}│
+└─────────────────────────────────────────────────┘
+  `)
+
+  // Background jobs: direct function calls (no self-fetch), Supabase mode only
+  if (USE_SUPABASE) {
+    // Auto-expire waitlist offers every 15 minutes
+    jobIntervals.push(setInterval(async () => {
+      await runWithRetry('expire-waitlist', async () => {
+        logger.info('Job', 'Running waitlist expiry...')
+        const result = await runExpireWaitlistJob()
+        if (result.expired > 0 || result.offered > 0) {
+          logger.info('AutoOffer', `Expired: ${result.expired}, Offered to next: ${result.offered}`)
+        }
+        logger.info('Job', 'Waitlist expiry complete')
+      })
+    }, 15 * 60 * 1000))
+    logger.info('Job', 'Waitlist auto-expire job registered (every 15 minutes)')
+
+    // Send course reminders daily at ~17:00 DE time (check every 30 min)
+    let lastReminderDate = ''
+    jobIntervals.push(setInterval(async () => {
+      const nowDE = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Berlin' }))
+      const hour = nowDE.getHours()
+      const todayStr = nowDE.toISOString().slice(0, 10)
+      if (hour === 17 && lastReminderDate !== todayStr) {
+        lastReminderDate = todayStr
+        await runWithRetry('send-reminders', async () => {
+          logger.info('Job', 'Running course reminders...')
+          const result = await runSendRemindersJob()
+          if (result.sent > 0) {
+            logger.info('Reminder', `Sent ${result.sent} reminders for ${result.date}`)
+          }
+          logger.info('Job', 'Course reminders complete')
+        })
+      }
+    }, 30 * 60 * 1000))
+    logger.info('Job', 'Course reminder job registered (daily at 17:00 DE)')
+
+    // Process trial follow-up emails every hour
+    jobIntervals.push(setInterval(async () => {
+      await runWithRetry('trial-followups', async () => {
+        logger.info('Job', 'Running trial follow-ups...')
+        const result = await runTrialFollowupsJob()
+        if (result.totalFeedbackSent > 0 || result.totalReminderSent > 0 || result.totalLastChanceSent > 0) {
+          logger.info('TrialFollowup', `Feedback: ${result.totalFeedbackSent}, Reminder: ${result.totalReminderSent}, LastChance: ${result.totalLastChanceSent}`)
+        }
+        logger.info('Job', 'Trial follow-ups complete')
+      })
+    }, 60 * 60 * 1000))
+    logger.info('Job', 'Trial follow-up job registered (every hour)')
+
+    // Marketing-Flow Worker: process pending_sends every 60 seconds
+    jobIntervals.push(setInterval(async () => {
+      await runWithRetry('marketing-flow-worker', async () => {
+        const { MarketingFlowWorker } = await import('../services/marketing-flow.service')
+        const r = await MarketingFlowWorker.processPendingSends(20)
+        if (r.claimed > 0) {
+          logger.info('MarketingFlow', `Tick claimed=${r.claimed} sent=${r.sent} failed=${r.failed} skipped=${r.skipped}`)
+        }
+      })
+    }, 60 * 1000))
+    logger.info('Job', 'Marketing-flow worker registered (every 60s)')
+
+    // Conversion-Webhook Worker: process pending deliveries every 30 seconds
+    jobIntervals.push(setInterval(async () => {
+      await runWithRetry('conversion-webhook-worker', async () => {
+        const { ConversionWebhookService } = await import('../services/conversion-webhook.service')
+        const r = await ConversionWebhookService.processPending(20)
+        if (r.sent + r.failed + r.skipped > 0) {
+          logger.info('ConversionWebhook', `Tick sent=${r.sent} failed=${r.failed} skipped=${r.skipped}`)
+        }
+      })
+    }, 30 * 1000))
+    logger.info('Job', 'Conversion-webhook worker registered (every 30s)')
+
+    // Marketing-Scheduler: täglich um 09:00 DE — bündelt alle täglichen Trigger-Scans
+    // (24h-Reminder, course_ending_soon, booking_completed, payment_overdue, review_request, child_birthday)
+    let lastMarketingDailyDate = ''
+    jobIntervals.push(setInterval(async () => {
+      const nowDE = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Berlin' }))
+      const hour = nowDE.getHours()
+      const todayStr = nowDE.toISOString().slice(0, 10)
+      if (hour === 9 && lastMarketingDailyDate !== todayStr) {
+        lastMarketingDailyDate = todayStr
+        await runWithRetry('marketing-daily-bundle', async () => {
+          const admin = await import('./routes/admin')
+          const results = await Promise.allSettled([
+            admin.runMarketingReminders24hJob(),
+            admin.runMarketingCourseEndingSoonJob(),
+            admin.runMarketingBookingCompletedJob(),
+            admin.runMarketingPaymentOverdueJob(),
+            admin.runMarketingReviewRequestJob(),
+            admin.runMarketingChildBirthdayJob(),
+          ])
+          const summary = results.map((r, i) => {
+            const names = ['24h','ending_soon','completed','overdue','review','birthday']
+            return r.status === 'fulfilled'
+              ? `${names[i]}=${JSON.stringify(r.value)}`
+              : `${names[i]}=FAILED:${(r.reason as any)?.message || r.reason}`
+          }).join(' | ')
+          logger.info('MarketingDailyBundle', summary)
+        })
+      }
+    }, 30 * 60 * 1000))
+    logger.info('Job', 'Marketing-daily-bundle scheduler registered (daily at 09:00 DE)')
+  }
+})
+
+// ============================================================
+// Graceful shutdown
+// ============================================================
+async function gracefulShutdown(signal: string) {
+  logger.info('Server', `Received ${signal}, shutting down gracefully...`)
+
+  // Stop accepting new connections
+  server.close()
+
+  // Clear all job intervals
+  for (const id of jobIntervals) {
+    clearInterval(id)
+  }
+
+  // Save in-memory data if needed
+  if (!USE_SUPABASE) {
+    try {
+      const { saveToDisk } = await import('../domain/persistence')
+      saveToDisk()
+      logger.info('Server', 'In-memory data saved to disk')
+    } catch {
+      // persistence module may not be available
+    }
+  }
+
+  logger.info('Server', 'Shutdown complete')
+  process.exit(0)
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'))
+process.on('SIGINT', () => gracefulShutdown('SIGINT'))

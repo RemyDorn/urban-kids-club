@@ -1,0 +1,158 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Urban Kids Club//Provider Dashboard//DE
+CALSCALE:GREGORIAN
+METHOD:PUBLISH
+X-WR-CALNAME:Socialy Berlin — Kurse
+X-WR-TIMEZONE:Europe/Berlin
+X-WR-CALDESC:Urban Kids Club · Export aus dem Provider Dashboard
+BEGIN:VTIMEZONE
+TZID:Europe/Berlin
+BEGIN:STANDARD
+DTSTART:19701025T030000
+TZOFFSETFROM:+0200
+TZOFFSETTO:+0100
+RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU
+TZNAME:CET
+END:STANDARD
+BEGIN:DAYLIGHT
+DTSTART:19700329T020000
+TZOFFSETFROM:+0100
+TZOFFSETTO:+0200
+RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU
+TZNAME:CEST
+END:DAYLIGHT
+END:VTIMEZONE
+BEGIN:VEVENT
+UID:pekip-basis-20260428@urbankidsclub.de
+DTSTAMP:20260424T115115Z
+DTSTART;TZID=Europe/Berlin:20260428T093000
+DTEND;TZID=Europe/Berlin:20260428T104500
+SUMMARY:PEKiP Basis
+DESCRIPTION:8/10 Kinder\\n\\nMotorik-Fokus · Bringe dein Baby\, eine Decke und etwas zu trinken.\\n\\nExportiert aus dem Urban Kids Club Provider Dashboard.
+LOCATION:Raum 2 — Haupt
+STATUS:CONFIRMED
+TRANSP:OPAQUE
+CATEGORIES:Eltern-Kind
+END:VEVENT
+BEGIN:VEVENT
+UID:eltern-kind-turnen-20260428@urbankidsclub.de
+DTSTAMP:20260424T115115Z
+DTSTART;TZID=Europe/Berlin:20260428T140000
+DTEND;TZID=Europe/Berlin:20260428T150000
+SUMMARY:Eltern-Kind-Turnen Gruppe A
+DESCRIPTION:9/10 Kinder\\n\\nTurnschuhe mit weißer Sohle nicht vergessen.\\n\\nExportiert aus dem Urban Kids Club Provider Dashboard.
+LOCATION:Raum 1 — Bewegung
+STATUS:CONFIRMED
+TRANSP:OPAQUE
+CATEGORIES:Bewegung
+END:VEVENT
+BEGIN:VEVENT
+UID:musikgarten-junior-20260429@urbankidsclub.de
+DTSTAMP:20260424T115115Z
+DTSTART;TZID=Europe/Berlin:20260429T093000
+DTEND;TZID=Europe/Berlin:20260429T103000
+SUMMARY:Musikgarten Junior
+DESCRIPTION:6/8 Kinder\\n\\nFruehjahrsblock · Rhythmusinstrumente stehen bereit.\\n\\nExportiert aus dem Urban Kids Club Provider Dashboard.
+LOCATION:Raum 2 — Haupt
+STATUS:CONFIRMED
+TRANSP:OPAQUE
+CATEGORIES:Musik
+END:VEVENT
+BEGIN:VEVENT
+UID:eltern-kind-turnen-20260429@urbankidsclub.de
+DTSTAMP:20260424T115115Z
+DTSTART;TZID=Europe/Berlin:20260429T100000
+DTEND;TZID=Europe/Berlin:20260429T110000
+SUMMARY:Eltern-Kind-Turnen Gruppe A
+DESCRIPTION:9/10 Kinder\\n\\nTurnschuhe mit weißer Sohle nicht vergessen.\\n\\nExportiert aus dem Urban Kids Club Provider Dashboard.
+LOCATION:Raum 1 — Bewegung
+STATUS:CONFIRMED
+TRANSP:OPAQUE
+CATEGORIES:Bewegung
+END:VEVENT
+BEGIN:VEVENT
+UID:zwergerl-yoga-20260429@urbankidsclub.de
+DTSTAMP:20260424T115115Z
+DTSTART;TZID=Europe/Berlin:20260429T160000
+DTEND;TZID=Europe/Berlin:20260429T170000
+SUMMARY:Zwergerl-Yoga
+DESCRIPTION:Ausgebucht · Warteliste: 4\\n\\nBringe bitte eine Decke oder eine Yoga-Matte mit.\\n\\nExportiert aus dem Urban Kids Club Provider Dashboard.
+LOCATION:Raum 1 — Bewegung
+STATUS:CONFIRMED
+TRANSP:OPAQUE
+CATEGORIES:Bewegung
+END:VEVENT
+BEGIN:VEVENT
+UID:pekip-basis-20260430@urbankidsclub.de
+DTSTAMP:20260424T115115Z
+DTSTART;TZID=Europe/Berlin:20260430T093000
+DTEND;TZID=Europe/Berlin:20260430T104500
+SUMMARY:PEKiP Basis
+DESCRIPTION:8/10 Kinder\\n\\nSinneserfahrung-Stunde · Bringe dein Baby\, eine Decke und etwas zu trinken.\\n\\nExportiert aus dem Urban Kids Club Provider Dashboard.
+LOCATION:Raum 2 — Haupt
+STATUS:CONFIRMED
+TRANSP:OPAQUE
+CATEGORIES:Eltern-Kind
+END:VEVENT
+BEGIN:VEVENT
+UID:babymassage-20260430@urbankidsclub.de
+DTSTAMP:20260424T115115Z
+DTSTART;TZID=Europe/Berlin:20260430T110000
+DTEND;TZID=Europe/Berlin:20260430T120000
+SUMMARY:Babymassage Kompakt
+DESCRIPTION:3/6 Kinder\\n\\nHandtuch und Mandeloel mitbringen (erhaeltlich vor Ort).\\n\\nExportiert aus dem Urban Kids Club Provider Dashboard.
+LOCATION:Raum 3 — Still
+STATUS:CONFIRMED
+TRANSP:OPAQUE
+CATEGORIES:Eltern-Kind
+END:VEVENT
+BEGIN:VEVENT
+UID:kreativ-werkstatt-20260430@urbankidsclub.de
+DTSTAMP:20260424T115115Z
+DTSTART;TZID=Europe/Berlin:20260430T150000
+DTEND;TZID=Europe/Berlin:20260430T163000
+SUMMARY:Kreativ-Werkstatt (Pilot)
+DESCRIPTION:3/8 Kinder\\n\\nTestlauf · 6-teilige Serie · Material wird gestellt.\\n\\nExportiert aus dem Urban Kids Club Provider Dashboard.
+LOCATION:Raum 1 — Bewegung
+STATUS:CONFIRMED
+TRANSP:OPAQUE
+CATEGORIES:Kreativ
+END:VEVENT
+BEGIN:VEVENT
+UID:babymassage-20260501@urbankidsclub.de
+DTSTAMP:20260424T115115Z
+DTSTART;TZID=Europe/Berlin:20260501T110000
+DTEND;TZID=Europe/Berlin:20260501T120000
+SUMMARY:Babymassage Kompakt
+DESCRIPTION:3/6 Kinder\\n\\nHandtuch und Mandeloel mitbringen (erhaeltlich vor Ort).\\n\\nExportiert aus dem Urban Kids Club Provider Dashboard.
+LOCATION:Raum 3 — Still
+STATUS:CONFIRMED
+TRANSP:OPAQUE
+CATEGORIES:Eltern-Kind
+END:VEVENT
+BEGIN:VEVENT
+UID:zwergerl-yoga-20260502-1@urbankidsclub.de
+DTSTAMP:20260424T115115Z
+DTSTART;TZID=Europe/Berlin:20260502T100000
+DTEND;TZID=Europe/Berlin:20260502T110000
+SUMMARY:Zwergerl-Yoga
+DESCRIPTION:Ausgebucht · Warteliste: 4\\n\\nBringe bitte eine Decke oder eine Yoga-Matte mit.\\n\\nExportiert aus dem Urban Kids Club Provider Dashboard.
+LOCATION:Raum 1 — Bewegung
+STATUS:CONFIRMED
+TRANSP:OPAQUE
+CATEGORIES:Bewegung
+END:VEVENT
+BEGIN:VEVENT
+UID:zwergerl-yoga-20260502-2@urbankidsclub.de
+DTSTAMP:20260424T115115Z
+DTSTART;TZID=Europe/Berlin:20260502T111500
+DTEND;TZID=Europe/Berlin:20260502T121500
+SUMMARY:Zwergerl-Yoga
+DESCRIPTION:7/10 Kinder\\n\\nZweite Gruppe · Bringe bitte eine Decke oder eine Yoga-Matte mit.\\n\\nExportiert aus dem Urban Kids Club Provider Dashboard.
+LOCATION:Raum 1 — Bewegung
+STATUS:CONFIRMED
+TRANSP:OPAQUE
+CATEGORIES:Bewegung
+END:VEVENT
+END:VCALENDAR

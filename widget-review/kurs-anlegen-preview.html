@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Neuer Kurs · Preview · Urban Kids Club</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700;800&family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;1,9..144,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #FFEFE1; --surface: #FFF9F5; --ink: #3C2124; --muted: #C49980;
+  --primary: #CC895E; --signal: #B4523A;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body {
+  background: var(--bg); color: var(--ink);
+  font-family: "Inter", sans-serif; min-height: 100vh;
+}
+.page { max-width: 1100px; margin: 0 auto; padding: 60px 24px; }
+.hero { margin-bottom: 30px; max-width: 720px; }
+.kicker {
+  font-family: "Barlow Condensed", sans-serif; font-weight: 700;
+  font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--primary); margin-bottom: 8px;
+}
+h1 {
+  font-family: "Barlow Condensed", sans-serif; font-weight: 700;
+  font-size: 44px; line-height: 1.1; color: var(--ink); letter-spacing: -0.005em;
+}
+h1 em {
+  font-family: "Fraunces", serif; font-style: italic; font-weight: 400;
+  color: var(--primary);
+}
+.sub {
+  margin-top: 14px; font-size: 16px; color: var(--ink); opacity: 0.75;
+  line-height: 1.6;
+}
+.actions { margin-top: 22px; display: flex; gap: 10px; flex-wrap: wrap; }
+.btn {
+  padding: 13px 24px; border-radius: 999px;
+  background: var(--primary); color: var(--surface); border: none;
+  font-family: inherit; font-size: 14px; font-weight: 600;
+  cursor: pointer; transition: all 140ms;
+  display: inline-flex; align-items: center; gap: 8px;
+}
+.btn:hover { background: #B8784F; transform: translateY(-1px); box-shadow: 0 6px 18px rgba(204,137,94,0.3); }
+.btn-ghost {
+  background: transparent; color: var(--ink);
+  border: 1px solid rgba(60,33,36,0.18);
+}
+.btn-ghost:hover { background: rgba(60,33,36,0.06); transform: none; box-shadow: none; }
+
+.preview-card {
+  background: var(--surface); border: 1px solid rgba(60,33,36,0.08);
+  border-radius: 18px; padding: 28px 32px;
+  box-shadow: 0 4px 16px rgba(60,33,36,0.04);
+  margin-top: 28px;
+}
+.note-row {
+  display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: flex-start;
+  padding: 14px 0; border-bottom: 1px solid rgba(60,33,36,0.06);
+  font-size: 14px;
+}
+.note-row:last-child { border-bottom: 0; }
+.note-icon {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: rgba(204,137,94,0.14); color: var(--primary);
+  display: flex; align-items: center; justify-content: center;
+  font-family: "Fraunces", serif; font-style: italic; font-weight: 400; font-size: 14px;
+  flex-shrink: 0;
+}
+.note-row strong { color: var(--ink); }
+.note-row { color: rgba(60,33,36,0.75); line-height: 1.55; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="hero">
+    <div class="kicker">V2 Design Preview</div>
+    <h1>„Neuer <em>Kurs</em>"-Modal</h1>
+    <p class="sub">Kompletter Kurs-Creator im UKC-Brandbook (Linen / Sienna / Brown / Temptress · Barlow + Fraunces + Inter). Klick den Button und probier's aus — KI-Beschreibung, Zeitplan dynamisch erweitern, Preismodell mit zweiter Option, Farbwahl.</p>
+    <div class="actions">
+      <button class="btn" onclick="window.openKursCreatorV2()">+ Neuen Kurs anlegen</button>
+      <a class="btn btn-ghost" href="/provider-preview">Zurück zum Dashboard</a>
+    </div>
+  </div>
+
+  <div class="preview-card">
+    <div class="note-row"><span class="note-icon">1</span><span><strong>Mit-KI-generieren-Button</strong> bei der Beschreibung — wählt je nach Kategorie einen passenden Vorlagen-Text. Der echte Stripe-API-Aufruf käme an die Stelle wo aktuell ein Demo-Loader läuft.</span></div>
+    <div class="note-row"><span class="note-icon">2</span><span><strong>Zeitplan</strong> mit „+ Weiteren Tag hinzufügen" für mehrere Wochentage gleichzeitig (z. B. Mo + Mi + Fr).</span></div>
+    <div class="note-row"><span class="note-icon">3</span><span><strong>Zweite Preisoption</strong> per Checkbox sichtbar — z. B. Drop-in zusätzlich zum 8er-Paket.</span></div>
+    <div class="note-row"><span class="note-icon">4</span><span><strong>Kalenderfarbe</strong> ist mit den Brand-Kategorien gemappt (Eltern-Kind / Bewegung / Musik / Kreativ / Tanz / Sprache / Natur / Sonstige) — die Wahl bestimmt direkt wie der Termin im Kalender erscheint.</span></div>
+    <div class="note-row"><span class="note-icon">5</span><span><strong>Validierung</strong> auf Kursname + Preis. Bei Fehler wackelt das Feld kurz und es kommt ein Toast.</span></div>
+    <div class="note-row"><span class="note-icon">6</span><span><strong>Auto-Hook</strong>: Jeder Button mit Text „Neuer Kurs" / „Kurs anlegen" auf den V2-Preview-Seiten öffnet ab jetzt diesen Modal — auch in der Sidebar, Topbar, Empty-State-CTAs.</span></div>
+  </div>
+</div>
+
+<script src="/assets/dashboard-ui.js"></script>
+<script src="/assets/kurs-creator-v2.js"></script>
+</body>
+</html>

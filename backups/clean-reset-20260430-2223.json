@@ -1,0 +1,40 @@
+{
+  "_meta": {
+    "snapshot_at": "2026-04-30T20:24:28.361757+00:00",
+    "purpose": "Pre-clean-reset backup, prod yuilhiqnrjuuqoqggihm",
+    "scope": "All customer data (parents, bookings, enrollments, messages, notifications, sessions, credits, pending_sends, conversion_deliveries, parent auth)",
+    "kept_intact": "providers, activities, course_blocks, block_sessions, rooms, team_*, subscription_plans, automation_flows, conversion_webhooks, message_templates, users, subscriptions, provider_leads, lead_activities"
+  },
+  "parents": [
+    {"id":"4b518e70-430b-4704-bc43-7efdf6508bd6","name":"Jasmin Dornsiepen","email":"jdornsiepen@gmail.com","phone":"015258569615","children":[],"created_at":"2026-04-28T11:39:31.926889+00:00"},
+    {"id":"24f00108-2e4a-4028-83d3-4975a84dd8c1","name":"Remy Dornsiepen","email":"remy@meta-agency.com","phone":"015258569615","children":[],"created_at":"2026-04-28T16:55:46.577961+00:00"},
+    {"id":"7eb78fee-0d4b-4236-8181-05d3c7c1b37c","name":"Remy Dornsiepen","email":"remy.dostal@gmail.com","phone":"015258569615","children":[{"age":0,"name":"Bo Dornsiepen","lastName":"Dornsiepen","birthYear":2025,"firstName":"Bo"},{"age":0,"name":"Rome Dornsiepen","lastName":"Dornsiepen","birthYear":2020,"firstName":"Rome"},{"age":0,"name":"Rome Dornsiepen","lastName":"Dornsiepen","birthYear":2023,"firstName":"Rome"}],"created_at":"2026-04-26T22:08:06.494333+00:00"}
+  ],
+  "children": [
+    {"id":"bfba1a61-5286-486e-8e63-8e507111f0ce","user_id":"7c342677-23d2-4010-b71a-77c3cfa46d80","name":"Lena","date_of_birth":"2020-03-15","gender":"female"},
+    {"id":"226445c2-f9fa-4682-87c1-733ec091c4bc","user_id":"7c342677-23d2-4010-b71a-77c3cfa46d80","name":"Tim","date_of_birth":"2022-08-22","gender":"male"},
+    {"id":"0cbe892d-b2d0-4e21-927f-23044cfebee6","user_id":"7061107a-4fb5-45c7-9420-4f42b0b6be78","name":"Emma","date_of_birth":"2019-11-05","gender":"female"}
+  ],
+  "provider_bookings": [
+    {"id":"369be13e-865c-439a-a9ff-35016c41ab9d","activity_id":"e1e29904-ff10-4652-b841-720c46836f7d","parent_id":"24f00108-2e4a-4028-83d3-4975a84dd8c1","child_info":{"firstName":"Remy","lastName":"D","birthYear":2020},"status":"cancelled","amount_paid":140,"created_at":"2026-04-28T16:55:47.176233+00:00","booked_date":"2026-04-29"},
+    {"id":"85724cb4-e0d3-47db-a1b7-54922fb8a0d2","activity_id":"e1e29904-ff10-4652-b841-720c46836f7d","parent_id":"4b518e70-430b-4704-bc43-7efdf6508bd6","child_info":{"firstName":"Remy","lastName":"Dornsiepen","birthYear":2020},"status":"cancelled","amount_paid":140,"created_at":"2026-04-28T11:39:32.359594+00:00","booked_date":"2026-04-29"},
+    {"id":"0ccbd8db-a303-401c-8848-6efb0bb63945","activity_id":"c1ac9d32-bfbf-42e8-8f4f-7e3f8ff3df8c","parent_id":"7eb78fee-0d4b-4236-8181-05d3c7c1b37c","child_info":{"firstName":"Bo","lastName":"Dornsiepen","birthYear":2024},"status":"cancelled","amount_paid":126,"booked_date":"2026-05-05"},
+    {"id":"0b7a90c6-e87b-4b9f-8749-72f3a222a474","activity_id":"c1ac9d32-bfbf-42e8-8f4f-7e3f8ff3df8c","parent_id":"7eb78fee-0d4b-4236-8181-05d3c7c1b37c","child_info":{"firstName":"Rome","lastName":"Dornsiepen","birthYear":2020},"status":"cancelled","amount_paid":140,"booked_date":"2026-05-05"},
+    {"id":"608dbb0a-ac20-4d3f-9eb9-104b35696249","activity_id":"e1e29904-ff10-4652-b841-720c46836f7d","parent_id":"7eb78fee-0d4b-4236-8181-05d3c7c1b37c","child_info":{"firstName":"Rome","lastName":"Dornsiepen","birthYear":2023},"status":"cancelled","amount_paid":140,"booked_date":null}
+  ],
+  "block_enrollments_count": 5,
+  "messages_count": 7,
+  "notifications_count": 5,
+  "session_credits_count": 1,
+  "session_attendance_records_count": 2,
+  "parent_auth_tokens_count": 1,
+  "parent_sessions_count": 2,
+  "pending_sends_count": 4,
+  "conversion_deliveries_count": 3,
+  "auth_users_to_delete": [
+    {"id":"7c342677-23d2-4010-b71a-77c3cfa46d80","email":"sandra.mueller@test.de","reason":"seed-data"},
+    {"id":"7061107a-4fb5-45c7-9420-4f42b0b6be78","email":"max.braun@test.de","reason":"seed-data"},
+    {"id":"e81b88fa-bb47-4661-88c7-5f982838f6ad","email":"remy.dostal@gmail.com","reason":"parent-account-linked"}
+  ],
+  "_note": "Vollständiger DB-Dump im Tool-Output Backup zur Stunde 22:24 Uhr 30.04.2026 abrufbar."
+}

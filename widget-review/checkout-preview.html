@@ -1,0 +1,1254 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Buchung – Socialy</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300;12..96,400;12..96,500;12..96,600;12..96,700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+
+<style>
+/* ============================================================
+   Socialy Checkout-Stepper
+   3 Modi: normal | invite (mit Gutschein) | trial (Schnupperstunde)
+   ============================================================ */
+:root {
+  --bg: #FBF5EA;
+  --surface: #FFFDF8;
+  --surface-alt: #F4E9D1;
+  --ink: #1F1D18;
+  --ink-muted: #67625A;
+  --primary: #D96C45;
+  --primary-hover: #C45A35;
+  --primary-soft: #F7B79C;
+  --primary-tint: #FDE4D3;
+  --accent: #A8B6A3;
+  --accent-deep: #6A7863;
+  --accent-dark: #4A5546;
+  --accent-tint: #E4EBE0;
+  --danger: #B8392A;
+  --warning: #E28862;
+  --border: rgba(31, 29, 24, 0.08);
+  --border-strong: rgba(31, 29, 24, 0.14);
+  --shadow-sm: 0 1px 2px rgba(31, 29, 24, 0.04);
+  --shadow-md: 0 4px 20px rgba(217, 108, 69, 0.08);
+  --font-body: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  --font-accent: "Instrument Serif", ui-serif, Georgia, serif;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-pill: 999px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+body { padding: 24px 16px 60px; }
+
+.shell {
+  max-width: 620px;
+  margin: 0 auto;
+}
+
+/* ============================================================
+   TOP-BAR (kurz, dezent)
+   ============================================================ */
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  text-decoration: none;
+}
+.brand em {
+  font-family: var(--font-accent);
+  font-style: italic;
+  font-weight: 400;
+  color: var(--primary);
+}
+
+.step-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--ink-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.step-dots {
+  display: inline-flex;
+  gap: 4px;
+}
+.step-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border-strong);
+  transition: background .3s;
+}
+.step-dot.active { background: var(--primary); }
+.step-dot.done { background: var(--accent-deep); }
+
+/* ============================================================
+   INVITATION BANNER (nur im invite-Modus)
+   ============================================================ */
+.invite-banner {
+  display: none;
+  background: linear-gradient(135deg, var(--primary-tint) 0%, #FDECE0 100%);
+  border: 1px solid rgba(217,108,69,0.2);
+  border-radius: var(--radius-md);
+  padding: 14px 18px;
+  margin-bottom: 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+body[data-mode="invite"] .invite-banner { display: flex; }
+
+.invite-icon {
+  flex-shrink: 0;
+  width: 38px; height: 38px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: var(--surface);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-accent);
+  font-style: italic;
+  font-size: 18px;
+}
+
+.invite-text {
+  flex: 1;
+  font-size: 14px;
+  color: var(--ink);
+  line-height: 1.4;
+}
+.invite-text strong {
+  font-weight: 600;
+}
+.invite-text em {
+  font-family: var(--font-accent);
+  font-style: italic;
+  font-weight: 400;
+  color: var(--primary);
+}
+
+/* ============================================================
+   TRIAL BANNER (nur im trial-Modus)
+   ============================================================ */
+.trial-banner {
+  display: none;
+  background: var(--accent-tint);
+  border: 1px solid rgba(168,182,163,0.3);
+  border-radius: var(--radius-md);
+  padding: 14px 18px;
+  margin-bottom: 18px;
+  align-items: center;
+  gap: 14px;
+}
+body[data-mode="trial"] .trial-banner { display: flex; }
+
+.trial-banner .invite-icon {
+  background: var(--accent-deep);
+}
+
+.trial-banner em {
+  font-family: var(--font-accent);
+  font-style: italic;
+  font-weight: 400;
+  color: var(--accent-dark);
+}
+
+/* ============================================================
+   HEADLINE
+   ============================================================ */
+.head {
+  padding: 8px 0 24px;
+}
+.head-kicker {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--primary);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+body[data-mode="trial"] .head-kicker { color: var(--accent-deep); }
+
+.head-title {
+  font-size: clamp(28px, 4vw, 36px);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  color: var(--ink);
+}
+.head-title em {
+  font-family: var(--font-accent);
+  font-style: italic;
+  font-weight: 400;
+  color: var(--primary);
+}
+body[data-mode="trial"] .head-title em { color: var(--accent-deep); }
+
+.head-sub {
+  font-size: 15px;
+  color: var(--ink-muted);
+  margin-top: 8px;
+  max-width: 46ch;
+}
+
+/* ============================================================
+   COURSE SUMMARY
+   ============================================================ */
+.course {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 18px 20px;
+  margin-bottom: 22px;
+}
+
+.course-title {
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+}
+.course-title em {
+  font-family: var(--font-accent);
+  font-style: italic;
+  font-weight: 400;
+  color: var(--primary);
+}
+
+.course-sub {
+  font-size: 13px;
+  color: var(--ink-muted);
+  margin-top: 3px;
+}
+
+.course-meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 18px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--border);
+}
+
+.meta-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+.meta-val {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink);
+  margin-top: 1px;
+}
+
+/* ============================================================
+   STEP PANELS
+   ============================================================ */
+.step-panel { display: none; }
+.step-panel.active { display: block; }
+
+.step-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-muted);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+.step-heading {
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  margin-bottom: 18px;
+  line-height: 1.2;
+}
+.step-heading em {
+  font-family: var(--font-accent);
+  font-style: italic;
+  font-weight: 400;
+  color: var(--primary);
+}
+
+/* ============================================================
+   CHILD CARDS
+   ============================================================ */
+.choices {
+  display: grid;
+  gap: 10px;
+}
+
+.choice {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all .2s;
+}
+.choice:hover { border-color: var(--border-strong); }
+.choice[data-selected="true"] {
+  border-color: var(--primary);
+  background: var(--primary-tint);
+}
+
+.choice-avatar {
+  flex-shrink: 0;
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-deep) 100%);
+  color: var(--surface);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-accent);
+  font-style: italic;
+  font-size: 18px;
+}
+
+.choice[data-selected="true"] .choice-avatar {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
+}
+
+.choice-info {
+  flex: 1;
+  min-width: 0;
+}
+.choice-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.choice-meta {
+  font-size: 12px;
+  color: var(--ink-muted);
+  margin-top: 1px;
+}
+
+.choice-radio {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--border-strong);
+  flex-shrink: 0;
+  position: relative;
+  transition: all .2s;
+}
+.choice[data-selected="true"] .choice-radio {
+  border-color: var(--primary);
+  background: var(--primary);
+}
+.choice[data-selected="true"] .choice-radio::after {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  background: var(--surface);
+}
+
+.add-new {
+  margin-top: 8px;
+  background: none;
+  border: none;
+  color: var(--primary);
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 10px 4px;
+  letter-spacing: 0.01em;
+}
+.add-new:hover { color: var(--primary-hover); text-decoration: underline; }
+
+/* ============================================================
+   FORM FIELDS (new child / trial guest)
+   ============================================================ */
+.field-group {
+  margin-bottom: 14px;
+}
+
+.field-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+  display: block;
+}
+
+.field-input {
+  width: 100%;
+  padding: 13px 16px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  font-family: var(--font-body);
+  font-size: 15px;
+  color: var(--ink);
+  transition: all .2s;
+}
+.field-input::placeholder { color: var(--ink-muted); opacity: 0.55; }
+.field-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  background: #fff;
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 10px;
+}
+
+/* ============================================================
+   PACKAGE OPTIONS (Step 2 normal)
+   ============================================================ */
+.pkg {
+  padding: 16px 18px;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all .2s;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.pkg:hover { border-color: var(--border-strong); }
+.pkg[data-selected="true"] {
+  border-color: var(--primary);
+  background: var(--primary-tint);
+}
+.pkg-info {
+  flex: 1;
+}
+.pkg-name {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+.pkg-detail {
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+.pkg-price {
+  font-size: 18px;
+  font-weight: 500;
+  font-family: var(--font-accent);
+  font-style: italic;
+  color: var(--primary);
+}
+.pkg-price.strike {
+  color: var(--ink-muted);
+  text-decoration: line-through;
+  font-size: 14px;
+  margin-right: 6px;
+  font-family: var(--font-body);
+  font-style: normal;
+}
+
+/* ============================================================
+   SUMMARY BOX (Step 3)
+   ============================================================ */
+.summary {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 18px 20px;
+  margin-bottom: 18px;
+}
+.sum-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 8px 0;
+  font-size: 14px;
+}
+.sum-row.sep { border-bottom: 1px dashed var(--border); }
+.sum-label { color: var(--ink-muted); }
+.sum-val { color: var(--ink); font-weight: 500; }
+
+.sum-row.discount .sum-val { color: var(--primary); font-weight: 600; }
+
+.sum-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 14px 0 2px;
+  margin-top: 6px;
+  border-top: 2px solid var(--border);
+}
+.total-label {
+  font-size: 13px;
+  color: var(--ink-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+.total-val {
+  font-size: 28px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+.total-val em {
+  font-family: var(--font-accent);
+  font-style: italic;
+  font-weight: 400;
+  color: var(--primary);
+  font-size: 18px;
+  margin-left: 4px;
+}
+
+/* ============================================================
+   PAYMENT METHODS
+   ============================================================ */
+.pay-methods {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.pay {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all .2s;
+}
+.pay:hover { border-color: var(--border-strong); }
+.pay[data-selected="true"] {
+  border-color: var(--primary);
+  background: var(--primary-tint);
+}
+
+.pay-icon {
+  width: 36px; height: 24px;
+  background: var(--bg);
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--ink-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+}
+
+.pay-label {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.pay-radio {
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  border: 2px solid var(--border-strong);
+  position: relative;
+  flex-shrink: 0;
+}
+.pay[data-selected="true"] .pay-radio {
+  border-color: var(--primary);
+  background: var(--primary);
+}
+.pay[data-selected="true"] .pay-radio::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: var(--surface);
+}
+
+/* ============================================================
+   TRIAL NOTE (statt Zahlung)
+   ============================================================ */
+.trial-note {
+  background: var(--accent-tint);
+  border-radius: var(--radius-md);
+  padding: 18px 20px;
+  margin-bottom: 16px;
+}
+.trial-note-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--accent-dark);
+  margin-bottom: 8px;
+}
+.trial-note-title em {
+  font-family: var(--font-accent);
+  font-style: italic;
+  font-weight: 400;
+}
+.trial-note p {
+  font-size: 13px;
+  color: var(--ink-muted);
+  line-height: 1.55;
+  margin-bottom: 4px;
+}
+.trial-note p:last-child { margin-bottom: 0; }
+
+/* ============================================================
+   BUTTONS
+   ============================================================ */
+.actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 24px;
+  gap: 10px;
+}
+
+.btn {
+  font-family: var(--font-body);
+  border: none;
+  border-radius: var(--radius-pill);
+  padding: 14px 28px;
+  font-weight: 700;
+  font-size: 15px;
+  cursor: pointer;
+  transition: all .2s;
+  letter-spacing: 0.02em;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-primary {
+  background: var(--primary);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(217,108,69,0.24);
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--primary-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(217,108,69,0.32);
+}
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--border-strong);
+  padding: 12px 22px;
+}
+.btn-ghost:hover {
+  background: var(--surface-alt);
+}
+
+body[data-mode="trial"] .btn-primary {
+  background: var(--accent-deep);
+  box-shadow: 0 4px 12px rgba(106,120,99,0.22);
+}
+body[data-mode="trial"] .btn-primary:hover:not(:disabled) {
+  background: var(--accent-dark);
+  box-shadow: 0 6px 16px rgba(106,120,99,0.3);
+}
+
+/* ============================================================
+   SUCCESS STATE
+   ============================================================ */
+.success {
+  display: none;
+  text-align: center;
+  padding: 40px 20px;
+}
+.success.active { display: block; }
+
+.success-mark {
+  width: 72px; height: 72px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
+  color: var(--surface);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-accent);
+  font-style: italic;
+  font-size: 36px;
+  margin-bottom: 22px;
+  box-shadow: 0 8px 24px rgba(217,108,69,0.24);
+}
+body[data-mode="trial"] .success-mark {
+  background: linear-gradient(135deg, var(--accent-deep) 0%, var(--accent-dark) 100%);
+  box-shadow: 0 8px 24px rgba(106,120,99,0.24);
+}
+
+.success-title {
+  font-size: clamp(28px, 4vw, 36px);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  margin-bottom: 10px;
+  line-height: 1.1;
+}
+.success-title em {
+  font-family: var(--font-accent);
+  font-style: italic;
+  font-weight: 400;
+  color: var(--primary);
+}
+body[data-mode="trial"] .success-title em { color: var(--accent-deep); }
+
+.success-sub {
+  font-size: 15px;
+  color: var(--ink-muted);
+  max-width: 40ch;
+  margin: 0 auto 28px;
+}
+
+.success-next {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 20px 22px;
+  text-align: left;
+  margin-bottom: 20px;
+}
+.success-next-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-muted);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+.success-next ul {
+  list-style: none;
+  font-size: 14px;
+  color: var(--ink);
+  line-height: 1.7;
+}
+.success-next li {
+  padding-left: 20px;
+  position: relative;
+}
+.success-next li::before {
+  content: '·';
+  position: absolute;
+  left: 6px;
+  top: -2px;
+  font-family: var(--font-accent);
+  font-style: italic;
+  color: var(--primary);
+  font-size: 22px;
+  line-height: 1;
+}
+
+/* ============================================================
+   FOOTER
+   ============================================================ */
+.powered-by {
+  margin-top: 32px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+  text-align: center;
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+.powered-by a { color: var(--ink); text-decoration: none; font-weight: 500; }
+.powered-by a:hover { color: var(--primary); }
+.powered-by .heart { color: var(--primary); font-family: var(--font-accent); font-style: italic; }
+
+/* ============================================================
+   MODE-SWITCHER (nur in Preview)
+   ============================================================ */
+.mode-switch {
+  position: fixed;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--ink);
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  z-index: 10;
+  opacity: 0.92;
+}
+.mode-switch a {
+  padding: 6px 12px;
+  border-radius: var(--radius-pill);
+  color: var(--bg);
+  text-decoration: none;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  transition: all .2s;
+}
+.mode-switch a:hover { background: rgba(251,245,234,0.12); }
+.mode-switch a.active {
+  background: var(--primary);
+  color: #fff;
+}
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+@media (max-width: 480px) {
+  body { padding: 16px 12px 40px; }
+  .course-meta { grid-template-columns: 1fr 1fr; }
+  .step-indicator { font-size: 10px; }
+  .actions { flex-direction: column-reverse; align-items: stretch; }
+  .actions .btn { justify-content: center; }
+  .mode-switch { position: static; margin-bottom: 12px; justify-content: center; }
+}
+</style>
+</head>
+<body data-mode="normal">
+
+<!-- Mode-Switcher (Preview-Only) -->
+<div class="mode-switch">
+  <a href="?" class="mode-link" data-m="normal">Normal</a>
+  <a href="?invite=SOCIALY-A7K2" class="mode-link" data-m="invite">Einladung</a>
+  <a href="?mode=trial" class="mode-link" data-m="trial">Schnupper</a>
+</div>
+
+<div class="shell">
+
+  <!-- TOP BAR -->
+  <div class="topbar">
+    <a href="#" class="brand">Soci<em>aly</em></a>
+    <div class="step-indicator">
+      <span id="step-text">Schritt 1 von 3</span>
+      <span class="step-dots">
+        <span class="step-dot active" data-step="1"></span>
+        <span class="step-dot" data-step="2"></span>
+        <span class="step-dot" data-step="3"></span>
+      </span>
+    </div>
+  </div>
+
+  <!-- INVITE BANNER -->
+  <div class="invite-banner">
+    <div class="invite-icon">✦</div>
+    <div class="invite-text">
+      <strong>Anna</strong> hat dich zu <strong>PEKiP Basis</strong> eingeladen. <em>–10 %</em> für dich.
+    </div>
+  </div>
+
+  <!-- TRIAL BANNER -->
+  <div class="trial-banner">
+    <div class="invite-icon">✦</div>
+    <div class="invite-text">
+      <strong>Anna</strong> hat dich eingeladen, reinzuschauen. Deine <em>Schnupperstunde</em> ist kostenlos.
+    </div>
+  </div>
+
+  <!-- HEAD + COURSE SUMMARY -->
+  <div class="head">
+    <div class="head-kicker">
+      <span class="kicker-text">Kurs buchen</span>
+    </div>
+    <h1 class="head-title">
+      <span class="title-text">Lass <em>Mia</em> dabei sein.</span>
+    </h1>
+    <p class="head-sub">
+      <span class="sub-text">Du bist in drei Schritten fertig. Kein Stress.</span>
+    </p>
+  </div>
+
+  <div class="course">
+    <div class="course-title">PEKiP <em>Basis</em></div>
+    <div class="course-sub">Frühjahrsblock · Mai – Juli · Socialy</div>
+    <div class="course-meta">
+      <div>
+        <div class="meta-label">Tag &amp; Uhrzeit</div>
+        <div class="meta-val">Montag, 09:30</div>
+      </div>
+      <div>
+        <div class="meta-label">Zeitraum</div>
+        <div class="meta-val">06.05. – 08.07.</div>
+      </div>
+      <div>
+        <div class="meta-label">Termine</div>
+        <div class="meta-val">10 × 60 Min</div>
+      </div>
+      <div class="trial-hide">
+        <div class="meta-label">Preis</div>
+        <div class="meta-val" id="course-price">180,00 €</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 1: Teilnehmer -->
+  <div class="step-panel active" data-step="1">
+    <div class="step-label">Schritt 1</div>
+    <h2 class="step-heading"><span id="step1-heading">Wer ist <em>dabei</em>?</span></h2>
+
+    <!-- Registrierte Kinder (normal + invite) -->
+    <div class="choices" id="registered-children" data-mode-show="normal,invite">
+      <div class="choice" data-selected="true" data-child="mia">
+        <div class="choice-avatar">M</div>
+        <div class="choice-info">
+          <div class="choice-name">Mia</div>
+          <div class="choice-meta">geboren 2024 · 2 Jahre</div>
+        </div>
+        <div class="choice-radio"></div>
+      </div>
+      <div class="choice" data-child="leo">
+        <div class="choice-avatar">L</div>
+        <div class="choice-info">
+          <div class="choice-name">Leo</div>
+          <div class="choice-meta">geboren 2022 · 4 Jahre</div>
+        </div>
+        <div class="choice-radio"></div>
+      </div>
+      <button class="add-new" onclick="alert('Eingabe für neues Kind — im echten Flow Inline-Form')">+ Weiteres Kind hinzufügen</button>
+    </div>
+
+    <!-- Gast-Eingabe (trial-Modus) -->
+    <div id="trial-guest-form" data-mode-show="trial" style="display:none">
+      <div class="field-group">
+        <label class="field-label">Name des Kindes</label>
+        <input class="field-input" type="text" placeholder="z. B. Mia" id="trial-child-name">
+      </div>
+      <div class="field-row">
+        <div class="field-group">
+          <label class="field-label">Geburtsjahr</label>
+          <input class="field-input" type="number" min="2018" max="2026" placeholder="2024" id="trial-child-year">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Alter heute</label>
+          <input class="field-input" type="text" placeholder="2 Jahre" disabled style="background:var(--surface-alt);color:var(--ink-muted);">
+        </div>
+      </div>
+      <div class="field-group">
+        <label class="field-label">Deine E-Mail (für Erinnerungen)</label>
+        <input class="field-input" type="email" placeholder="deine@email.de" id="trial-parent-email">
+      </div>
+      <div class="field-group">
+        <label class="field-label">Dein Name</label>
+        <input class="field-input" type="text" placeholder="Wie dürfen wir dich nennen?" id="trial-parent-name">
+      </div>
+    </div>
+
+    <div class="actions">
+      <span></span>
+      <button class="btn btn-primary" onclick="goStep(2)">Weiter →</button>
+    </div>
+  </div>
+
+  <!-- STEP 2: Paket (normal/invite) oder Überblick (trial) -->
+  <div class="step-panel" data-step="2">
+    <div class="step-label">Schritt 2</div>
+    <h2 class="step-heading" id="step2-heading">Dein <em>Paket</em>.</h2>
+
+    <!-- Paket-Wahl (normal + invite) -->
+    <div id="packages" data-mode-show="normal,invite">
+      <div class="pkg" data-selected="true" data-pkg="full">
+        <div class="pkg-info">
+          <div class="pkg-name">Gesamter Block</div>
+          <div class="pkg-detail">10 Termine · Frühjahr 2026</div>
+        </div>
+        <div class="pkg-price" id="pkg-full-price">180,00 €</div>
+      </div>
+      <div class="pkg" data-pkg="trial">
+        <div class="pkg-info">
+          <div class="pkg-name">Schnupperstunde</div>
+          <div class="pkg-detail">1 Termin zum Kennenlernen</div>
+        </div>
+        <div class="pkg-price">20,00 €</div>
+      </div>
+    </div>
+
+    <!-- Trial-Übersicht -->
+    <div id="trial-overview" data-mode-show="trial" style="display:none">
+      <div class="trial-note">
+        <div class="trial-note-title"><em>Schnupperstunde</em> · kostenlos</div>
+        <p>Ihr kommt vorbei, schaut euch den Kurs an, macht eine Runde mit. Kein Druck, keine Kosten.</p>
+        <p>Wenn's euch gefällt, könnt ihr im Anschluss einen festen Platz buchen — wenn nicht, ist auch gut.</p>
+      </div>
+      <div class="course">
+        <div class="course-sub" style="margin-bottom:8px;font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-muted);">Deine Schnupperstunde</div>
+        <div class="course-title">Montag, 6. Mai · 09:30 – 10:30</div>
+        <div class="course-sub">Socialy Space, Hamburg-Altona</div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-ghost" onclick="goStep(1)">← Zurück</button>
+      <button class="btn btn-primary" onclick="goStep(3)">Weiter →</button>
+    </div>
+  </div>
+
+  <!-- STEP 3: Zahlung / Bestätigung -->
+  <div class="step-panel" data-step="3">
+    <div class="step-label">Schritt 3</div>
+    <h2 class="step-heading" id="step3-heading"><span class="pay-h">Bestätigen &amp; <em>bezahlen</em>.</span></h2>
+
+    <!-- Summary (normal + invite) -->
+    <div class="summary" data-mode-show="normal,invite">
+      <div class="sum-row">
+        <span class="sum-label">Kurs (10er-Block)</span>
+        <span class="sum-val">180,00 €</span>
+      </div>
+      <div class="sum-row discount" id="discount-row" style="display:none">
+        <span class="sum-label">Einladungs-Rabatt (–10 %)</span>
+        <span class="sum-val">–18,00 €</span>
+      </div>
+      <div class="sum-total">
+        <span class="total-label">Gesamt</span>
+        <span class="total-val" id="total-val">180,00 <em>€</em></span>
+      </div>
+    </div>
+
+    <!-- Trial summary (no payment) -->
+    <div data-mode-show="trial" style="display:none">
+      <div class="trial-note">
+        <div class="trial-note-title"><em>Fast geschafft.</em></div>
+        <p>Du reservierst einen kostenlosen Schnupper-Platz — es wird nichts abgebucht.</p>
+        <p>Wir schicken dir eine Bestätigungs-Mail und eine Erinnerung einen Tag vor der Stunde.</p>
+      </div>
+    </div>
+
+    <!-- Payment methods (normal + invite) -->
+    <div data-mode-show="normal,invite">
+      <div class="step-label" style="margin-top:20px;margin-bottom:10px;">Zahlungsmethode</div>
+      <div class="pay-methods">
+        <div class="pay" data-selected="true" data-pay="card">
+          <div class="pay-icon">CARD</div>
+          <div class="pay-label">Kreditkarte</div>
+          <div class="pay-radio"></div>
+        </div>
+        <div class="pay" data-pay="paypal">
+          <div class="pay-icon" style="background:#003087;color:#fff;">PP</div>
+          <div class="pay-label">PayPal</div>
+          <div class="pay-radio"></div>
+        </div>
+        <div class="pay" data-pay="sepa">
+          <div class="pay-icon">SEPA</div>
+          <div class="pay-label">Lastschrift</div>
+          <div class="pay-radio"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-ghost" onclick="goStep(2)">← Zurück</button>
+      <button class="btn btn-primary" id="final-btn" onclick="finish()">Jetzt buchen</button>
+    </div>
+  </div>
+
+  <!-- SUCCESS -->
+  <div class="success" id="success">
+    <div class="success-mark" id="success-mark">✓</div>
+    <h1 class="success-title" id="success-title"><em>Gebucht</em>.</h1>
+    <p class="success-sub" id="success-sub">Du bekommst gleich eine Bestätigungsmail.</p>
+
+    <div class="success-next">
+      <div class="success-next-label">Was als nächstes passiert</div>
+      <ul id="success-list">
+        <li>Wir schicken dir eine Bestätigungsmail mit allen Details</li>
+        <li>Du kannst den Termin direkt in deinen Kalender übernehmen</li>
+        <li>Im Portal siehst du alle kommenden Termine und deine Credits</li>
+      </ul>
+    </div>
+
+    <a href="#" class="btn btn-primary" style="text-decoration:none;">Zu meinem Bereich →</a>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="powered-by">
+    Powered by <a href="https://urbankidsclub.de" target="_blank" rel="noopener">Urban Kids Club</a>
+    <span class="heart">·</span>
+    mit Nähe gemacht
+  </div>
+
+</div>
+
+<script>
+// ============================================================
+// Mode detection
+// ============================================================
+const params = new URLSearchParams(window.location.search);
+let mode = 'normal';
+if (params.get('mode') === 'trial') mode = 'trial';
+else if (params.get('invite')) mode = 'invite';
+document.body.setAttribute('data-mode', mode);
+
+// Mode-switcher highlight
+document.querySelectorAll('.mode-link').forEach(a => {
+  a.classList.toggle('active', a.dataset.m === mode);
+});
+
+// ============================================================
+// Mode-specific text
+// ============================================================
+const texts = {
+  normal: {
+    kicker: 'Kurs buchen',
+    title: 'Lass <em>Mia</em> dabei sein.',
+    sub: 'Du bist in drei Schritten fertig. Kein Stress.',
+    step1: 'Wer ist <em>dabei</em>?',
+    step2: 'Dein <em>Paket</em>.',
+    step3: 'Bestätigen &amp; <em>bezahlen</em>.',
+    finalBtn: 'Jetzt buchen',
+    successTitle: '<em>Gebucht</em>.',
+    successSub: 'Du bekommst gleich eine Bestätigungsmail mit allen Details.',
+    successNext: [
+      'Termin ist reserviert — dein Platz ist sicher',
+      'Du kriegst eine Bestätigungsmail mit Kalender-Link',
+      'Im Portal siehst du alle kommenden Termine',
+    ],
+  },
+  invite: {
+    kicker: 'Einladung einlösen',
+    title: 'Lass <em>dein Kind</em> dabei sein.',
+    sub: 'Anna hat dich eingeladen. Du buchst direkt mit ihrem Rabatt.',
+    step1: 'Wer ist <em>dabei</em>?',
+    step2: 'Dein <em>Paket</em>.',
+    step3: 'Bestätigen &amp; <em>bezahlen</em>.',
+    finalBtn: 'Mit Rabatt buchen',
+    successTitle: '<em>Gebucht</em>.',
+    successSub: 'Du bekommst gleich eine Bestätigungsmail — und Anna bekommt ein kleines Dankeschön.',
+    successNext: [
+      'Termin ist reserviert — dein Platz ist sicher',
+      'Du kriegst eine Bestätigungsmail mit Kalender-Link',
+      'Anna bekommt 2 Credits gutgeschrieben (nach 14 Tagen)',
+    ],
+  },
+  trial: {
+    kicker: 'Schnupperstunde reservieren',
+    title: 'Kommt mal <em>vorbei</em>.',
+    sub: 'Schaut euch den Kurs an. Kostenlos, unverbindlich.',
+    step1: 'Wer kommt <em>mit</em>?',
+    step2: 'Der <em>Termin</em>.',
+    step3: 'Kurz <em>bestätigen</em>.',
+    finalBtn: 'Schnupperstunde reservieren',
+    successTitle: '<em>Reserviert</em>.',
+    successSub: 'Wir freuen uns auf euch. Eine Bestätigungsmail ist unterwegs.',
+    successNext: [
+      'Termin ist reserviert — Socialy weiß Bescheid',
+      'Du kriegst einen Tag vorher eine Erinnerung',
+      'Wenn\'s euch gefällt, könnt ihr danach direkt buchen',
+    ],
+  },
+};
+
+const t = texts[mode];
+document.querySelector('.kicker-text').textContent = t.kicker;
+document.querySelector('.title-text').innerHTML = t.title;
+document.querySelector('.sub-text').textContent = t.sub;
+document.getElementById('step1-heading').innerHTML = t.step1;
+document.getElementById('step2-heading').innerHTML = t.step2;
+document.querySelector('.pay-h').innerHTML = t.step3;
+document.getElementById('final-btn').textContent = t.finalBtn;
+
+// Invite-Rabatt anzeigen
+if (mode === 'invite') {
+  document.getElementById('discount-row').style.display = 'flex';
+  document.getElementById('total-val').innerHTML = '162,00 <em>€</em>';
+}
+
+// Trial: Preis im Overview verstecken
+if (mode === 'trial') {
+  document.querySelectorAll('.trial-hide').forEach(el => el.style.display = 'none');
+  document.getElementById('course-price').textContent = 'kostenlos';
+}
+
+// Show/hide content per mode
+document.querySelectorAll('[data-mode-show]').forEach(el => {
+  const modes = el.dataset.modeShow.split(',');
+  el.style.display = modes.includes(mode) ? '' : 'none';
+});
+
+// ============================================================
+// Choice selection (Kinder, Pakete, Payment)
+// ============================================================
+function wireChoices(selector) {
+  document.querySelectorAll(selector).forEach(el => {
+    el.addEventListener('click', () => {
+      el.parentElement.querySelectorAll(selector).forEach(s => s.setAttribute('data-selected', 'false'));
+      el.setAttribute('data-selected', 'true');
+    });
+  });
+}
+wireChoices('.choice');
+wireChoices('.pkg');
+wireChoices('.pay');
+
+// ============================================================
+// Step navigation
+// ============================================================
+let currentStep = 1;
+function goStep(n) {
+  currentStep = n;
+  document.querySelectorAll('.step-panel').forEach(p => p.classList.toggle('active', Number(p.dataset.step) === n));
+  document.querySelectorAll('.step-dot').forEach(d => {
+    const s = Number(d.dataset.step);
+    d.className = 'step-dot' + (s === n ? ' active' : s < n ? ' done' : '');
+  });
+  document.getElementById('step-text').textContent = `Schritt ${n} von 3`;
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ============================================================
+// Finish → Success
+// ============================================================
+function finish() {
+  document.querySelectorAll('.step-panel').forEach(p => p.classList.remove('active'));
+  document.querySelector('.topbar').style.display = 'none';
+  document.querySelector('.invite-banner').style.display = 'none';
+  document.querySelector('.trial-banner').style.display = 'none';
+  document.querySelector('.head').style.display = 'none';
+  document.querySelector('.course').style.display = 'none';
+  const s = document.getElementById('success');
+  s.classList.add('active');
+  document.getElementById('success-title').innerHTML = t.successTitle;
+  document.getElementById('success-sub').textContent = t.successSub;
+  document.getElementById('success-list').innerHTML = t.successNext.map(line => `<li>${line}</li>`).join('');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+</script>
+</body>
+</html>

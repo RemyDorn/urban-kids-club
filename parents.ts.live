@@ -1,0 +1,361 @@
+// ============================================================
+// Parents, Children & CRM Routes
+// ============================================================
+
+import { Router } from '../router'
+import { validate, CreateParentSchema, UpdateParentSchema } from '../../lib/schemas'
+import { requireAuth, checkPermission } from '../../lib/auth-middleware'
+import { getServiceClient } from '../../lib/supabase'
+import { ParentService, CrmService, ActivityService, BookingService, ConsentService } from '../../services'
+
+// Cascade Kind-Korrektur in alle bookings.child_info dieses Elternteils, wo firstName + birthYear matched.
+// DSGVO-Recht auf Berichtigung: Tippfehler dürfen rückwirkend in Buchungs-History korrigiert werden.
+async function cascadeChildToBookings(parentId: string, oldChild: any, newChild: any) {
+  try {
+    const db = getServiceClient()
+    const oldFirst = String(oldChild?.firstName || '').toLowerCase().trim()
+    const oldYear = oldChild?.birthYear ? parseInt(String(oldChild.birthYear)) : null
+    if (!oldFirst && !oldYear) return
+    const { data: bookings } = await db.from('provider_bookings').select('id, child_info').eq('parent_id', parentId)
+    if (!bookings) return
+    for (const b of bookings as any[]) {
+      const ci = b.child_info || {}
+      const ciFirst = String(ci.firstName || '').toLowerCase().trim()
+      const ciYear = ci.birthYear ? parseInt(String(ci.birthYear)) : null
+      const matches = (oldFirst ? ciFirst === oldFirst : true) && (oldYear ? ciYear === oldYear : true)
+      if (!matches) continue
+      const newCi = { ...ci }
+      if (newChild.firstName) newCi.firstName = newChild.firstName
+      if (newChild.lastName !== undefined) newCi.lastName = newChild.lastName
+      if (newChild.birthYear) newCi.birthYear = newChild.birthYear
+      if (newChild.name) newCi.name = newChild.name
+      await db.from('provider_bookings').update({ child_info: newCi }).eq('id', b.id)
+    }
+  } catch (err) {
+    console.warn('[cascadeChildToBookings] failed:', err)
+  }
+}
+
+export function registerParentRoutes(router: Router) {
+
+  // ============================================================
+  // PARENTS
+  // ============================================================
+
+  router.get('/api/parents', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    const parents = await ParentService.list({ query: req.query.q, providerId: auth.providerId })
+    res.json({ data: parents, count: parents.length })
+  })
+
+  router.get('/api/parents/:id', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    const parent = await ParentService.getById(req.params.id, auth.providerId)
+    if (!parent) return res.error(404, 'Elternteil nicht gefunden')
+    res.json({ data: parent })
+  })
+
+  router.post('/api/parents', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    if (!checkPermission(auth, res, 'customers', 'create')) return
+    const parsed = validate(CreateParentSchema, req.body)
+    if ('error' in parsed) return res.error(400, parsed.error)
+    const result = await ParentService.create(parsed.data as any)
+    if ('error' in result) return res.error(400, result.error)
+    res.status(201).json({ data: result })
+  })
+
+  router.put('/api/parents/:id', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    if (!checkPermission(auth, res, 'customers', 'edit')) return
+    const parsed = validate(UpdateParentSchema, req.body)
+    if ('error' in parsed) return res.error(400, parsed.error)
+    // Verify parent belongs to this provider before updating
+    const existingParent = await ParentService.getById(req.params.id, auth.providerId)
+    if (!existingParent) return res.error(404, 'Elternteil nicht gefunden')
+    const parent = await ParentService.update(req.params.id, parsed.data as any)
+    if (!parent) return res.error(404, 'Elternteil nicht gefunden')
+    res.json({ data: parent })
+  })
+
+  router.post('/api/parents/:id/children', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    if (!checkPermission(auth, res, 'customers', 'edit')) return
+    // Verify parent belongs to this provider before modifying
+    const existingParentForChild = await ParentService.getById(req.params.id, auth.providerId)
+    if (!existingParentForChild) return res.error(404, 'Elternteil nicht gefunden')
+    const body = req.body as any || {}
+    const parent = await ParentService.addChild(req.params.id, body)
+    if (!parent) return res.error(404, 'Elternteil nicht gefunden')
+    // Cascade: wenn beim Edit eines "aus-Buchung"-Kindes das Stammdaten-Profil neu angelegt wird,
+    // werden gleichzeitig alle bookings.child_info mit dem alten matching-key überschrieben.
+    if (body.matchOld && (body.matchOld.firstName || body.matchOld.birthYear)) {
+      await cascadeChildToBookings(req.params.id, body.matchOld, {
+        firstName: body.firstName, lastName: body.lastName, birthYear: body.birthYear, name: body.name
+      })
+    }
+    res.json({ data: parent })
+  })
+
+  // PUT /api/parents/:id/children/:index — Kind editieren (Name, Geburtsjahr, Notes)
+  router.put('/api/parents/:id/children/:index', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    if (!checkPermission(auth, res, 'customers', 'edit')) return
+    const existingParent = await ParentService.getById(req.params.id, auth.providerId)
+    if (!existingParent) return res.error(404, 'Elternteil nicht gefunden')
+    const idx = parseInt(req.params.index)
+    const list = (existingParent.children ?? []) as any[]
+    if (isNaN(idx) || idx < 0 || idx >= list.length) return res.error(404, 'Kind nicht gefunden')
+    const old = list[idx]
+    const body = req.body as any || {}
+    const updated = { ...old }
+    if (typeof body.firstName === 'string' && body.firstName.trim()) updated.firstName = body.firstName.trim()
+    if (typeof body.lastName === 'string') updated.lastName = body.lastName.trim()
+    if (typeof body.name === 'string' && body.name.trim()) updated.name = body.name.trim()
+    if (body.birthYear !== undefined && body.birthYear !== null) {
+      const y = parseInt(String(body.birthYear))
+      if (!isNaN(y) && y >= 2005 && y <= new Date().getFullYear()) updated.birthYear = y
+    }
+    if (typeof body.medicalNotes === 'string') updated.medicalNotes = body.medicalNotes
+    if (typeof body.emergencyContact === 'string') updated.emergencyContact = body.emergencyContact
+    if (typeof body.emergencyPhone === 'string') updated.emergencyPhone = body.emergencyPhone
+    if (!updated.name && (updated.firstName || updated.lastName)) {
+      updated.name = ((updated.firstName || '') + ' ' + (updated.lastName || '')).trim()
+    }
+    const newChildren = list.slice(); newChildren[idx] = updated
+    const parent = await ParentService.update(req.params.id, { children: newChildren } as any)
+    if (!parent) return res.error(500, 'Update fehlgeschlagen')
+    // Cascade: matching bookings.child_info aktualisieren (Tippfehler-Korrektur in Buchungs-History)
+    await cascadeChildToBookings(req.params.id, old, updated)
+    res.json({ data: parent })
+  })
+
+  // DELETE /api/parents/:id/children/:index — Kind aus parent.children entfernen
+  router.delete('/api/parents/:id/children/:index', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    if (!checkPermission(auth, res, 'customers', 'edit')) return
+    const existingParent = await ParentService.getById(req.params.id, auth.providerId)
+    if (!existingParent) return res.error(404, 'Elternteil nicht gefunden')
+    const idx = parseInt(req.params.index)
+    const list = (existingParent.children ?? []) as any[]
+    if (isNaN(idx) || idx < 0 || idx >= list.length) return res.error(404, 'Kind nicht gefunden')
+    const newChildren = list.filter((_, i) => i !== idx)
+    const parent = await ParentService.update(req.params.id, { children: newChildren } as any)
+    if (!parent) return res.error(500, 'Löschen fehlgeschlagen')
+    res.json({ data: parent })
+  })
+
+  // DSGVO data export
+  router.get('/api/parents/:parentId/data-export', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    // Verify parent has bookings with this provider
+    const allBookings = await BookingService.listByParent(req.params.parentId)
+    const providerActivities = await ActivityService.listByProvider(auth.providerId)
+    const providerActivityIds = new Set(providerActivities.map(a => a.id))
+    const hasRelation = allBookings.some(b => providerActivityIds.has(b.activityId))
+    if (!hasRelation) return res.error(403, 'Kein Zugriff auf diese Elterndaten')
+    const data = await ConsentService.exportParentData(req.params.parentId)
+    res.json({ data })
+  })
+
+  // ============================================================
+  // CRM
+  // ============================================================
+
+  router.get('/api/providers/:providerId/customers', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    const customers = await CrmService.listCustomers(auth.providerId, {
+      tag: req.query.tag as any,
+      minSpent: req.query.minSpent ? parseFloat(req.query.minSpent) : undefined,
+      query: req.query.q,
+    })
+    const segments = await CrmService.getSegments(auth.providerId)
+    const db = getServiceClient()
+
+    // Fetch child info from bookings + waitlist to merge into each customer
+    const { data: allBookings } = await db.from('provider_bookings')
+      .select('parent_id, child_info').eq('provider_id', auth.providerId)
+    const { data: provActs } = await db.from('activities').select('id').eq('provider_id', auth.providerId)
+    const actIds = (provActs ?? []).map((a: { id: string }) => a.id)
+    let allWaitlist: any[] = []
+    if (actIds.length > 0) {
+      const { data: wl } = await db.from('waitlist_entries')
+        .select('parent_id, child_info').in('activity_id', actIds)
+      allWaitlist = wl ?? []
+    }
+
+    // Flatten parent data for frontend consumption
+    const flat = customers.map((c: any) => {
+      const childMap: Record<string, { name: string; age: number }> = {}
+      for (const ch of c.parent.children ?? []) {
+        if (ch.name) childMap[ch.name] = { name: ch.name, age: ch.age ?? 0 }
+      }
+      for (const b of allBookings ?? []) {
+        if (b.parent_id !== c.parent.id) continue
+        const ci = b.child_info ?? {}
+        const name = ci.firstName ? (ci.firstName + ' ' + (ci.lastName || '')).trim() : ''
+        if (name && !childMap[name]) {
+          childMap[name] = { name, age: ci.birthYear ? new Date().getFullYear() - ci.birthYear : 0 }
+        }
+      }
+      for (const w of allWaitlist) {
+        if (w.parent_id !== c.parent.id) continue
+        const ci = w.child_info ?? {}
+        const name = ci.firstName ? (ci.firstName + ' ' + (ci.lastName || '')).trim() : ''
+        if (name && !childMap[name]) {
+          childMap[name] = { name, age: ci.birthYear ? new Date().getFullYear() - ci.birthYear : 0 }
+        }
+      }
+      return {
+        id: c.parent.id, name: c.parent.name, email: c.parent.email, phone: c.parent.phone,
+        children: Object.values(childMap),
+        bookingCount: c.bookingCount, totalSpent: c.totalSpent, lastBookingAt: c.lastBookingAt,
+      }
+    })
+    res.json({ data: flat, segments, count: flat.length })
+  })
+
+  router.get('/api/providers/:providerId/customers/:parentId', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    const profile = await CrmService.getExtendedProfile(req.params.parentId, auth.providerId) as any
+    if (!profile) return res.error(404, 'Kundenprofil nicht gefunden')
+    const p = profile.parent as any
+    const db = getServiceClient()
+
+    // Merge children from: parents.children + bookings.child_info + waitlist.child_info
+    const childMap: Record<string, { name: string; age: number }> = {}
+    for (const ch of p.children ?? []) {
+      if (ch.name) childMap[ch.name] = { name: ch.name, age: ch.age ?? 0 }
+    }
+    for (const b of (profile.bookings as any[]) ?? []) {
+      const ci = b.child_info ?? {}
+      const name = ci.firstName ? (ci.firstName + ' ' + (ci.lastName || '')).trim() : ''
+      if (name && !childMap[name]) {
+        childMap[name] = { name, age: ci.birthYear ? new Date().getFullYear() - ci.birthYear : 0 }
+      }
+    }
+    // Check waitlist entries for this parent
+    const { data: provActs } = await db.from('activities').select('id').eq('provider_id', auth.providerId)
+    const actIds = (provActs ?? []).map((a: { id: string }) => a.id)
+    if (actIds.length > 0) {
+      const { data: wlEntries } = await db.from('waitlist_entries')
+        .select('child_info').eq('parent_id', req.params.parentId).in('activity_id', actIds)
+      for (const w of wlEntries ?? []) {
+        const ci = w.child_info ?? {}
+        const name = ci.firstName ? (ci.firstName + ' ' + (ci.lastName || '')).trim() : ''
+        if (name && !childMap[name]) {
+          childMap[name] = { name, age: ci.birthYear ? new Date().getFullYear() - ci.birthYear : 0 }
+        }
+      }
+    }
+
+    res.json({ data: {
+      id: p.id, name: p.name, email: p.email, phone: p.phone,
+      children: Object.values(childMap),
+      bookingCount: (profile.bookings as any[])?.length ?? 0,
+      totalSpent: profile.totalSpent,
+      bookings: profile.bookings,
+      notes: profile.notes,
+    } })
+  })
+
+  router.post('/api/providers/:providerId/customers/:parentId/notes', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    if (!checkPermission(auth, res, 'customers', 'contact')) return
+    const { content } = req.body as { content: string }
+    if (!content || !content.trim()) return res.error(400, 'Notiz darf nicht leer sein')
+
+    // Resolve author_id → team_members.id (FK constraint requires team_member, not provider)
+    const db = getServiceClient()
+    let authorId: string | null = null
+    // Try 1: team_member matching auth user (by user_id or email)
+    const { data: tm } = await db.from('team_members')
+      .select('id')
+      .eq('provider_id', auth.providerId)
+      .or(`user_id.eq.${auth.userId},email.eq.${auth.email}`)
+      .limit(1)
+      .maybeSingle()
+    if (tm?.id) authorId = tm.id
+    // Try 2: any owner team_member of this provider as fallback
+    if (!authorId) {
+      const { data: owner } = await db.from('team_members')
+        .select('id')
+        .eq('provider_id', auth.providerId)
+        .eq('role', 'owner')
+        .limit(1)
+        .maybeSingle()
+      if (owner?.id) authorId = owner.id
+    }
+    if (!authorId) return res.error(400, 'Kein Team-Mitglied gefunden — Notiz kann nicht zugeordnet werden')
+
+    const note = await CrmService.addNote({
+      parentId: req.params.parentId,
+      providerId: auth.providerId,
+      authorId,
+      content: content.trim(),
+    })
+    res.status(201).json({ data: note })
+  })
+
+  router.get('/api/providers/:providerId/customers/:parentId/notes', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    const notes = await CrmService.getNotes(req.params.parentId, auth.providerId)
+    // Enrich with author display name
+    const db = getServiceClient()
+    const authorIds = [...new Set(notes.map(n => n.authorId).filter(Boolean))]
+    let authorMap: Record<string, string> = {}
+    if (authorIds.length > 0) {
+      const { data: authors } = await db.from('team_members').select('id, name').in('id', authorIds)
+      authorMap = Object.fromEntries((authors ?? []).map((a: any) => [a.id, a.name]))
+    }
+    const enriched = notes.map(n => ({ ...n, authorName: authorMap[n.authorId] || '—' }))
+    res.json({ data: enriched, count: enriched.length })
+  })
+
+  router.put('/api/providers/:providerId/customers/:parentId/notes/:noteId', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    if (!checkPermission(auth, res, 'customers', 'contact')) return
+    const { content } = req.body as { content: string }
+    if (!content || !content.trim()) return res.error(400, 'Notiz darf nicht leer sein')
+    const db = getServiceClient()
+    // Tenant-scoped update — only succeeds if note belongs to this provider+parent
+    const { data, error } = await db.from('contact_notes')
+      .update({ content: content.trim() })
+      .eq('id', req.params.noteId)
+      .eq('provider_id', auth.providerId)
+      .eq('parent_id', req.params.parentId)
+      .select()
+      .maybeSingle()
+    if (error) return res.error(500, 'Update fehlgeschlagen: ' + error.message)
+    if (!data) return res.error(404, 'Notiz nicht gefunden')
+    res.json({ data })
+  })
+
+  router.delete('/api/providers/:providerId/customers/:parentId/notes/:noteId', async (req, res) => {
+    const auth = await requireAuth(req, res)
+    if (!auth) return
+    if (!checkPermission(auth, res, 'customers', 'contact')) return
+    const db = getServiceClient()
+    const { error, count } = await db.from('contact_notes')
+      .delete({ count: 'exact' })
+      .eq('id', req.params.noteId)
+      .eq('provider_id', auth.providerId)
+      .eq('parent_id', req.params.parentId)
+    if (error) return res.error(500, 'Löschen fehlgeschlagen: ' + error.message)
+    if (count === 0) return res.error(404, 'Notiz nicht gefunden')
+    res.json({ success: true })
+  })
+}

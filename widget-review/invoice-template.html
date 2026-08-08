@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rechnung {{invoiceNumber}}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+  @page { size: A4; margin: 18mm 14mm; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --ink: #1F1D18;
+    --ink-muted: #67625A;
+    --ink-soft: #9A938A;
+    --primary: #D96C45;
+    --primary-soft: #F7B79C;
+    --primary-tint: #FDE4D3;
+    --sage: #A8B6A3;
+    --sage-deep: #6A7863;
+    --sage-tint: #EDF1EA;
+    --bg: #FBF5EA;
+    --surface: #FFFDF8;
+    --border: rgba(31, 29, 24, 0.1);
+    --border-soft: rgba(31, 29, 24, 0.06);
+    --font-body: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+    --font-accent: "Instrument Serif", ui-serif, Georgia, serif;
+  }
+
+  body {
+    font-family: var(--font-body);
+    font-size: 10pt;
+    color: var(--ink);
+    line-height: 1.55;
+    background: var(--bg);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  em { font-family: var(--font-accent); font-style: italic; font-weight: 400; }
+
+  /* ============================================================
+     Document shell
+     ============================================================ */
+  .invoice {
+    max-width: 210mm;
+    margin: 50px auto 40px;
+    padding: 14mm;
+    background: var(--surface);
+    border-radius: 12px;
+    box-shadow: 0 4px 24px rgba(31,29,24,0.06);
+  }
+
+  /* ============================================================
+     Header — Brand + Invoice Badge
+     ============================================================ */
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 10mm;
+    padding-bottom: 6mm;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .logo-area {
+    max-width: 60%;
+  }
+  .logo-area img { max-height: 42px; max-width: 180px; margin-bottom: 4mm; }
+
+  .company-name {
+    font-size: 17pt;
+    font-weight: 500;
+    letter-spacing: -0.015em;
+    color: var(--ink);
+    line-height: 1.1;
+  }
+  .company-sub {
+    font-size: 8.5pt;
+    color: var(--ink-muted);
+    margin-top: 2px;
+  }
+
+  .invoice-badge { text-align: right; flex-shrink: 0; }
+  .invoice-badge .kicker {
+    font-size: 8pt;
+    font-weight: 600;
+    color: var(--primary);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    margin-bottom: 3px;
+  }
+  .invoice-badge .label {
+    font-size: 24pt;
+    font-weight: 500;
+    color: var(--ink);
+    letter-spacing: -0.02em;
+    line-height: 1;
+    margin-bottom: 3mm;
+  }
+  .invoice-badge .number {
+    font-size: 11pt;
+    color: var(--ink);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .invoice-badge .date {
+    font-size: 9pt;
+    color: var(--ink-muted);
+    margin-top: 1px;
+  }
+
+  /* ============================================================
+     Addresses
+     ============================================================ */
+  .addresses {
+    display: flex;
+    justify-content: space-between;
+    gap: 8mm;
+    margin-bottom: 7mm;
+  }
+  .address-block { width: 48%; }
+  .address-label {
+    font-size: 7.5pt;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--primary);
+    font-weight: 600;
+    margin-bottom: 2.5mm;
+  }
+  .address-content {
+    font-size: 9.5pt;
+    line-height: 1.65;
+    color: var(--ink);
+  }
+  .address-content strong { font-weight: 600; }
+  .address-content .muted { color: var(--ink-muted); font-size: 9pt; }
+
+  /* ============================================================
+     Meta row (Dates)
+     ============================================================ */
+  .meta-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 4mm;
+    background: var(--bg);
+    border-radius: 8px;
+    padding: 4mm 5mm;
+    margin-bottom: 7mm;
+  }
+  .meta-item {
+    flex: 1;
+    min-width: 0;
+  }
+  .meta-item .label {
+    font-size: 7.5pt;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--ink-muted);
+    font-weight: 600;
+  }
+  .meta-item .value {
+    font-size: 10.5pt;
+    font-weight: 600;
+    margin-top: 1mm;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .meta-item .value em {
+    color: var(--primary);
+    font-size: 10pt;
+    margin-left: 2px;
+  }
+
+  /* ============================================================
+     Subject line
+     ============================================================ */
+  .subject {
+    font-size: 14pt;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    margin-bottom: 5mm;
+    color: var(--ink);
+  }
+  .subject em { color: var(--primary); }
+
+  /* ============================================================
+     Line items table
+     ============================================================ */
+  .items-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 4mm;
+  }
+  .items-table th {
+    padding: 3mm 2.5mm;
+    text-align: left;
+    font-size: 7.5pt;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--ink-muted);
+    font-weight: 600;
+    border-bottom: 1.5px solid var(--border);
+  }
+  .items-table th:nth-child(3),
+  .items-table th:nth-child(4),
+  .items-table th:nth-child(5),
+  .items-table th:nth-child(6) { text-align: right; }
+  .items-table td {
+    padding: 3.5mm 2.5mm;
+    font-size: 10pt;
+    border-bottom: 1px solid var(--border-soft);
+    vertical-align: top;
+  }
+  .items-table td:nth-child(3),
+  .items-table td:nth-child(4),
+  .items-table td:nth-child(5),
+  .items-table td:nth-child(6) {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .items-table td.desc strong { font-weight: 600; }
+  .items-table td.desc .sub { font-size: 8.5pt; color: var(--ink-muted); margin-top: 1px; }
+  .items-table tr:last-child td { border-bottom: none; }
+
+  /* ============================================================
+     Totals
+     ============================================================ */
+  .totals-wrap {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 7mm;
+  }
+  .totals {
+    width: 58mm;
+  }
+  .totals .row {
+    display: flex;
+    justify-content: space-between;
+    padding: 1.8mm 0;
+    font-size: 10pt;
+    color: var(--ink-muted);
+  }
+  .totals .row.total {
+    background: var(--primary-tint);
+    color: var(--ink);
+    font-weight: 600;
+    font-size: 13pt;
+    letter-spacing: -0.01em;
+    padding: 3mm 4mm;
+    border-radius: 8px;
+    margin-top: 2mm;
+  }
+  .totals .row.total em {
+    color: var(--primary);
+    font-size: 11pt;
+    margin-left: 4px;
+  }
+  .totals .amount { font-variant-numeric: tabular-nums; }
+
+  /* ============================================================
+     Kleinunternehmer Notice
+     ============================================================ */
+  .kleinunternehmer {
+    background: var(--sage-tint);
+    border-left: 3px solid var(--sage-deep);
+    border-radius: 8px;
+    padding: 3mm 4mm;
+    font-size: 9pt;
+    color: var(--ink);
+    margin-bottom: 6mm;
+    line-height: 1.5;
+  }
+
+  /* ============================================================
+     Payment Info
+     ============================================================ */
+  .payment-info {
+    background: var(--bg);
+    border-radius: 10px;
+    padding: 4mm 5mm;
+    margin-bottom: 7mm;
+  }
+  .payment-info .title {
+    font-size: 7.5pt;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--primary);
+    font-weight: 600;
+    margin-bottom: 3mm;
+  }
+  .payment-info .grid {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 1.5mm 5mm;
+    font-size: 9.5pt;
+  }
+  .payment-info .label { color: var(--ink-muted); }
+  .payment-info .value {
+    font-weight: 500;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ============================================================
+     Notes (Dankeschön / freundlicher Abschluss)
+     ============================================================ */
+  .closing-note {
+    font-size: 10pt;
+    color: var(--ink);
+    padding: 4mm 0;
+    margin-bottom: 6mm;
+    line-height: 1.6;
+  }
+  .closing-note em { color: var(--primary); }
+
+  /* ============================================================
+     Footer
+     ============================================================ */
+  .footer {
+    margin-top: 8mm;
+    padding-top: 4mm;
+    border-top: 1px solid var(--border);
+    font-size: 8pt;
+    color: var(--ink-muted);
+    display: flex;
+    justify-content: space-between;
+    gap: 6mm;
+    line-height: 1.6;
+  }
+  .footer-col { flex: 1; }
+  .footer-col .title {
+    font-weight: 600;
+    color: var(--ink);
+    margin-bottom: 1.5mm;
+    font-size: 8.5pt;
+  }
+
+  .powered-by {
+    text-align: center;
+    margin-top: 5mm;
+    padding-top: 3mm;
+    font-size: 7.5pt;
+    color: var(--ink-soft);
+  }
+  .powered-by em {
+    color: var(--primary);
+    margin: 0 3px;
+  }
+  .powered-by a {
+    color: var(--ink-muted);
+    text-decoration: none;
+    font-weight: 500;
+  }
+
+  /* ============================================================
+     Download bar (nur im Browser, nicht im PDF)
+     ============================================================ */
+  .download-bar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    background: var(--ink);
+    color: var(--bg);
+    padding: 12px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 100;
+    font-family: var(--font-body);
+    font-size: 14px;
+  }
+  .download-bar .bar-label { font-weight: 500; }
+  .download-bar .bar-label em { color: var(--primary-soft); }
+  .download-bar .bar-actions { display: flex; gap: 8px; }
+  .download-bar button {
+    font-family: var(--font-body);
+    background: var(--primary);
+    color: #fff;
+    border: none;
+    padding: 9px 18px;
+    border-radius: 999px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+  .download-bar button:hover { background: #C45A35; }
+  .download-bar button.secondary {
+    background: transparent;
+    border: 1px solid rgba(251,245,234,0.3);
+    color: var(--bg);
+  }
+  .download-bar button.secondary:hover { background: rgba(251,245,234,0.1); }
+
+  /* ============================================================
+     Responsive & Print
+     ============================================================ */
+  @media (max-width: 767px) {
+    .invoice { padding: 6mm; margin: 70px auto 20px; border-radius: 0; box-shadow: none; }
+    .header { flex-direction: column; gap: 5mm; }
+    .invoice-badge { text-align: left; }
+    .addresses { flex-direction: column; gap: 5mm; }
+    .address-block { width: 100%; }
+    .meta-row { flex-wrap: wrap; gap: 3mm; }
+    .meta-item { flex: 1 1 45%; }
+    .totals-wrap { justify-content: stretch; }
+    .totals { width: 100%; }
+    body { font-size: 10pt; }
+    .company-name { font-size: 15pt; }
+    .invoice-badge .label { font-size: 20pt; }
+    .footer { flex-direction: column; gap: 3mm; }
+  }
+
+  @media print {
+    body { background: #fff; }
+    .invoice {
+      padding: 0;
+      max-width: 210mm;
+      margin: 0 auto;
+      background: none;
+      border-radius: 0;
+      box-shadow: none;
+    }
+    .download-bar, .no-print { display: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="download-bar no-print">
+  <span class="bar-label">Rechnung <em>{{invoiceNumber}}</em></span>
+  <div class="bar-actions">
+    <a href="{{pdfUrl}}" download="Rechnung-{{invoiceNumber}}.pdf" style="text-decoration:none;"><button type="button">Als PDF herunterladen</button></a>
+    <button class="secondary" onclick="window.close()">Schließen</button>
+  </div>
+</div>
+
+<div class="invoice">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="logo-area">
+      {{#if logoUrl}}<img src="{{logoUrl}}" alt="Logo">{{/if}}
+      <div class="company-name">{{providerName}}</div>
+      <div class="company-sub">{{providerLegalForm}}</div>
+    </div>
+    <div class="invoice-badge">
+      <div class="kicker">Dokument</div>
+      <div class="label">Rechnung</div>
+      <div class="number">{{invoiceNumber}}</div>
+      <div class="date">{{invoiceDate}}</div>
+    </div>
+  </div>
+
+  <!-- Addresses -->
+  <div class="addresses">
+    <div class="address-block">
+      <div class="address-label">Rechnungssteller</div>
+      <div class="address-content">
+        <strong>{{providerName}}</strong><br>
+        {{providerStreet}}<br>
+        {{providerZip}} {{providerCity}}<br>
+        <span class="muted">
+          {{#if providerTaxId}}Steuernr.: {{providerTaxId}}<br>{{/if}}
+          {{#if providerVatId}}USt-IdNr.: {{providerVatId}}{{/if}}
+        </span>
+      </div>
+    </div>
+    <div class="address-block">
+      <div class="address-label">Rechnungsempfänger</div>
+      <div class="address-content">
+        <strong>{{parentName}}</strong><br>
+        <span class="muted">{{parentEmail}}</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Meta -->
+  <div class="meta-row">
+    <div class="meta-item">
+      <div class="label">Rechnungsnr.</div>
+      <div class="value">{{invoiceNumber}}</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Rechnungsdatum</div>
+      <div class="value">{{invoiceDate}}</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Fällig am</div>
+      <div class="value">{{dueDate}}</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Status</div>
+      <div class="value"><em>{{status}}</em></div>
+    </div>
+  </div>
+
+  <!-- Subject -->
+  <div class="subject">Rechnung für <em>Kursangebote</em></div>
+
+  <!-- Line Items -->
+  <table class="items-table">
+    <thead>
+      <tr>
+        <th style="width:7%">Pos.</th>
+        <th style="width:38%">Beschreibung</th>
+        <th style="width:15%">Einzelpreis (Brutto)</th>
+        <th style="width:10%">MwSt.</th>
+        <th style="width:15%">Netto</th>
+        <th style="width:15%">Brutto</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{lineItemsHtml}}
+    </tbody>
+  </table>
+
+  <!-- Totals -->
+  <div class="totals-wrap">
+    <div class="totals">
+      <div class="row">
+        <span>Nettobetrag</span>
+        <span class="amount">{{subtotal}} €</span>
+      </div>
+      {{#if isKleinunternehmer}}
+      <div class="row">
+        <span>Umsatzsteuer</span>
+        <span class="amount">entfällt</span>
+      </div>
+      {{else}}
+      <div class="row">
+        <span>Umsatzsteuer ({{vatPercent}}%)</span>
+        <span class="amount">{{tax}} €</span>
+      </div>
+      {{/if}}
+      <div class="row total">
+        <span>Gesamtbetrag</span>
+        <span class="amount">{{total}} <em>€</em></span>
+      </div>
+    </div>
+  </div>
+
+  {{#if isKleinunternehmer}}
+  <div class="kleinunternehmer">
+    Gemäß §19 UStG wird keine Umsatzsteuer berechnet (Kleinunternehmerregelung).
+  </div>
+  {{/if}}
+
+  <!-- Payment Info -->
+  <div class="payment-info">
+    <div class="title">Zahlungsinformationen</div>
+    <div class="grid">
+      {{#if bankHolder}}<div class="label">Kontoinhaber</div><div class="value">{{bankHolder}}</div>{{/if}}
+      {{#if bankIban}}<div class="label">IBAN</div><div class="value">{{bankIban}}</div>{{/if}}
+      {{#if bankBic}}<div class="label">BIC</div><div class="value">{{bankBic}}</div>{{/if}}
+      <div class="label">Verwendungszweck</div><div class="value">{{invoiceNumber}}</div>
+    </div>
+  </div>
+
+  <!-- Closing Note -->
+  <div class="closing-note">
+    Vielen Dank — wir freuen uns, dass ihr <em>dabei</em> seid.
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <div class="footer-col">
+      <div class="title">Kontakt</div>
+      {{providerName}}<br>
+      {{providerEmail}}<br>
+      {{providerPhone}}
+    </div>
+    <div class="footer-col">
+      <div class="title">Adresse</div>
+      {{providerStreet}}<br>
+      {{providerZip}} {{providerCity}}
+    </div>
+    <div class="footer-col">
+      <div class="title">Steuer</div>
+      {{#if providerTaxId}}Steuernr.: {{providerTaxId}}<br>{{/if}}
+      {{#if providerVatId}}USt-IdNr.: {{providerVatId}}{{/if}}
+    </div>
+  </div>
+
+  <div class="powered-by">
+    Powered by <a href="https://urbankidsclub.de">Urban Kids Club</a> <em>·</em> mit Nähe gemacht
+  </div>
+
+</div>
+</body>
+</html>

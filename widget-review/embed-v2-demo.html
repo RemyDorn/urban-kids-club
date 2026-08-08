@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Embed Generator V2 — Socialy Course Widget</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300;12..96,400;12..96,500;12..96,600;12..96,700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #FBF5EA;
+  --surface: #FFFFFF;
+  --surface-alt: #F4E9D1;
+  --ink: #1F1D18;
+  --ink-muted: #67625A;
+  --muted: rgba(31,29,24,0.55);
+  --primary: #D96C45;
+  --primary-hover: #C45A35;
+  --primary-tint: #FCE4D5;
+  --accent: #A8B6A3;
+  --accent-deep: #6A7863;
+  --border: rgba(31,29,24,0.08);
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --font-body: "Bricolage Grotesque", sans-serif;
+  --font-accent: "Instrument Serif", serif;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { background: var(--bg); color: var(--ink); font-family: var(--font-body); line-height: 1.5; }
+body { padding: 40px 20px; }
+.page { max-width: 1160px; margin: 0 auto; }
+.hero { text-align: center; margin-bottom: 32px; }
+.hero-kicker {
+  font-weight: 600; font-size: 11px; letter-spacing: 0.18em;
+  text-transform: uppercase; color: var(--primary); margin-bottom: 8px;
+}
+.hero-title {
+  font-family: var(--font-body); font-weight: 600;
+  font-size: 36px; line-height: 1.15; color: var(--ink); letter-spacing: -0.015em;
+}
+.hero-title em {
+  font-family: var(--font-accent); font-style: italic; font-weight: 400; color: var(--primary);
+}
+.hero-sub {
+  color: var(--ink-muted); margin-top: 10px; font-size: 15px; max-width: 540px;
+  margin-left: auto; margin-right: auto;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-top: 28px;
+}
+@media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 22px 24px;
+}
+.card-label {
+  font-weight: 600; font-size: 11px; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--muted); margin-bottom: 10px;
+}
+.card-title {
+  font-family: var(--font-body); font-weight: 600;
+  font-size: 20px; color: var(--ink);
+}
+
+.config-row { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; }
+.config-row label {
+  font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--muted); font-weight: 600;
+}
+.config-row input {
+  font-family: inherit; font-size: 14px;
+  padding: 10px 14px; border: 1px solid var(--border);
+  border-radius: 8px; background: var(--bg); color: var(--ink);
+  transition: border 140ms, box-shadow 140ms;
+}
+.config-row input:focus {
+  outline: none; border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(217,108,69,0.2);
+}
+
+pre.snippet {
+  margin-top: 14px;
+  background: #1F1D18;
+  color: #FBF5EA;
+  padding: 16px 18px;
+  border-radius: var(--radius-md);
+  font-family: ui-monospace, SFMono-Regular, Monaco, monospace;
+  font-size: 12.5px;
+  line-height: 1.6;
+  overflow-x: auto;
+  white-space: pre;
+  position: relative;
+}
+.copy-btn {
+  position: absolute; top: 10px; right: 10px;
+  background: rgba(251,245,234,0.1); color: #FBF5EA;
+  border: 1px solid rgba(251,245,234,0.15);
+  padding: 5px 10px; border-radius: 999px;
+  font-family: inherit; font-size: 11px; font-weight: 600;
+  cursor: pointer; transition: background 140ms;
+}
+.copy-btn:hover { background: rgba(251,245,234,0.2); }
+.copy-btn.copied { background: var(--accent-deep); border-color: var(--accent-deep); }
+
+.preview-box {
+  background: var(--surface-alt);
+  border: 2px dashed var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  min-height: 600px;
+  position: relative;
+}
+.preview-label {
+  position: absolute; top: 10px; right: 14px;
+  font-size: 10px; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--muted); font-weight: 700;
+}
+iframe {
+  width: 100%;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  display: block;
+  min-height: 560px;
+}
+
+.note {
+  font-size: 13px; color: var(--ink-muted);
+  background: var(--primary-tint); border-left: 3px solid var(--primary);
+  padding: 12px 14px; border-radius: 0 8px 8px 0;
+  margin-top: 12px;
+}
+.note strong { color: var(--ink); }
+
+.steps { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+.step {
+  display: grid; grid-template-columns: 28px 1fr; gap: 12px;
+  padding: 12px 0; border-bottom: 1px solid var(--border);
+  font-size: 14px; color: var(--ink);
+}
+.step:last-child { border-bottom: 0; }
+.step-num {
+  width: 26px; height: 26px; border-radius: 50%;
+  background: var(--primary); color: #FFFFFF;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-accent); font-style: italic; font-weight: 400; font-size: 14px;
+}
+.step code {
+  background: var(--surface-alt); padding: 1px 6px; border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Monaco, monospace;
+  font-size: 12.5px;
+}
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <div class="hero">
+    <div class="hero-kicker">Socialy · Embed Generator V2</div>
+    <h1 class="hero-title">Kurs-Widget für <em>socialy.club</em></h1>
+    <p class="hero-sub">Ein schlankes Single-Course-Widget zum Einbetten auf deiner Kursdetailseite. Zeigt die nächsten Termine, Belegung live, direkt buchbar.</p>
+  </div>
+
+  <div class="grid">
+
+    <!-- LEFT: Config + Snippet -->
+    <div>
+      <div class="card">
+        <div class="card-label">Schritt 1</div>
+        <div class="card-title">Kurs auswählen</div>
+
+        <div class="config-row">
+          <label for="slug">Provider-Slug</label>
+          <input type="text" id="slug" value="socialy" placeholder="socialy">
+        </div>
+        <div class="config-row">
+          <label for="activityId">Activity-ID (aus Dashboard)</label>
+          <input type="text" id="activityId" value="activity-demo-123" placeholder="z. B. abc-123">
+        </div>
+        <div class="note">
+          <strong>Activity-ID finden:</strong> Im Provider-Dashboard → Kurse → Kurs öffnen → URL enthält die ID. Oder später via "Widget einbetten"-Button direkt am Kurs.
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:24px">
+        <div class="card-label">Schritt 2</div>
+        <div class="card-title">Embed-Code kopieren</div>
+
+        <pre class="snippet" id="snippet-iframe"><button class="copy-btn" data-copy="#snippet-iframe">Kopieren</button></pre>
+
+        <div class="card-label" style="margin-top:18px">Optional · Auto-Höhe</div>
+        <pre class="snippet" id="snippet-resize"><button class="copy-btn" data-copy="#snippet-resize">Kopieren</button></pre>
+        <div class="note">
+          Mit diesem Script passt sich die iframe-Höhe automatisch dem Inhalt an — ideal wenn die Kursliste mal länger, mal kürzer ist.
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:24px">
+        <div class="card-label">Alternative · Auto-Liste</div>
+        <div class="card-title">Alle Kurse eines Providers auf einmal</div>
+        <div class="config-row">
+          <label for="auto-slug">Provider-Slug</label>
+          <input type="text" id="auto-slug" value="socialy" placeholder="socialy">
+        </div>
+        <button class="copy-btn" style="position:static;margin-top:10px;background:var(--primary);color:#fff;border:0;padding:8px 16px;font-size:13px;" id="auto-load">Kurse laden</button>
+        <div id="auto-list" style="margin-top:14px"></div>
+      </div>
+
+      <div class="card" style="margin-top:24px">
+        <div class="card-label">Schritt 3</div>
+        <div class="card-title">Auf socialy.club einbauen</div>
+
+        <div class="steps">
+          <div class="step"><span class="step-num">1</span><span>Im Decap CMS auf socialy.club die Kursdetail-Seite öffnen, an der Stelle wo der Widget rein soll einen <strong>HTML-Block</strong> einfügen.</span></div>
+          <div class="step"><span class="step-num">2</span><span>Den <strong>iframe-Snippet</strong> oben einfügen. Activity-ID jedes Mal an den jeweiligen Kurs anpassen.</span></div>
+          <div class="step"><span class="step-num">3</span><span>Optional: das <strong>Resize-Script</strong> einmalig in die Socialy-Site-Basis einbauen — dann funktioniert's automatisch für alle Kurse.</span></div>
+          <div class="step"><span class="step-num">4</span><span>Deployen &rarr; Live-Preview auf socialy.club testen &rarr; Kursleiter:innen promoten.</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Live-Preview -->
+    <div>
+      <div class="preview-box">
+        <div class="preview-label">Live-Preview</div>
+        <iframe id="preview-frame" src="" title="Socialy Course Widget Preview"></iframe>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<script src="/assets/socialy-polish.js"></script>
+<script>
+(function () {
+  var slugInput = document.getElementById('slug');
+  var actInput  = document.getElementById('activityId');
+  var snippetEl = document.getElementById('snippet-iframe');
+  var snippetResize = document.getElementById('snippet-resize');
+  var previewFrame = document.getElementById('preview-frame');
+  var origin = window.location.origin;
+
+  function buildIframeSnippet(slug, actId) {
+    var url = origin + '/embed-v2/' + encodeURIComponent(slug) + '/course/' + encodeURIComponent(actId);
+    return [
+      '<iframe',
+      '  id="socialy-course-widget"',
+      '  src="' + url + '"',
+      '  width="100%"',
+      '  height="620"',
+      '  frameborder="0"',
+      '  loading="lazy"',
+      '  style="max-width:560px; border:0; display:block; margin:0 auto;"',
+      '  title="Kurs buchen via Socialy">',
+      '</iframe>',
+    ].join('\n');
+  }
+
+  function buildResizeSnippet() {
+    return [
+      '<script>',
+      '(function () {',
+      '  window.addEventListener("message", function (e) {',
+      '    if (!e.data || e.data.type !== "socialy:widget-height") return;',
+      '    var f = document.getElementById("socialy-course-widget");',
+      '    if (f) f.style.height = e.data.height + "px";',
+      '  });',
+      '})();',
+      '</' + 'script>',
+    ].join('\n');
+  }
+
+  function update() {
+    var slug = (slugInput.value || 'socialy').trim();
+    var actId = (actInput.value || 'activity-demo-123').trim();
+    // Snippet
+    var btn1 = snippetEl.querySelector('.copy-btn');
+    snippetEl.textContent = buildIframeSnippet(slug, actId);
+    snippetEl.insertBefore(btn1, snippetEl.firstChild);
+    var btn2 = snippetResize.querySelector('.copy-btn');
+    snippetResize.textContent = buildResizeSnippet();
+    snippetResize.insertBefore(btn2, snippetResize.firstChild);
+
+    // Live-Preview
+    previewFrame.src = origin + '/embed-v2/' + encodeURIComponent(slug) + '/course/' + encodeURIComponent(actId);
+  }
+
+  slugInput.addEventListener('input', update);
+  actInput.addEventListener('input', update);
+  update();
+
+  // Copy-Buttons
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest('.copy-btn');
+    if (!btn) return;
+    var target = document.querySelector(btn.dataset.copy);
+    if (!target) return;
+    // Text ohne Button-Text kopieren
+    var clone = target.cloneNode(true);
+    var cb = clone.querySelector('.copy-btn');
+    if (cb) cb.remove();
+    var text = clone.textContent.trim();
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () {
+        btn.textContent = '✓ Kopiert';
+        btn.classList.add('copied');
+        setTimeout(function () { btn.textContent = 'Kopieren'; btn.classList.remove('copied'); }, 1800);
+        if (window.socialyToast) window.socialyToast('In Zwischenablage kopiert', 'success', 1600);
+      });
+    }
+  });
+
+  // Resize-Listener: iframe-Höhe aus postMessage anwenden
+  window.addEventListener('message', function (e) {
+    if (!e.data || e.data.type !== 'socialy:widget-height') return;
+    previewFrame.style.height = e.data.height + 'px';
+  });
+
+  // ========================================================
+  // Auto-Liste: Kurse vom Provider laden
+  // ========================================================
+  var autoSlug = document.getElementById('auto-slug');
+  var autoList = document.getElementById('auto-list');
+  var autoBtn = document.getElementById('auto-load');
+
+  autoBtn.addEventListener('click', loadProviderCourses);
+
+  async function loadProviderCourses() {
+    var slug = (autoSlug.value || '').trim();
+    if (!slug) { autoList.innerHTML = '<div style="padding:10px;color:var(--muted);font-size:13px">Bitte Slug eingeben.</div>'; return; }
+    autoList.innerHTML = '<div style="padding:10px;color:var(--muted);font-size:13px">Lade Kurse…</div>';
+
+    try {
+      var r = await fetch('/api/providers/by-slug/' + encodeURIComponent(slug) + '/activities');
+      if (!r.ok) {
+        var errText = r.status === 404 ? 'Provider mit Slug <strong>' + esc(slug) + '</strong> nicht gefunden. Prüfe den Slug im Provider-Dashboard → Einstellungen.' : 'Fehler ' + r.status;
+        autoList.innerHTML = '<div style="padding:14px;background:#FCE4D5;border-radius:8px;font-size:13px;color:var(--ink)">' + errText + '</div>';
+        return;
+      }
+      var d = await r.json();
+      var activities = (d.data || []).filter(function (a) { return a.status === 'published'; });
+      if (activities.length === 0) {
+        autoList.innerHTML = '<div style="padding:14px;background:#FCE4D5;border-radius:8px;font-size:13px;color:var(--ink);line-height:1.5">' +
+          '<strong>Noch keine veröffentlichten Kurse.</strong><br>' +
+          'Sobald du einen Kurs im Provider-Dashboard auf <em style="font-family:Instrument Serif,serif">publiziert</em> setzt, erscheint er hier mit seinem fertigen Embed-URL.' +
+        '</div>';
+        return;
+      }
+      var items = activities.map(function (a) {
+        var url = origin + '/embed-v2/' + encodeURIComponent(slug) + '/course/' + encodeURIComponent(a.id);
+        return '<div style="display:flex;flex-direction:column;gap:4px;padding:10px 0;border-bottom:1px solid var(--border)">' +
+          '<div style="font-weight:600;font-size:14px;color:var(--ink)">' + esc(a.title) + '</div>' +
+          '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">' +
+            '<code style="flex:1;min-width:0;background:#1F1D18;color:#FBF5EA;padding:5px 10px;border-radius:6px;font-size:11.5px;overflow-x:auto;white-space:nowrap;font-family:ui-monospace,monospace">' + esc(url) + '</code>' +
+            '<button class="mini-copy" data-url="' + esc(url) + '" style="background:var(--primary);color:#fff;border:0;padding:6px 12px;border-radius:999px;font-family:inherit;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap">Kopieren</button>' +
+          '</div>' +
+        '</div>';
+      }).join('');
+      autoList.innerHTML = '<div style="font-size:12px;color:var(--muted);margin-bottom:8px">' + activities.length + ' Kurs' + (activities.length !== 1 ? 'e' : '') + ' gefunden</div>' + items;
+
+      autoList.querySelectorAll('.mini-copy').forEach(function (b) {
+        b.addEventListener('click', function () {
+          var url = b.dataset.url;
+          if (navigator.clipboard) {
+            navigator.clipboard.writeText(url).then(function () {
+              var orig = b.textContent;
+              b.textContent = '✓ Kopiert';
+              b.style.background = 'var(--accent-deep)';
+              setTimeout(function () { b.textContent = orig; b.style.background = 'var(--primary)'; }, 1600);
+              if (window.socialyToast) window.socialyToast('URL kopiert', 'success', 1400);
+            });
+          }
+        });
+      });
+    } catch (err) {
+      autoList.innerHTML = '<div style="padding:14px;background:#FCE4D5;border-radius:8px;font-size:13px;color:var(--ink)">Netzwerk-Fehler beim Laden der Kurse.</div>';
+    }
+  }
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c];
+    });
+  }
+})();
+</script>
+</body>
+</html>

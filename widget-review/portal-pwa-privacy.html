@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Datenschutz · Eltern-Portal · Urban Kids Club</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700&family=Fraunces:ital,opsz,wght@0,9..144,400;1,9..144,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #FFEFE1; --surface: #FFF9F5; --ink: #3C2124;
+    --muted: #C49980; --primary: #CC895E; --signal: #B4523A; --sage: #627A5A;
+    --border: rgba(60,33,36,0.10);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { background: var(--bg); color: var(--ink); font-family: 'Inter', sans-serif; line-height: 1.65; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 50px 24px 100px; }
+
+  .kicker { font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 11.5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--primary); margin-bottom: 10px; }
+  h1 { font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: clamp(34px, 6vw, 46px); line-height: 1.1; letter-spacing: -0.005em; margin-bottom: 14px; }
+  h1 em { font-family: 'Fraunces', serif; font-style: italic; font-weight: 400; color: var(--primary); }
+  h2 { font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 22px; letter-spacing: -0.005em; margin: 38px 0 12px; }
+  h2 em { font-family: 'Fraunces', serif; font-style: italic; font-weight: 400; color: var(--primary); }
+  h3 { font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 16px; margin: 22px 0 8px; letter-spacing: -0.005em; }
+  p, li { font-size: 15px; color: rgba(60,33,36,0.82); margin-bottom: 12px; }
+  .lead { font-size: 17px; color: rgba(60,33,36,0.74); margin-bottom: 38px; max-width: 640px; }
+
+  .quick-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 22px 24px; margin-bottom: 26px; }
+  .quick-card h3 { margin-top: 0; }
+  .quick-card .meta { font-size: 12.5px; color: var(--muted); letter-spacing: 0.04em; margin-top: 4px; }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+  .data-row { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
+  .data-row .label { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 700; color: var(--muted); margin-bottom: 6px; }
+  .data-row .val { font-size: 13.5px; color: var(--ink); }
+
+  .toc { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px 22px; margin-bottom: 32px; }
+  .toc-title { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); font-weight: 700; margin-bottom: 10px; }
+  .toc ol { list-style: none; padding: 0; margin: 0; counter-reset: toc; }
+  .toc li { counter-increment: toc; font-size: 13.5px; padding: 4px 0; color: var(--ink-2); }
+  .toc li::before { content: counter(toc, decimal-leading-zero) "  "; color: var(--primary); font-family: 'Fraunces', serif; font-style: italic; }
+  .toc a { color: var(--ink); text-decoration: none; }
+  .toc a:hover { color: var(--primary); }
+
+  ul.bullets { padding-left: 24px; margin-bottom: 14px; }
+  ul.bullets li { padding-left: 6px; font-size: 14.5px; line-height: 1.65; }
+  ul.bullets li::marker { color: var(--primary); }
+
+  .highlight { background: var(--primary); color: white; padding: 1px 7px; border-radius: 4px; font-weight: 600; }
+  code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px; background: var(--surface); padding: 2px 7px; border-radius: 5px; color: var(--ink); border: 1px solid var(--border); }
+
+  .footer-meta { margin-top: 60px; padding-top: 22px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; font-size: 12.5px; color: var(--muted); flex-wrap: wrap; gap: 12px; }
+  .footer-meta a { color: var(--primary); text-decoration: none; }
+  .footer-meta a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="kicker">Datenschutz · DSGVO-konform · EU-Server</div>
+  <h1>Was wir mit deinen <em>Daten</em> machen</h1>
+  <p class="lead">Klare Sprache statt Jura. Wenn etwas fehlt oder unklar ist, schreib uns — <code>datenschutz@urbankids.club</code>.</p>
+
+  <div class="toc">
+    <div class="toc-title">Inhalt</div>
+    <ol>
+      <li><a href="#kurz">Kurz &amp; ehrlich</a></li>
+      <li><a href="#welche-daten">Welche Daten wir sammeln</a></li>
+      <li><a href="#wer-sieht-was">Wer sieht was</a></li>
+      <li><a href="#federation">Account über mehrere Studios (Hybrid-Modell)</a></li>
+      <li><a href="#pwa">Was die App speichert</a></li>
+      <li><a href="#dauer">Wie lange wir Daten behalten</a></li>
+      <li><a href="#rechte">Deine Rechte</a></li>
+      <li><a href="#kontakt">Kontakt</a></li>
+    </ol>
+  </div>
+
+  <h2 id="kurz">01 Kurz &amp; <em>ehrlich</em></h2>
+  <div class="quick-card">
+    <ul class="bullets">
+      <li>Server stehen in <strong>Frankfurt am Main</strong>. Daten verlassen die EU nicht.</li>
+      <li>Wir <strong>verkaufen nichts</strong>. Keine Werbung an Dritte. Kein Tracking durch externe Pixel ohne deine Einwilligung.</li>
+      <li>Dein Account ist <strong>UKC-weit über die Email</strong> identifiziert. Provider sehen dich aber nur, wenn du bei ihnen gebucht hast.</li>
+      <li>Du kannst <strong>jederzeit</strong> alle Daten exportieren oder löschen lassen.</li>
+    </ul>
+  </div>
+
+  <h2 id="welche-daten">02 Welche Daten <em>wir sammeln</em></h2>
+
+  <h3>Pflicht — damit Buchungen funktionieren</h3>
+  <div class="grid-2">
+    <div class="data-row"><div class="label">Email</div><div class="val">Login + Buchungs-Bestätigungen</div></div>
+    <div class="data-row"><div class="label">Name</div><div class="val">Anrede in E-Mails, Erkennung im Studio</div></div>
+    <div class="data-row"><div class="label">Vorname Kind</div><div class="val">Roll-Call, Anwesenheits-Tracking</div></div>
+    <div class="data-row"><div class="label">Geburtstag Kind</div><div class="val">Alters-passende Kursempfehlung</div></div>
+  </div>
+
+  <h3>Optional — nur wenn du sie aktiv eingibst</h3>
+  <div class="grid-2">
+    <div class="data-row"><div class="label">Telefon</div><div class="val">Notfall-Kontakt im Studio</div></div>
+    <div class="data-row"><div class="label">Notizen zum Kind</div><div class="val">Allergien, besondere Bedürfnisse</div></div>
+    <div class="data-row"><div class="label">Newsletter-Consent</div><div class="val">Pro Provider getrennt einstellbar</div></div>
+    <div class="data-row"><div class="label">Marketing-Consent</div><div class="val">Push-Notifications, Empfehlungs-Mails</div></div>
+  </div>
+
+  <h3>Automatisch — technisch nötig</h3>
+  <ul class="bullets">
+    <li><strong>Buchungs-Historie</strong> (Termin, Status, Add-Up-Verbrauch) — fürs Anzeigen im Portal</li>
+    <li><strong>Login-Sessions</strong> (Cookie mit Parent-ID + Provider-ID, 30 Tage) — damit du eingeloggt bleibst</li>
+    <li><strong>IP-Adresse</strong> beim Magic-Link-Request — Schutz gegen Brute-Force, nach 90 Tagen anonymisiert</li>
+  </ul>
+
+  <h2 id="wer-sieht-was">03 Wer sieht <em>was</em></h2>
+
+  <h3>Dein Studio (Provider)</h3>
+  <p>Ein Provider sieht <strong>nur</strong> Daten, die seine Beziehung zu dir betreffen: deine Buchungen bei ihm, dein Name, Email, Telefon, Notizen zum Kind die für seinen Kurs relevant sind. Andere Provider, bei denen du Mitglied bist, sind für ihn <strong>unsichtbar</strong>.</p>
+
+  <h3>Urban Kids Club Plattform-Team</h3>
+  <p>Wir sehen System-Logs (Fehler, Ladezeiten) und aggregierte Stats. Konkrete Eltern-Daten ruft niemand an — außer du eröffnest ein Support-Ticket und wir brauchen es für die Klärung. Datenbankzugriff ist <code>RLS-scoped</code> und protokolliert.</p>
+
+  <h3>Andere Eltern</h3>
+  <p>Sehen <strong>nichts</strong>. Empfehlungen über den Mom-Graph laufen über anonyme Tokens — die Empfohlene weiß nur „Hannah hat dir Socialy empfohlen" wenn Hannah das selbst aktiviert hat.</p>
+
+  <h2 id="federation">04 Account über mehrere Studios <em>(Hybrid-Modell)</em></h2>
+  <p>Du loggst dich mit deiner Email ein und kommst zu der App des Studios von dem du eingeladen wurdest. Im Backend wissen wir aber: das ist die gleiche Mama, die auch beim Tanzkurs nebenan Mitglied ist.</p>
+  <p><strong>Aktuell (Phase 1):</strong> Diese Verknüpfung ist im Backend, aber unsichtbar im UI. Jeder Provider sieht nur sich. <span class="highlight">Standard = privat</span>.</p>
+  <p><strong>Später (Phase 2, optional):</strong> Wenn wir die Kids-Club-Master-App freischalten, kannst du <strong>per Klick</strong> entscheiden „ja, zeig mir alle meine Studios in einer App". Bis du das selbst aktivierst, passiert nichts.</p>
+
+  <h2 id="pwa">05 Was die App auf deinem Handy <em>speichert</em></h2>
+  <p>Wenn du die PWA installiert hast (zum Home-Bildschirm hinzugefügt), speichert dein Browser einen kleinen Cache mit:</p>
+  <ul class="bullets">
+    <li>HTML/CSS für offline-Anzeigen (Adresse, nächster Termin)</li>
+    <li>Letzte 10 Buchungen (rein zur Anzeige)</li>
+    <li>Login-Cookie (HttpOnly, kann nicht von JavaScript gelesen werden)</li>
+  </ul>
+  <p>Cache wird automatisch aktualisiert wenn du online bist. Manuell löschen: Browser-Einstellungen → Website-Daten → Urban Kids Club entfernen.</p>
+
+  <h2 id="dauer">06 Wie lange wir Daten <em>behalten</em></h2>
+  <div class="grid-2">
+    <div class="data-row"><div class="label">Aktive Beziehung</div><div class="val">Solange du Mitglied bei mind. 1 Provider bist</div></div>
+    <div class="data-row"><div class="label">Buchungs-Historie</div><div class="val">10 Jahre (Steuerrecht)</div></div>
+    <div class="data-row"><div class="label">Magic-Link-Tokens</div><div class="val">15 Min, dann gelöscht</div></div>
+    <div class="data-row"><div class="label">Login-Cookies</div><div class="val">30 Tage rolling</div></div>
+    <div class="data-row"><div class="label">Marketing-Logs</div><div class="val">12 Monate, dann anonymisiert</div></div>
+    <div class="data-row"><div class="label">IP-Adressen</div><div class="val">90 Tage, dann gelöscht</div></div>
+  </div>
+
+  <h2 id="rechte">07 Deine <em>Rechte</em></h2>
+  <ul class="bullets">
+    <li><strong>Auskunft</strong> — alles was wir über dich gespeichert haben, als JSON-Datei</li>
+    <li><strong>Berichtigung</strong> — direkt im Portal bearbeitbar (Email, Name, Telefon)</li>
+    <li><strong>Löschung</strong> — Account-Löschung im Portal, Bestätigung per Email</li>
+    <li><strong>Einschränkung</strong> — Marketing pro Provider getrennt aus-/anschalten</li>
+    <li><strong>Widerruf</strong> — Marketing-Einwilligung per Klick, Wirkung sofort</li>
+    <li><strong>Datenübertragung</strong> — Export-Button im Portal, ZIP mit JSON + PDF deiner Buchungen</li>
+    <li><strong>Beschwerde</strong> — Berliner Beauftragte für Datenschutz, mailbox@datenschutz-berlin.de</li>
+  </ul>
+
+  <h2 id="kontakt">08 <em>Kontakt</em></h2>
+  <p>
+    Datenschutz-Fragen: <code>datenschutz@urbankids.club</code><br>
+    Allgemein: <code>hi@urbankids.club</code><br>
+    Vertretungsberechtigt: Remy Dostal<br>
+    Anschrift: Urban Kids Club, Berlin (vollständige Anschrift im Impressum)
+  </p>
+
+  <div class="footer-meta">
+    <span>Letzte Aktualisierung: 25. April 2026</span>
+    <span><a href="/portal-pwa-demo">← Zurück zur Übersicht</a> · <a href="/portal/socialy">Mein Bereich</a></span>
+  </div>
+
+</div>
+</body>
+</html>

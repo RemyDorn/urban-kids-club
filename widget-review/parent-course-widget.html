@@ -1,0 +1,2486 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Socialy – Kurse & Buchung</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300;12..96,400;12..96,500;12..96,600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+  /* ============================================================
+     Parent Course Widget – Socialy / Urban Kids Club
+     Einbettbar via iframe auf Squarespace oder jeder Website.
+     3 Views: Kursblock-Übersicht | Meine Kurse & Credits | Add-Up Buchung
+     ============================================================ */
+
+  :root {
+    --primary: #d96c45;
+    --primary-hover: #c45a35;
+    --bg: #fbf5ea;
+    --card-bg: #FFFFFF;
+    --text: #1f1d18;
+    --text-muted: #67625a;
+    --border: #E5E7EB;
+    --success: #10B981;
+    --warning: #F59E0B;
+    --danger: #EF4444;
+    --info: #3B82F6;
+    --radius: 12px;
+    --shadow: 0 2px 8px rgba(0,0,0,0.06);
+    --font: "Bricolage Grotesque", system-ui, sans-serif;
+  }
+
+  [data-theme="dark"] {
+    --bg: #1A1A2E;
+    --card-bg: #16213E;
+    --text: #F0F0F0;
+    --text-muted: #9CA3AF;
+    --border: #374151;
+    --shadow: 0 2px 8px rgba(0,0,0,0.3);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .widget-container {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 16px;
+  }
+
+  /* === Navigation Tabs === */
+  .tab-nav {
+    display: flex;
+    gap: 4px;
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    padding: 4px;
+    box-shadow: var(--shadow);
+    margin-bottom: 20px;
+    overflow-x: auto;
+  }
+
+  .tab-btn {
+    flex: 1;
+    padding: 10px 12px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 14px;
+    font-weight: 500;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+    font-family: var(--font);
+  }
+
+  .tab-btn.active {
+    background: var(--primary);
+    color: #fff;
+    font-weight: 600;
+  }
+
+  .tab-btn:hover:not(.active) {
+    background: rgba(245, 166, 35, 0.1);
+    color: var(--text);
+  }
+
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* === Cards === */
+  .card {
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    border: 1px solid var(--border);
+    margin-bottom: 16px;
+    overflow: hidden;
+  }
+
+  .card-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .card-body { padding: 16px 20px; }
+
+  .card-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .card-subtitle {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  .review-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #d97706;
+    margin-top: 4px;
+  }
+  .review-badge svg { vertical-align: middle; }
+
+  /* === Status Badges === */
+  .badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+
+  .badge-active { background: #D1FAE5; color: #065F46; }
+  .badge-upcoming { background: #DBEAFE; color: #1E40AF; }
+  .badge-completed { background: #E5E7EB; color: #374151; }
+  .badge-available { background: #D1FAE5; color: #065F46; }
+  .badge-used { background: #FEE2E2; color: #991B1B; }
+  .badge-expired { background: #E5E7EB; color: #6B7280; }
+
+  /* === Course Block Card === */
+  .block-meta {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 12px;
+    margin-top: 12px;
+  }
+
+  .meta-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .meta-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 600;
+  }
+
+  .meta-value {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  /* === Session List === */
+  .session-list {
+    list-style: none;
+    margin-top: 12px;
+  }
+
+  .session-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .session-item:last-child { border-bottom: none; }
+
+  .session-date {
+    font-weight: 600;
+    font-size: 14px;
+  }
+
+  .session-time {
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+
+  .session-status {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 6px;
+  }
+
+  .status-scheduled { background: #DBEAFE; color: #1E40AF; }
+  .status-completed { background: #D1FAE5; color: #065F46; }
+  .status-cancelled { background: #FEE2E2; color: #991B1B; }
+  .status-attended { background: #D1FAE5; color: #065F46; }
+  .status-absent { background: #FEE2E2; color: #991B1B; }
+  .status-expected { background: #FEF3C7; color: #92400E; }
+
+  /* === Credits Section === */
+  .credits-summary {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .credit-stat {
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    padding: 16px;
+    text-align: center;
+    box-shadow: var(--shadow);
+    border: 1px solid var(--border);
+  }
+
+  .credit-stat-number {
+    font-size: 28px;
+    font-weight: 800;
+    line-height: 1;
+  }
+
+  .credit-stat-number.green { color: var(--success); }
+  .credit-stat-number.orange { color: var(--warning); }
+  .credit-stat-number.gray { color: var(--text-muted); }
+
+  .credit-stat-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 4px;
+    font-weight: 500;
+  }
+
+  /* === Credit Card === */
+  .credit-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .credit-card:last-child { border-bottom: none; }
+
+  .credit-info { flex: 1; }
+
+  .credit-type {
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .credit-detail {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  .credit-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  /* === Buttons === */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: var(--font);
+  }
+
+  .btn-primary {
+    background: var(--primary);
+    color: #fff;
+  }
+
+  .btn-primary:hover { background: var(--primary-hover); }
+
+  .btn-secondary {
+    background: transparent;
+    color: var(--primary);
+    border: 1.5px solid var(--primary);
+  }
+
+  .btn-secondary:hover {
+    background: rgba(245, 166, 35, 0.08);
+  }
+
+  .btn-sm {
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+
+  .btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* === Add-Up Booking Modal === */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+
+  .modal-overlay.active {
+    display: flex;
+  }
+
+  .modal {
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    max-width: 500px;
+    width: 100%;
+    max-height: 80vh;
+    overflow-y: auto;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.2);
+  }
+
+  .modal-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .modal-title {
+    font-size: 18px;
+    font-weight: 700;
+  }
+
+  .modal-close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: var(--text-muted);
+    line-height: 1;
+  }
+
+  .modal-body { padding: 20px; }
+
+  .modal-footer {
+    padding: 16px 20px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  /* === Slot Picker === */
+  .slot-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .slot-option {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .slot-option:hover {
+    border-color: var(--primary);
+    background: rgba(245, 166, 35, 0.04);
+  }
+
+  .slot-option.selected {
+    border-color: var(--primary);
+    background: rgba(245, 166, 35, 0.1);
+  }
+
+  .slot-date {
+    font-weight: 600;
+    font-size: 14px;
+  }
+
+  .slot-course {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  .slot-capacity {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--success);
+  }
+
+  /* === Empty State === */
+  .empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-muted);
+  }
+
+  .empty-state-icon {
+    font-size: 48px;
+    margin-bottom: 12px;
+    opacity: 0.5;
+  }
+
+  .empty-state-text {
+    font-size: 15px;
+    font-weight: 500;
+  }
+
+  /* === Login Prompt === */
+  .login-prompt {
+    text-align: center;
+    padding: 40px 20px;
+  }
+
+  .login-prompt p {
+    color: var(--text-muted);
+    margin-bottom: 16px;
+    font-size: 15px;
+  }
+
+  /* === Notification Toast === */
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    background: #1F2937;
+    color: #fff;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    z-index: 2000;
+    transition: transform 0.3s ease;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+  }
+
+  .toast.visible {
+    transform: translateX(-50%) translateY(0);
+  }
+
+  /* === Expandable Toggle === */
+  .expand-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: none;
+    color: var(--primary);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 8px 0;
+    font-family: var(--font);
+  }
+
+  .expand-toggle .arrow {
+    transition: transform 0.2s;
+  }
+
+  .expand-toggle.open .arrow {
+    transform: rotate(90deg);
+  }
+
+  .sessions-collapse {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+  }
+
+  .sessions-collapse.open {
+    max-height: 2000px;
+  }
+
+  /* === Cancel Link === */
+  .cancel-link {
+    background: none;
+    border: none;
+    color: var(--danger);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: underline;
+    font-family: var(--font);
+  }
+
+  /* === Checkout Stepper === */
+  .checkout-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+
+  .checkout-overlay.active {
+    display: flex;
+  }
+
+  .checkout-modal {
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    max-width: 500px;
+    width: 100%;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.2);
+  }
+
+  .checkout-progress {
+    display: flex;
+    gap: 4px;
+    padding: 0 20px;
+    margin-top: 16px;
+  }
+
+  .checkout-progress-step {
+    flex: 1;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--border);
+    transition: background 0.2s;
+  }
+
+  .checkout-progress-step.active {
+    background: var(--primary);
+  }
+
+  .checkout-body {
+    padding: 20px;
+  }
+
+  .checkout-section-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 12px;
+  }
+
+  .checkout-input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: var(--font);
+    color: var(--text);
+    background: var(--card-bg);
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .checkout-input:focus {
+    border-color: var(--primary);
+  }
+
+  .checkout-input-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  .checkout-input-row .checkout-input {
+    flex: 1;
+  }
+
+  .checkout-summary {
+    background: var(--bg);
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    color: var(--text);
+  }
+
+  .checkout-summary-price {
+    font-weight: 700;
+    margin-top: 6px;
+  }
+
+  .checkout-checkbox {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 10px;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--text);
+  }
+
+  .checkout-checkbox input {
+    margin-top: 2px;
+  }
+
+  .checkout-footer {
+    padding: 16px 20px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .btn-back {
+    padding: 8px 16px;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: transparent;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: var(--font);
+    transition: all 0.2s;
+  }
+
+  .btn-back:hover {
+    background: rgba(0,0,0,0.03);
+    color: var(--text);
+  }
+
+  /* === Auth Header === */
+  .auth-header {
+    position: sticky;
+    top: 0;
+    background: var(--card-bg);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 16px;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 12px;
+    z-index: 100;
+    margin: -16px -16px 16px -16px;
+  }
+
+  .auth-link {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-family: var(--font);
+    font-weight: 600;
+    transition: color 0.2s;
+    padding: 4px 0;
+  }
+
+  .auth-link:hover {
+    color: var(--text);
+  }
+
+  .auth-separator {
+    color: var(--border);
+    font-size: 11px;
+    user-select: none;
+  }
+
+  .auth-greeting {
+    font-size: 13px;
+    color: var(--text);
+    font-weight: 500;
+  }
+
+  /* === Auth Modal === */
+  .auth-modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    z-index: 1100;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+
+  .auth-modal-overlay.active {
+    display: flex;
+  }
+
+  .auth-modal {
+    background: var(--card-bg);
+    border-radius: 16px;
+    max-width: 400px;
+    width: 100%;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.2);
+    overflow: hidden;
+  }
+
+  .auth-modal-header {
+    padding: 20px 24px 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .auth-modal-title {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .auth-modal-body {
+    padding: 20px 24px 24px;
+  }
+
+  .auth-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    padding: 12px 16px;
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: var(--font);
+    border: none;
+    margin-bottom: 10px;
+  }
+
+  .auth-btn:last-child {
+    margin-bottom: 0;
+  }
+
+  .auth-btn-google {
+    background: #fff;
+    color: #3c4043;
+    border: 1px solid #dadce0;
+  }
+
+  .auth-btn-google:hover {
+    background: #f7f8f8;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+
+  .auth-btn-apple {
+    background: #000;
+    color: #fff;
+  }
+
+  .auth-btn-apple:hover {
+    background: #1a1a1a;
+  }
+
+  .auth-btn-magic {
+    background: var(--primary);
+    color: #fff;
+  }
+
+  .auth-btn-magic:hover {
+    background: var(--primary-hover);
+  }
+
+  .auth-divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 16px 0;
+    color: var(--text-muted);
+    font-size: 12px;
+  }
+
+  .auth-divider::before,
+  .auth-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  .auth-email-form {
+    display: none;
+  }
+
+  .auth-email-form.active {
+    display: block;
+  }
+
+  .auth-email-input {
+    width: 100%;
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-size: 15px;
+    font-family: var(--font);
+    color: var(--text);
+    background: var(--card-bg);
+    outline: none;
+    transition: border-color 0.2s;
+    margin-bottom: 10px;
+  }
+
+  .auth-email-input:focus {
+    border-color: var(--primary);
+  }
+
+  .auth-success-msg {
+    display: none;
+    text-align: center;
+    padding: 16px 0;
+  }
+
+  .auth-success-msg.active {
+    display: block;
+  }
+
+  .auth-success-msg p {
+    color: var(--text-muted);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  /* === Register Form === */
+  .register-children-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .register-child-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .register-child-row input {
+    flex: 1;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: var(--font);
+    color: var(--text);
+    background: var(--card-bg);
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .register-child-row input:focus {
+    border-color: var(--primary);
+  }
+
+  .register-child-row .remove-child-btn {
+    background: none;
+    border: none;
+    color: var(--danger);
+    cursor: pointer;
+    font-size: 18px;
+    padding: 4px;
+    line-height: 1;
+  }
+
+  .add-child-btn {
+    background: none;
+    border: none;
+    color: var(--primary);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: var(--font);
+    padding: 4px 0;
+  }
+
+  .add-child-btn:hover {
+    text-decoration: underline;
+  }
+
+  /* === Responsive === */
+  @media (max-width: 480px) {
+    .widget-container { padding: 8px; }
+    .block-meta { grid-template-columns: repeat(2, 1fr); }
+    .credits-summary { grid-template-columns: 1fr; }
+    .tab-btn { font-size: 13px; padding: 8px 6px; }
+  }
+
+  /* === Loading Spinner === */
+  .loading {
+    display: flex;
+    justify-content: center;
+    padding: 40px;
+  }
+
+  .spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid var(--border);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+</head>
+<body>
+
+<div class="widget-container" id="app">
+
+  <!-- Auth Header -->
+  <div class="auth-header" id="auth-header">
+    <!-- Not logged in -->
+    <div id="auth-logged-out">
+      <button class="auth-link" onclick="openAuthModal('register')">REGISTRIEREN</button>
+      <span class="auth-separator">|</span>
+      <button class="auth-link" onclick="openAuthModal('login')">LOGIN</button>
+    </div>
+    <!-- Logged in -->
+    <div id="auth-logged-in" style="display:none;align-items:center;gap:12px;">
+      <span class="auth-greeting" id="auth-user-name">Hallo, Name</span>
+      <span class="auth-separator">|</span>
+      <button class="auth-link" onclick="openPortal()">MEIN BEREICH</button>
+      <span class="auth-separator">|</span>
+      <button class="auth-link" onclick="authLogout()">LOGOUT</button>
+    </div>
+  </div>
+
+  <!-- Tab Navigation -->
+  <nav class="tab-nav">
+    <button class="tab-btn active" data-tab="courses" onclick="switchTab('courses')">Kursblöcke</button>
+    <button class="tab-btn" data-tab="my-courses" onclick="switchTab('my-courses')">Meine Kurse</button>
+    <button class="tab-btn" data-tab="credits" onclick="switchTab('credits')">Guthaben</button>
+  </nav>
+
+  <!-- ============================================================ -->
+  <!-- TAB 1: Kursblock-Übersicht (öffentlich) -->
+  <!-- ============================================================ -->
+  <div class="tab-panel active" id="tab-courses">
+    <div id="courses-loading" class="loading"><div class="spinner"></div></div>
+    <div id="courses-content"></div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- TAB 2: Meine Kurse (eingeloggt) -->
+  <!-- ============================================================ -->
+  <div class="tab-panel" id="tab-my-courses">
+    <div id="my-courses-content"></div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- TAB 3: Guthaben & Add-Up Buchung -->
+  <!-- ============================================================ -->
+  <div class="tab-panel" id="tab-credits">
+    <div id="credits-content"></div>
+  </div>
+</div>
+
+<!-- Add-Up Booking Modal -->
+<div class="modal-overlay" id="makeup-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Add-Up Termin buchen</span>
+      <button class="modal-close" onclick="closeMakeupModal()">&times;</button>
+    </div>
+    <div class="modal-body" id="makeup-modal-body">
+      <div class="loading"><div class="spinner"></div></div>
+    </div>
+    <div class="modal-footer" id="makeup-modal-footer" style="display:none">
+      <button class="btn btn-secondary btn-sm" onclick="closeMakeupModal()">Abbrechen</button>
+      <button class="btn btn-primary btn-sm" id="btn-confirm-makeup" disabled onclick="confirmMakeupBooking()">
+        Add-Up Termin buchen
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Checkout Stepper Modal -->
+<div class="checkout-overlay" id="checkout-modal">
+  <div class="checkout-modal">
+    <div class="modal-header">
+      <span class="modal-title" id="checkout-title">Kurs buchen</span>
+      <button class="modal-close" onclick="closeCheckout()">&times;</button>
+    </div>
+    <div class="checkout-progress" id="checkout-progress"></div>
+    <div class="checkout-body" id="checkout-body"></div>
+    <div class="checkout-footer" id="checkout-footer"></div>
+  </div>
+</div>
+
+<!-- Powered by Footer -->
+<div style="text-align:center;padding:8px 0 4px;font-size:12px;color:#9CA3AF;">
+  <a href="https://urbankidsclub.de" target="_blank" rel="noopener" style="color:#9CA3AF;text-decoration:none;transition:color 0.2s;" onmouseover="this.style.color='#6B7280'" onmouseout="this.style.color='#9CA3AF'">Powered by Urban Kids Club</a>
+</div>
+
+<!-- Auth Login Modal -->
+<div class="auth-modal-overlay" id="auth-login-modal">
+  <div class="auth-modal">
+    <div class="auth-modal-header">
+      <span class="auth-modal-title">Anmelden</span>
+      <button class="modal-close" onclick="closeAuthModal('login')">&times;</button>
+    </div>
+    <div class="auth-modal-body">
+      <div id="login-buttons">
+        <button class="auth-btn auth-btn-google" onclick="authGoogle()">
+          <svg width="18" height="18" viewBox="0 0 18 18"><path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/><path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.26c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z" fill="#34A853"/><path d="M3.964 10.71A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/><path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/></svg>
+          Mit Google anmelden
+        </button>
+        <button class="auth-btn auth-btn-apple" onclick="authApple()">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="white"><path d="M14.94 9.88c-.02-2.15 1.75-3.18 1.83-3.23-1-1.46-2.55-1.66-3.1-1.68-1.32-.13-2.57.78-3.24.78-.67 0-1.7-.76-2.8-.74-1.44.02-2.77.84-3.51 2.13-1.5 2.6-.38 6.45 1.07 8.56.72 1.03 1.57 2.19 2.69 2.15 1.08-.04 1.49-.7 2.79-.7s1.67.7 2.81.67c1.16-.02 1.89-1.05 2.6-2.09.82-1.2 1.16-2.36 1.18-2.42-.03-.01-2.26-.87-2.28-3.43zM12.84 3.54c.59-.72.99-1.72.88-2.72-.85.04-1.88.57-2.49 1.28-.55.63-1.03 1.65-.9 2.62.95.08 1.92-.48 2.51-1.18z"/></svg>
+          Mit Apple anmelden
+        </button>
+
+        <div class="auth-divider">oder</div>
+
+        <div id="login-email-section">
+          <div id="login-email-form" class="auth-email-form active">
+            <input class="auth-email-input" id="login-email" type="email" placeholder="E-Mail-Adresse eingeben">
+            <button class="auth-btn auth-btn-magic" onclick="authMagicLink()">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+              Per E-Mail anmelden
+            </button>
+          </div>
+          <div id="login-email-sent" class="auth-success-msg">
+            <div style="width:48px;height:48px;border-radius:50%;background:#D1FAE5;color:#065F46;display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 12px">&#10003;</div>
+            <p><strong>Link gesendet!</strong><br>Wir haben dir einen Anmeldelink an <strong id="login-sent-email"></strong> gesendet. Bitte pr&uuml;fe dein Postfach.</p>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:16px;text-align:center;font-size:13px;color:var(--text-muted)">
+        Noch kein Konto? <button class="auth-link" style="font-size:13px;text-transform:none;letter-spacing:normal;color:var(--primary)" onclick="closeAuthModal('login');openAuthModal('register')">Jetzt registrieren</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Auth Register Modal -->
+<div class="auth-modal-overlay" id="auth-register-modal">
+  <div class="auth-modal">
+    <div class="auth-modal-header">
+      <span class="auth-modal-title">Registrieren</span>
+      <button class="modal-close" onclick="closeAuthModal('register')">&times;</button>
+    </div>
+    <div class="auth-modal-body">
+      <div id="register-form-section">
+        <!-- OAuth register buttons -->
+        <button class="auth-btn auth-btn-google" onclick="authGoogle()">
+          <svg width="18" height="18" viewBox="0 0 18 18"><path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/><path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.26c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z" fill="#34A853"/><path d="M3.964 10.71A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/><path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/></svg>
+          Mit Google registrieren
+        </button>
+        <button class="auth-btn auth-btn-apple" onclick="authApple()">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="white"><path d="M14.94 9.88c-.02-2.15 1.75-3.18 1.83-3.23-1-1.46-2.55-1.66-3.1-1.68-1.32-.13-2.57.78-3.24.78-.67 0-1.7-.76-2.8-.74-1.44.02-2.77.84-3.51 2.13-1.5 2.6-.38 6.45 1.07 8.56.72 1.03 1.57 2.19 2.69 2.15 1.08-.04 1.49-.7 2.79-.7s1.67.7 2.81.67c1.16-.02 1.89-1.05 2.6-2.09.82-1.2 1.16-2.36 1.18-2.42-.03-.01-2.26-.87-2.28-3.43zM12.84 3.54c.59-.72.99-1.72.88-2.72-.85.04-1.88.57-2.49 1.28-.55.63-1.03 1.65-.9 2.62.95.08 1.92-.48 2.51-1.18z"/></svg>
+          Mit Apple registrieren
+        </button>
+
+        <div class="auth-divider">oder per E-Mail</div>
+
+        <input class="auth-email-input" id="register-name" type="text" placeholder="Dein Name *" style="margin-bottom:8px">
+        <input class="auth-email-input" id="register-email" type="email" placeholder="E-Mail-Adresse *" style="margin-bottom:12px">
+
+        <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px">Kinder</div>
+        <div class="register-children-list" id="register-children">
+          <div class="register-child-row">
+            <input type="text" placeholder="Name des Kindes" class="register-child-name">
+            <input type="number" placeholder="Geburtsjahr" min="2005" max="2026" class="register-child-year" style="max-width:110px">
+          </div>
+        </div>
+        <button class="add-child-btn" onclick="addRegisterChild()">+ Weiteres Kind hinzuf&uuml;gen</button>
+
+        <button class="auth-btn auth-btn-magic" style="margin-top:16px" onclick="submitRegistration()">
+          Registrieren &amp; Anmeldelink senden
+        </button>
+      </div>
+
+      <div id="register-success" class="auth-success-msg">
+        <div style="width:48px;height:48px;border-radius:50%;background:#D1FAE5;color:#065F46;display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 12px">&#10003;</div>
+        <p><strong>Fast geschafft!</strong><br>Wir haben dir einen Anmeldelink an <strong id="register-sent-email"></strong> gesendet. Bitte pr&uuml;fe dein Postfach, um dein Konto zu aktivieren.</p>
+      </div>
+
+      <div style="margin-top:16px;text-align:center;font-size:13px;color:var(--text-muted)">
+        Bereits registriert? <button class="auth-link" style="font-size:13px;text-transform:none;letter-spacing:normal;color:var(--primary)" onclick="closeAuthModal('register');openAuthModal('login')">Jetzt anmelden</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ============================================================
+// Urban Kids Club – Parent Course Widget
+// Kommuniziert mit dem Backend via REST API
+// ============================================================
+
+const API_BASE = window.UKC_API_BASE || '/api'
+const PROVIDER_SLUG = window.UKC_PROVIDER_SLUG || ''
+
+// State
+let currentParentId = window.UKC_PARENT_ID || null
+let currentTab = 'courses'
+let selectedSlotId = null
+let selectedCreditId = null
+
+// ============================================================
+// Tab Switching
+// ============================================================
+function switchTab(tab) {
+  currentTab = tab
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab))
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === `tab-${tab}`))
+
+  if (tab === 'courses') loadCourseBlocks()
+  if (tab === 'my-courses') loadMyCourses()
+  if (tab === 'credits') loadCredits()
+}
+
+// ============================================================
+// API Helper
+// ============================================================
+async function api(path, opts = {}) {
+  try {
+    const res = await fetch(`${API_BASE}${path}`, {
+      headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
+      ...opts,
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.error || `Fehler ${res.status}`)
+    }
+    return res.json()
+  } catch (e) {
+    console.error(`API Error [${path}]:`, e)
+    throw e
+  }
+}
+
+// ============================================================
+// Load provider branding and apply CSS variables
+// ============================================================
+async function loadBranding() {
+  if (!PROVIDER_SLUG) return
+  try {
+    const branding = await api(`/providers/by-slug/${PROVIDER_SLUG}/branding`)
+    if (!branding) return
+    const root = document.documentElement
+    if (branding.primaryColor) root.style.setProperty('--primary', branding.primaryColor)
+    if (branding.accentColor) root.style.setProperty('--text', branding.accentColor)
+    if (branding.borderRadius) root.style.setProperty('--radius', branding.borderRadius + 'px')
+    if (branding.font) root.style.setProperty('--font', "'" + branding.font + "', system-ui, sans-serif")
+    // Compute hover color (slightly darker)
+    if (branding.primaryColor) {
+      const hex = branding.primaryColor.replace('#', '')
+      const r = Math.max(0, parseInt(hex.substr(0,2), 16) - 20)
+      const g = Math.max(0, parseInt(hex.substr(2,2), 16) - 20)
+      const b = Math.max(0, parseInt(hex.substr(4,2), 16) - 20)
+      root.style.setProperty('--primary-hover', '#' + r.toString(16).padStart(2,'0') + g.toString(16).padStart(2,'0') + b.toString(16).padStart(2,'0'))
+    }
+    // Show provider logo (safe DOM API, no innerHTML)
+    if (branding.showLogo && branding.logo && /^https?:\/\//.test(branding.logo)) {
+      const header = document.querySelector('.widget-container')
+      if (header) {
+        const logoWrap = document.createElement('div')
+        logoWrap.style.cssText = 'text-align:center;margin-bottom:12px;'
+        const img = document.createElement('img')
+        img.src = branding.logo
+        img.alt = branding.name || ''
+        img.style.cssText = 'max-height:48px;max-width:200px;object-fit:contain'
+        logoWrap.appendChild(img)
+        header.insertBefore(logoWrap, header.firstChild)
+      }
+    }
+  } catch(e) { /* silent – use defaults */ }
+}
+
+// Init branding on load
+loadBranding()
+
+// ============================================================
+// TAB 1: Kursblock-Übersicht
+// ============================================================
+async function loadCourseBlocks() {
+  const container = document.getElementById('courses-content')
+  const loading = document.getElementById('courses-loading')
+  loading.style.display = 'flex'
+  container.innerHTML = ''
+
+  // Timeout: show error if courses don't load within 10 seconds
+  const loadingTimeout = setTimeout(() => {
+    loading.style.display = 'none'
+    if (!container.innerHTML) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-state-icon">⏳</div>
+          <div class="empty-state-text">Laden dauert zu lange. Bitte prüfe deine Verbindung und versuche es erneut.</div>
+          <button onclick="loadCourseBlocks()" style="margin-top:12px;padding:8px 20px;background:var(--primary);color:#fff;border:none;border-radius:var(--radius);font-size:14px;font-weight:600;cursor:pointer;font-family:var(--font)">Erneut versuchen</button>
+        </div>`
+    }
+  }, 10000)
+
+  try {
+    // Öffentlicher Endpoint: alle aktiven/upcoming Blöcke des Providers
+    const blocks = await api(`/providers/${PROVIDER_SLUG}/course-blocks`)
+    clearTimeout(loadingTimeout)
+    loading.style.display = 'none'
+
+    const visible = blocks.filter(b => b.status === 'active' || b.status === 'upcoming')
+    if (visible.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-state-icon">📅</div>
+          <div class="empty-state-text">Aktuell sind keine Kursblöcke verfügbar.</div>
+        </div>`
+      return
+    }
+
+    container.innerHTML = visible.map(block => renderBlockCard(block)).join('')
+
+    // Load review ratings for each activity
+    const activityIds = [...new Set(visible.map(b => b.activityId).filter(Boolean))]
+    activityIds.forEach(actId => {
+      fetch(API_BASE + '/public/activities/' + actId + '/rating')
+        .then(r => r.json())
+        .then(res => {
+          const d = res.data || res
+          if (d.count > 0) {
+            const badges = document.querySelectorAll('#review-badge-' + actId)
+            badges.forEach(badge => {
+              badge.style.display = 'inline-flex'
+              badge.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="#f59e0b" stroke="#f59e0b" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg> ' + d.average.toFixed(1) + ' <span style="color:#9ca3af;font-weight:400">\u00B7 ' + d.count + ' Bewertung' + (d.count !== 1 ? 'en' : '') + '</span>'
+            })
+          }
+        })
+        .catch(() => {})
+    })
+  } catch (e) {
+    clearTimeout(loadingTimeout)
+    loading.style.display = 'none'
+    container.innerHTML = `<div class="empty-state"><div class="empty-state-text">Kurse konnten nicht geladen werden.</div></div>`
+  }
+}
+
+function renderBlockCard(block) {
+  const statusBadge = {
+    active: '<span class="badge badge-active">Laufend</span>',
+    upcoming: '<span class="badge badge-upcoming">Demnächst</span>',
+  }[block.status] || ''
+
+  const dayNames = { mon: 'Montag', tue: 'Dienstag', wed: 'Mittwoch', thu: 'Donnerstag', fri: 'Freitag', sat: 'Samstag', sun: 'Sonntag' }
+  const day = dayNames[block.recurringDay] || block.recurringDay
+
+  const startFormatted = formatDate(block.startDate)
+  const endFormatted = formatDate(block.extendedEndDate || block.endDate)
+
+  const totalCapacity = block.capacity + (block.makeupCapacity || block.makeup_capacity || 0)
+  const spotsLeft = totalCapacity - (block._enrollmentCount || 0)
+  const spotsText = spotsLeft <= 0
+    ? '<span style="color:var(--danger);font-weight:700">Ausgebucht</span>'
+    : spotsLeft <= 3
+      ? `<span style="color:var(--warning);font-weight:700">Noch ${spotsLeft} Plätze</span>`
+      : `<span style="color:var(--success);font-weight:700">${spotsLeft} Plätze frei</span>`
+
+  return `
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">${esc(block._activityTitle || block.activityType)}</div>
+          <div class="card-subtitle">${esc(block.seasonLabel)}</div>
+          <span class="review-badge" id="review-badge-${block.activityId || ''}" style="display:none"></span>
+        </div>
+        ${statusBadge}
+      </div>
+      <div class="card-body">
+        <div class="block-meta">
+          <div class="meta-item">
+            <span class="meta-label">Tag & Uhrzeit</span>
+            <span class="meta-value">${day}, ${block.recurringTime} Uhr</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label">Zeitraum</span>
+            <span class="meta-value">${startFormatted} – ${endFormatted}</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label">Termine</span>
+            <span class="meta-value">${block.totalSessions} Termine à ${block.durationMinutes} Min</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label">Preis</span>
+            <span class="meta-value">${block.pricePerBlock.toFixed(2).replace('.', ',')} €</span>
+          </div>
+        </div>
+
+        <div style="margin-top:16px; display:flex; justify-content:space-between; align-items:center;">
+          <div>${spotsText}</div>
+          ${spotsLeft > 0 && block.status !== 'completed'
+            ? `<button class="btn btn-primary btn-sm" onclick="startBooking('${escAttr(block.id)}')">Jetzt buchen</button>`
+            : spotsLeft <= 0
+              ? `<button class="btn btn-secondary btn-sm" onclick="joinWaitlist('${escAttr(block.id)}')">Auf Warteliste</button>`
+              : ''
+          }
+        </div>
+      </div>
+    </div>`
+}
+
+// ============================================================
+// TAB 2: Meine Kurse
+// ============================================================
+async function loadMyCourses() {
+  const container = document.getElementById('my-courses-content')
+
+  if (!currentParentId) {
+    container.innerHTML = `
+      <div class="login-prompt">
+        <div class="empty-state-icon" style="font-size:48px;opacity:0.5;margin-bottom:12px">🔐</div>
+        <p>Melde dich an, um deine gebuchten Kurse und Termine zu sehen.</p>
+        <button class="btn btn-primary" onclick="openLogin()">Anmelden</button>
+      </div>`
+    return
+  }
+
+  container.innerHTML = '<div class="loading"><div class="spinner"></div></div>'
+
+  try {
+    // Load waitlist entries for this parent
+    let waitlistOfferHtml = ''
+    try {
+      const wlRes = await api(`/waitlist/parent/${currentParentId}`)
+      const wlEntries = (wlRes.data || wlRes || [])
+      const now = new Date()
+      const activeOffers = wlEntries.filter(e => e.status === 'offered' && e.expiresAt && new Date(e.expiresAt) > now)
+      const expiredOffers = wlEntries.filter(e => e.status === 'expired' || (e.status === 'offered' && e.expiresAt && new Date(e.expiresAt) <= now))
+
+      if (activeOffers.length) {
+        waitlistOfferHtml += activeOffers.map(e => {
+          const remainMs = new Date(e.expiresAt).getTime() - now.getTime()
+          const remainH = Math.floor(remainMs / (1000 * 60 * 60))
+          const remainM = Math.floor((remainMs % (1000 * 60 * 60)) / (1000 * 60))
+          const countdown = remainH > 0 ? 'Noch ' + remainH + 'h ' + remainM + 'min zur Bestätigung' : 'Noch ' + remainM + ' Min zur Bestätigung'
+          const childName = e.child?.firstName ? (e.child.firstName + ' ' + (e.child.lastName || '')) : (e.child?.name || '')
+          return `<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:12px;padding:14px;margin-bottom:12px">
+            <div style="font-weight:600;font-size:14px;color:#1E40AF;margin-bottom:4px">Platz verfügbar!</div>
+            <div style="font-size:13px;color:#1E3A8A">${esc(childName)}</div>
+            <div style="font-size:12px;color:#3B82F6;margin-top:6px">${countdown}</div>
+          </div>`
+        }).join('')
+      }
+      if (expiredOffers.length) {
+        waitlistOfferHtml += expiredOffers.map(e => {
+          const childName = e.child?.firstName ? (e.child.firstName + ' ' + (e.child.lastName || '')) : (e.child?.name || '')
+          return `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:12px;padding:14px;margin-bottom:12px">
+            <div style="font-weight:600;font-size:14px;color:#991B1B;margin-bottom:4px">Angebot abgelaufen</div>
+            <div style="font-size:13px;color:#7F1D1D">${esc(childName)}</div>
+            <div style="font-size:12px;color:#EF4444;margin-top:6px">Das Angebot ist leider abgelaufen.</div>
+          </div>`
+        }).join('')
+      }
+    } catch (_) {}
+
+    const enrollments = await api(`/enrollments/parent/${currentParentId}`)
+
+    if (enrollments.length === 0 && !waitlistOfferHtml) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-state-icon">📋</div>
+          <div class="empty-state-text">Du hast noch keine Kurse gebucht.</div>
+        </div>`
+      return
+    }
+    if (enrollments.length === 0) {
+      container.innerHTML = waitlistOfferHtml
+      return
+    }
+
+    // Für jede Enrollment: Block-Infos und Sessions laden
+    const enriched = await Promise.all(enrollments.map(async (enr) => {
+      const [block, sessions] = await Promise.all([
+        api(`/course-blocks/${enr.blockId}`).catch(() => null),
+        api(`/course-blocks/${enr.blockId}/sessions`).catch(() => []),
+      ])
+      // Attendance für dieses Kind
+      const attendances = []
+      for (const sess of sessions) {
+        try {
+          const attList = await api(`/sessions/${sess.id}/attendance`)
+          const childAtt = attList.find(a => a.childId === enr.childId)
+          if (childAtt) attendances.push({ ...childAtt, sessionDate: sess.date, sessionTime: sess.startTime, sessionStatus: sess.status })
+        } catch (_) {}
+      }
+      return { enrollment: enr, block, sessions, attendances }
+    }))
+
+    container.innerHTML = waitlistOfferHtml + enriched.map(({ enrollment, block, sessions, attendances }) => {
+      if (!block) return ''
+
+      const statusBadge = {
+        active: '<span class="badge badge-active">Aktiv</span>',
+        cancelled: '<span class="badge" style="background:#FEE2E2;color:#991B1B">Storniert</span>',
+        completed: '<span class="badge badge-completed">Abgeschlossen</span>',
+      }[enrollment.status] || ''
+
+      const creditsAvail = enrollment.creditsEarned - enrollment.creditsUsed
+      const creditsInfo = creditsAvail > 0
+        ? `<span class="badge badge-available">${creditsAvail} Guthaben verfügbar</span>`
+        : ''
+
+      const sessionsHtml = sessions.map(sess => {
+        const att = attendances.find(a => a.sessionId === sess.id)
+        let statusLabel = ''
+        let statusClass = ''
+
+        if (sess.status === 'cancelled_by_provider' || sess.status === 'cancelled_by_holiday') {
+          statusLabel = 'Ausgefallen'
+          statusClass = 'status-cancelled'
+        } else if (att) {
+          const map = {
+            attended: ['Teilgenommen', 'status-attended'],
+            absent_excused: ['Entschuldigt', 'status-cancelled'],
+            absent_unexcused: ['Nicht erschienen', 'status-absent'],
+            expected: ['Geplant', 'status-expected'],
+          }
+          ;[statusLabel, statusClass] = map[att.status] || ['', '']
+          if (att.isMakeup) statusLabel = '↩ Add-Up: ' + statusLabel
+        } else if (sess.status === 'scheduled') {
+          statusLabel = 'Geplant'
+          statusClass = 'status-scheduled'
+        } else if (sess.status === 'completed') {
+          statusLabel = 'Abgeschlossen'
+          statusClass = 'status-completed'
+        }
+
+        const canCancel = att && att.status === 'expected' && sess.status === 'scheduled' && !att.isMakeup && isFutureDate(sess.date)
+
+        return `
+          <li class="session-item">
+            <div>
+              <div class="session-date">${formatDate(sess.date)}</div>
+              <div class="session-time">${(sess.startTime||'').slice(0,5)} – ${(sess.endTime||'').slice(0,5)} Uhr</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="session-status ${statusClass}">${statusLabel}</span>
+              ${canCancel ? `<button class="cancel-link" onclick="cancelAttendance('${escAttr(att.id)}', '${escAttr(enrollment.childName)}', '${escAttr(sess.date)}')">Absagen</button>` : ''}
+            </div>
+          </li>`
+      }).join('')
+
+      const blockId = `sessions-${enrollment.id}`
+
+      return `
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">${esc(enrollment.childName)} – ${esc(block._activityTitle || block.activityType)}</div>
+              <div class="card-subtitle">${esc(block.seasonLabel)}</div>
+            </div>
+            <div style="display:flex;gap:6px;align-items:center">
+              ${creditsInfo}
+              ${statusBadge}
+            </div>
+          </div>
+          <div class="card-body">
+            <button class="expand-toggle" onclick="toggleSessions('${escAttr(blockId)}', this)">
+              <span class="arrow">▶</span> ${sessions.length} Termine anzeigen
+            </button>
+            <div class="sessions-collapse" id="${blockId}">
+              <ul class="session-list">${sessionsHtml}</ul>
+            </div>
+          </div>
+        </div>`
+    }).join('')
+  } catch (e) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-state-text">Fehler beim Laden deiner Kurse.</div></div>`
+  }
+}
+
+// ============================================================
+// TAB 3: Guthaben & Add-Up Buchung
+// ============================================================
+async function loadCredits() {
+  const container = document.getElementById('credits-content')
+
+  if (!currentParentId) {
+    container.innerHTML = `
+      <div class="login-prompt">
+        <div class="empty-state-icon" style="font-size:48px;opacity:0.5;margin-bottom:12px">🎟️</div>
+        <p>Melde dich an, um dein Guthaben und Add-Up Termine zu sehen.</p>
+        <button class="btn btn-primary" onclick="openLogin()">Anmelden</button>
+      </div>`
+    return
+  }
+
+  container.innerHTML = '<div class="loading"><div class="spinner"></div></div>'
+
+  try {
+    const [credits, makeups] = await Promise.all([
+      api(`/credits/parent/${currentParentId}`),
+      api(`/makeup-bookings/parent/${currentParentId}`),
+    ])
+
+    const available = credits.filter(c => c.status === 'available')
+    const used = credits.filter(c => c.status === 'used')
+    const expired = credits.filter(c => c.status === 'expired')
+
+    const upcomingMakeups = makeups.filter(m => m.status === 'confirmed')
+
+    let html = `
+      <div class="credits-summary">
+        <div class="credit-stat">
+          <div class="credit-stat-number green">${available.length}</div>
+          <div class="credit-stat-label">Verfügbar</div>
+        </div>
+        <div class="credit-stat">
+          <div class="credit-stat-number orange">${used.length}</div>
+          <div class="credit-stat-label">Eingelöst</div>
+        </div>
+        <div class="credit-stat">
+          <div class="credit-stat-number gray">${expired.length}</div>
+          <div class="credit-stat-label">Abgelaufen</div>
+        </div>
+      </div>`
+
+    // Verfügbare Credits
+    if (available.length > 0) {
+      html += `
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Verfügbare Guthaben</div>
+          </div>
+          ${available.map(credit => `
+            <div class="credit-card">
+              <div class="credit-info">
+                <div class="credit-type">${esc(credit.activityType.replace(/_/g, ' '))}</div>
+                <div class="credit-detail">
+                  ${credit.isProviderCancellation ? 'Kurs ausgefallen' : 'Eigene Absage'}
+                  am ${formatDate(credit.originalSessionDate)}
+                  · Gültig bis ${formatDate(credit.validUntil)}
+                </div>
+              </div>
+              <div class="credit-actions">
+                <span class="badge badge-available">Verfügbar</span>
+                <button class="btn btn-primary btn-sm" onclick="openMakeupModal('${escAttr(credit.id)}')">
+                  Add-Up buchen
+                </button>
+              </div>
+            </div>
+          `).join('')}
+        </div>`
+    }
+
+    // Gebuchte Add-Up Termine
+    if (upcomingMakeups.length > 0) {
+      html += `
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Gebuchte Add-Up Termine</div>
+          </div>
+          ${upcomingMakeups.map(m => `
+            <div class="credit-card">
+              <div class="credit-info">
+                <div class="credit-type">${esc(m.childName)}</div>
+                <div class="credit-detail">
+                  Add-Up Termin am ${formatDate(m._targetDate || '')} um ${m._targetTime || ''} Uhr
+                </div>
+              </div>
+              <div class="credit-actions">
+                <span class="badge badge-upcoming">Gebucht</span>
+                <button class="cancel-link" onclick="cancelMakeup('${escAttr(m.id)}')">Stornieren</button>
+              </div>
+            </div>
+          `).join('')}
+        </div>`
+    }
+
+    // Vergangene Credits
+    if (used.length > 0 || expired.length > 0) {
+      const past = [...used, ...expired].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      html += `
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Vergangene Guthaben</div>
+          </div>
+          ${past.slice(0, 10).map(credit => `
+            <div class="credit-card">
+              <div class="credit-info">
+                <div class="credit-type">${esc(credit.activityType.replace(/_/g, ' '))}</div>
+                <div class="credit-detail">
+                  ${credit.isProviderCancellation ? 'Kurs ausgefallen' : 'Eigene Absage'}
+                  am ${formatDate(credit.originalSessionDate)}
+                </div>
+              </div>
+              <span class="badge ${credit.status === 'used' ? 'badge-used' : 'badge-expired'}">
+                ${credit.status === 'used' ? 'Eingelöst' : 'Abgelaufen'}
+              </span>
+            </div>
+          `).join('')}
+        </div>`
+    }
+
+    if (credits.length === 0 && makeups.length === 0) {
+      html += `
+        <div class="empty-state">
+          <div class="empty-state-icon">🎟️</div>
+          <div class="empty-state-text">Du hast aktuell kein Guthaben. Guthaben erhältst du bei rechtzeitiger Absage (24h vorher) oder wenn ein Kurs ausfällt.</div>
+        </div>`
+    }
+
+    container.innerHTML = html
+  } catch (e) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-state-text">Fehler beim Laden deiner Guthaben.</div></div>`
+  }
+}
+
+// ============================================================
+// Add-Up Modal – Verfügbare Slots laden
+// ============================================================
+async function openMakeupModal(creditId) {
+  selectedCreditId = creditId
+  selectedSlotId = null
+  const modal = document.getElementById('makeup-modal')
+  const body = document.getElementById('makeup-modal-body')
+  const footer = document.getElementById('makeup-modal-footer')
+  const confirmBtn = document.getElementById('btn-confirm-makeup')
+
+  modal.classList.add('active')
+  footer.style.display = 'none'
+  confirmBtn.disabled = true
+  body.innerHTML = '<div class="loading"><div class="spinner"></div></div>'
+
+  try {
+    const slots = await api(`/credits/${creditId}/available-slots`)
+
+    if (slots.length === 0) {
+      body.innerHTML = `
+        <div class="empty-state" style="padding:20px 0">
+          <div class="empty-state-icon" style="font-size:36px">😔</div>
+          <div class="empty-state-text">Aktuell keine verfügbaren Add-Up Termine für diesen Kurstyp.</div>
+        </div>`
+      return
+    }
+
+    footer.style.display = 'flex'
+
+    body.innerHTML = `
+      <p style="margin-bottom:12px;font-size:14px;color:var(--text-muted)">
+        Wähle einen freien Add-Up Termin:
+      </p>
+      <div class="slot-grid">
+        ${slots.map(slot => `
+          <div class="slot-option" data-slot="${esc(slot.sessionId)}" onclick="selectSlot('${escAttr(slot.sessionId)}', this)">
+            <div>
+              <div class="slot-date">${formatDate(slot.date)} um ${slot.startTime} Uhr</div>
+              <div class="slot-course">${esc(slot.blockLabel || slot.activityType)}</div>
+            </div>
+            <div class="slot-capacity">${slot.spotsLeft} Plätze frei</div>
+          </div>
+        `).join('')}
+      </div>`
+  } catch (e) {
+    body.innerHTML = `<div class="empty-state"><div class="empty-state-text">Fehler beim Laden der Termine.</div></div>`
+  }
+}
+
+function selectSlot(slotId, el) {
+  selectedSlotId = slotId
+  document.querySelectorAll('.slot-option').forEach(s => s.classList.remove('selected'))
+  el.classList.add('selected')
+  document.getElementById('btn-confirm-makeup').disabled = false
+}
+
+async function confirmMakeupBooking() {
+  if (!selectedCreditId || !selectedSlotId) return
+
+  const btn = document.getElementById('btn-confirm-makeup')
+  btn.disabled = true
+  btn.textContent = 'Wird gebucht...'
+
+  try {
+    await api(`/credits/${selectedCreditId}/book-makeup`, {
+      method: 'POST',
+      body: JSON.stringify({ targetSessionId: selectedSlotId, bookedBy: 'parent' }),
+    })
+
+    closeMakeupModal()
+    showToast('Add-Up Termin erfolgreich gebucht!')
+    loadCredits()
+  } catch (e) {
+    showToast(e.message || 'Fehler bei der Buchung', true)
+    btn.disabled = false
+    btn.textContent = 'Add-Up Termin buchen'
+  }
+}
+
+function closeMakeupModal() {
+  document.getElementById('makeup-modal').classList.remove('active')
+  selectedSlotId = null
+  selectedCreditId = null
+}
+
+// ============================================================
+// Cancel Actions
+// ============================================================
+function cancelAttendance(attendanceId, childName, date) {
+  showConfirmDialog(`${childName} für den ${formatDate(date)} absagen?\n\nBei Absage mehr als 24h vorher erhältst du ein Guthaben für einen Add-Up Termin.`, async () => {
+    try {
+      await api(`/attendance/${attendanceId}/cancel`, { method: 'POST' })
+      showToast('Termin wurde abgesagt.')
+      loadMyCourses()
+    } catch (e) {
+      showToast(e.message || 'Fehler bei der Absage', true)
+    }
+  })
+}
+
+function cancelMakeup(makeupId) {
+  showConfirmDialog('Add-Up Termin wirklich stornieren?\n\nDein Guthaben wird wiederhergestellt.', async () => {
+    try {
+      await api(`/makeup-bookings/${makeupId}`, { method: 'DELETE' })
+      showToast('Add-Up Termin storniert. Guthaben wiederhergestellt.')
+      loadCredits()
+    } catch (e) {
+      showToast(e.message || 'Fehler beim Stornieren', true)
+    }
+  })
+}
+
+// ============================================================
+// Checkout Stepper
+// ============================================================
+let checkoutStep = 1
+let checkoutBlockId = null
+let checkoutBlock = null
+let checkoutSiblingDiscount = 0
+let checkoutData = {
+  child: { firstName: '', lastName: '', birthYear: '' },
+  parent: { firstName: '', lastName: '', email: '', phone: '' },
+  agbAccepted: false,
+}
+const CHECKOUT_TOTAL_STEPS = 3 // 1: Kind & Eltern, 2: Zusammenfassung & AGB, 3: Bestätigung
+
+function startBooking(blockId) {
+  // If external booking URL is configured, redirect
+  if (window.UKC_BOOKING_URL) {
+    window.location.href = window.UKC_BOOKING_URL + "?block=" + blockId
+    return
+  }
+
+  checkoutBlockId = blockId
+  checkoutStep = 1
+  // Preserve previous data so going back keeps form state
+  // Only reset if booking a different block
+  if (!checkoutBlock || checkoutBlock.id !== blockId) {
+    checkoutData = {
+      child: { firstName: '', lastName: '', birthYear: '' },
+      parent: { firstName: '', lastName: '', email: '', phone: '' },
+      agbAccepted: false,
+    }
+  }
+
+  // Load block details
+  loadCheckoutBlock(blockId)
+}
+
+async function loadCheckoutBlock(blockId) {
+  const modal = document.getElementById('checkout-modal')
+  modal.classList.add('active')
+  document.getElementById('checkout-body').innerHTML = '<div class="loading"><div class="spinner"></div></div>'
+  document.getElementById('checkout-footer').innerHTML = ''
+  document.getElementById('checkout-progress').innerHTML = ''
+
+  try {
+    checkoutBlock = await api(`/course-blocks/${blockId}`)
+    // Check for sibling discount: if parent has other active enrollments
+    checkoutSiblingDiscount = 0
+    if (currentParentId) {
+      try {
+        const enrollments = await api(`/parents/${currentParentId}/enrollments`)
+        const activeOthers = (enrollments || []).filter(e => e.status === 'active' && e.blockId !== blockId)
+        if (activeOthers.length > 0) {
+          // Sibling discount comes from the activity pricing
+          checkoutSiblingDiscount = checkoutBlock.siblingDiscount || 0
+        }
+      } catch (e2) { /* ignore – discount check is optional */ }
+    }
+    renderCheckoutStep()
+  } catch (e) {
+    document.getElementById('checkout-body').innerHTML =
+      '<div class="empty-state"><div class="empty-state-text">Kursdaten konnten nicht geladen werden.</div></div>'
+    document.getElementById('checkout-footer').innerHTML =
+      '<div></div><button class="btn btn-secondary btn-sm" onclick="closeCheckout()">Schließen</button>'
+  }
+}
+
+function renderCheckoutStep() {
+  const body = document.getElementById('checkout-body')
+  const footer = document.getElementById('checkout-footer')
+  const progress = document.getElementById('checkout-progress')
+  const title = document.getElementById('checkout-title')
+
+  // Update progress bar
+  let progressHtml = ''
+  for (let i = 1; i <= CHECKOUT_TOTAL_STEPS; i++) {
+    progressHtml += `<div class="checkout-progress-step ${i <= checkoutStep ? 'active' : ''}"></div>`
+  }
+  progress.innerHTML = progressHtml
+
+  if (checkoutStep === 1) {
+    // Step 1: Kind & Elternteil Daten
+    title.textContent = 'Kurs buchen'
+    const c = checkoutData.child
+    const p = checkoutData.parent
+
+    body.innerHTML = `
+      <div class="checkout-section-title">Kind</div>
+      <div class="checkout-input-row">
+        <input class="checkout-input" id="co-child-first" placeholder="Vorname *" value="${esc(c.firstName)}">
+        <input class="checkout-input" id="co-child-last" placeholder="Nachname *" value="${esc(c.lastName)}">
+      </div>
+      <input class="checkout-input" id="co-child-year" type="number" placeholder="Geburtsjahr (z.B. 2020) *"
+        value="${c.birthYear || ''}" min="2005" max="2026" style="margin-bottom:20px">
+
+      <div class="checkout-section-title">Elternteil</div>
+      <div class="checkout-input-row">
+        <input class="checkout-input" id="co-parent-first" placeholder="Vorname *" value="${esc(p.firstName)}">
+        <input class="checkout-input" id="co-parent-last" placeholder="Nachname *" value="${esc(p.lastName)}">
+      </div>
+      <input class="checkout-input" id="co-parent-email" type="email" placeholder="E-Mail *"
+        value="${esc(p.email)}" style="margin-bottom:8px">
+      <input class="checkout-input" id="co-parent-phone" type="tel" placeholder="Telefon *"
+        value="${esc(p.phone)}">`
+
+    footer.innerHTML = `
+      <div></div>
+      <button class="btn btn-primary" onclick="checkoutNext()">Weiter</button>`
+
+  } else if (checkoutStep === 2) {
+    // Step 2: Zusammenfassung & AGB
+    title.textContent = 'Bestätigung'
+    const block = checkoutBlock
+    const dayNames = { mon: 'Montag', tue: 'Dienstag', wed: 'Mittwoch', thu: 'Donnerstag', fri: 'Freitag', sat: 'Samstag', sun: 'Sonntag' }
+    const day = dayNames[block.recurringDay] || block.recurringDay
+    const price = block.pricePerBlock.toFixed(2).replace('.', ',') + ' \u20AC'
+    // Sibling discount: checkoutSiblingDiscount is set during checkout init
+    const sibDiscount = checkoutSiblingDiscount || 0
+    const sibDiscountAmount = sibDiscount > 0 ? Math.round(block.pricePerBlock * (sibDiscount / 100) * 100) / 100 : 0
+    const finalPrice = sibDiscountAmount > 0 ? (block.pricePerBlock - sibDiscountAmount).toFixed(2).replace('.', ',') + ' \u20AC' : price
+
+    body.innerHTML = `
+      <div class="checkout-summary">
+        <div style="font-weight:600">${esc(block._activityTitle || block.activityType)}</div>
+        <div style="color:var(--text-muted);margin-top:4px">${esc(block.seasonLabel)}</div>
+        <div style="color:var(--text-muted);margin-top:4px">${day}, ${block.recurringTime} Uhr &middot; ${block.totalSessions} Termine</div>
+        <div style="color:var(--text-muted);margin-top:4px">Kind: ${esc(checkoutData.child.firstName)} ${esc(checkoutData.child.lastName)}</div>
+        <div style="color:var(--text-muted);margin-top:4px">Elternteil: ${esc(checkoutData.parent.firstName)} ${esc(checkoutData.parent.lastName)}</div>
+        <div style="color:var(--text-muted);margin-top:4px">${esc(checkoutData.parent.email)}</div>
+        ${sibDiscountAmount > 0 ? `
+          <div style="margin-top:8px;padding:8px 12px;background:#ecfdf5;border-radius:8px;font-size:13px">
+            <div style="display:flex;justify-content:space-between;color:var(--text-muted)"><span>Kurspreis</span><span>${price}</span></div>
+            <div style="display:flex;justify-content:space-between;color:#16a34a;margin-top:4px"><span>Geschwisterrabatt (${sibDiscount}%)</span><span>-${sibDiscountAmount.toFixed(2).replace('.', ',')} \u20AC</span></div>
+            <div style="display:flex;justify-content:space-between;font-weight:700;margin-top:6px;padding-top:6px;border-top:1px solid #d1fae5"><span>Gesamt</span><span>${finalPrice}</span></div>
+          </div>
+        ` : `<div class="checkout-summary-price">${price}</div>`}
+        <div id="coupon-section" style="margin-top:12px">
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="text" id="co-coupon" placeholder="Rabatt-Code" value="${checkoutData.couponCode || ''}" style="flex:1;padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:13px">
+            <button onclick="applyCoupon()" style="padding:8px 16px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:13px;cursor:pointer;white-space:nowrap">Einlösen</button>
+          </div>
+          <div id="coupon-result" style="font-size:12px;margin-top:4px"></div>
+        </div>
+      </div>
+
+      <label class="checkout-checkbox">
+        <input type="checkbox" id="co-agb" ${checkoutData.agbAccepted ? 'checked' : ''}>
+        <span>Ich stimme den <a href="#" style="color:var(--primary)">AGB</a> und <a href="#" style="color:var(--primary)">Datenschutzbestimmungen</a> zu. *</span>
+      </label>`
+
+    footer.innerHTML = `
+      <button class="btn-back" onclick="checkoutBack()">Zur\u00FCck</button>
+      <button class="btn btn-primary" onclick="checkoutNext()">Verbindlich buchen</button>`
+
+  } else if (checkoutStep === 3) {
+    // Step 3: Success
+    title.textContent = 'Buchung best\u00E4tigt'
+
+    body.innerHTML = `
+      <div style="text-align:center;padding:20px 0">
+        <div style="width:56px;height:56px;border-radius:50%;background:var(--success);color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto 16px">\u2713</div>
+        <div style="font-size:18px;font-weight:700;margin-bottom:8px">Vielen Dank!</div>
+        <div style="font-size:14px;color:var(--text-muted);line-height:1.6">
+          Deine Buchung f\u00FCr <strong>${esc(checkoutBlock._activityTitle || checkoutBlock.activityType)}</strong> wurde erfolgreich abgeschlossen.
+          Eine Best\u00E4tigung wird an <strong>${esc(checkoutData.parent.email)}</strong> gesendet.
+        </div>
+      </div>`
+
+    footer.innerHTML = `
+      <div></div>
+      <button class="btn btn-primary" onclick="closeCheckout()">Schlie\u00DFen</button>`
+  }
+}
+
+function saveCheckoutFormData() {
+  // Save current form inputs so data is preserved when navigating back
+  if (checkoutStep === 1) {
+    const childFirst = document.getElementById('co-child-first')
+    const childLast = document.getElementById('co-child-last')
+    const childYear = document.getElementById('co-child-year')
+    const parentFirst = document.getElementById('co-parent-first')
+    const parentLast = document.getElementById('co-parent-last')
+    const parentEmail = document.getElementById('co-parent-email')
+    const parentPhone = document.getElementById('co-parent-phone')
+
+    if (childFirst) checkoutData.child.firstName = childFirst.value.trim()
+    if (childLast) checkoutData.child.lastName = childLast.value.trim()
+    if (childYear) checkoutData.child.birthYear = childYear.value
+    if (parentFirst) checkoutData.parent.firstName = parentFirst.value.trim()
+    if (parentLast) checkoutData.parent.lastName = parentLast.value.trim()
+    if (parentEmail) checkoutData.parent.email = parentEmail.value.trim()
+    if (parentPhone) checkoutData.parent.phone = parentPhone.value.trim()
+  } else if (checkoutStep === 2) {
+    const agb = document.getElementById('co-agb')
+    if (agb) checkoutData.agbAccepted = agb.checked
+  }
+}
+
+function checkoutNext() {
+  saveCheckoutFormData()
+
+  if (checkoutStep === 1) {
+    // Validate step 1
+    const c = checkoutData.child
+    const p = checkoutData.parent
+    if (!c.firstName || !c.lastName || !c.birthYear) {
+      showToast('Bitte alle Felder f\u00FCr das Kind ausf\u00FCllen.', true)
+      return
+    }
+    if (!p.firstName || !p.lastName || !p.email || !p.phone) {
+      showToast('Bitte alle Felder f\u00FCr den Elternteil ausf\u00FCllen.', true)
+      return
+    }
+    // Basic email validation
+    if (!p.email.includes('@') || !p.email.includes('.')) {
+      showToast('Bitte eine g\u00FCltige E-Mail-Adresse eingeben.', true)
+      return
+    }
+    checkoutStep = 2
+    renderCheckoutStep()
+  } else if (checkoutStep === 2) {
+    // Validate step 2
+    if (!checkoutData.agbAccepted) {
+      showToast('Bitte stimme den AGB zu.', true)
+      return
+    }
+    submitCheckout()
+  }
+}
+
+function checkoutBack() {
+  saveCheckoutFormData()
+  if (checkoutStep > 1) {
+    checkoutStep--
+    renderCheckoutStep()
+  }
+}
+
+async function submitCheckout() {
+  const submitBtn = document.querySelector('#checkout-footer .btn-primary')
+  if (submitBtn) {
+    submitBtn.disabled = true
+    submitBtn.textContent = 'Wird verarbeitet...'
+  }
+
+  try {
+    await api(`/course-blocks/${checkoutBlockId}/enroll`, {
+      method: 'POST',
+      body: JSON.stringify({
+        child: checkoutData.child,
+        parent: checkoutData.parent,
+        parentId: currentParentId || undefined,
+      }),
+    })
+
+    checkoutStep = 3
+    renderCheckoutStep()
+    // Reload course blocks to update availability
+    loadCourseBlocks()
+  } catch (e) {
+    showToast(e.message || 'Fehler bei der Buchung. Bitte versuche es erneut.', true)
+    if (submitBtn) {
+      submitBtn.disabled = false
+      submitBtn.textContent = 'Erneut versuchen'
+    }
+  }
+}
+
+async function applyCoupon() {
+  const code = document.getElementById('co-coupon')?.value?.trim()
+  const resultEl = document.getElementById('coupon-result')
+  if (!code) { resultEl.innerHTML = '<span style="color:#ef4444">Bitte Code eingeben</span>'; return }
+  try {
+    const resp = await fetch(API_BASE + '/api/public/coupons/validate', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, activityId: checkoutBlock?.activityId || '', amount: checkoutBlock?.pricePerBlock || 0 })
+    })
+    const data = await resp.json()
+    if (data.valid) {
+      checkoutData.couponCode = code
+      checkoutData.couponDiscount = data.discount || 0
+      checkoutData.couponType = data.type || 'percentage'
+      resultEl.innerHTML = '<span style="color:#16a34a">\u2713 ' + esc(data.message || 'Rabatt angewendet!') + '</span>'
+    } else {
+      checkoutData.couponCode = ''
+      checkoutData.couponDiscount = 0
+      resultEl.innerHTML = '<span style="color:#ef4444">' + esc(data.error || 'Ungültiger Code') + '</span>'
+    }
+  } catch(e) {
+    resultEl.innerHTML = '<span style="color:#ef4444">Fehler beim Prüfen</span>'
+  }
+}
+
+function closeCheckout() {
+  document.getElementById('checkout-modal').classList.remove('active')
+  checkoutBlockId = null
+  checkoutBlock = null
+}
+
+function joinWaitlist(blockId) {
+  if (!currentParentId) {
+    openLogin()
+    return
+  }
+  showToast('Du wurdest auf die Warteliste gesetzt!')
+  // TODO: API call
+}
+
+function openLogin() {
+  openAuthModal('login')
+}
+
+// ============================================================
+// Supabase Auth
+// ============================================================
+const SUPABASE_URL = window.UKC_SUPABASE_URL || ''
+const SUPABASE_ANON_KEY = window.UKC_SUPABASE_ANON_KEY || ''
+let supabaseClient = null
+let currentAuthUser = null
+
+function initSupabase() {
+  if (supabaseClient) return supabaseClient
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    console.warn('UKC: Supabase URL/Key not configured. Set UKC_SUPABASE_URL and UKC_SUPABASE_ANON_KEY.')
+    return null
+  }
+  if (typeof window.supabase === 'undefined' || !window.supabase.createClient) {
+    console.warn('UKC: Supabase client library not loaded.')
+    return null
+  }
+  supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+
+  // Listen for auth state changes
+  supabaseClient.auth.onAuthStateChange((event, session) => {
+    if (event === 'SIGNED_IN' && session) {
+      handleAuthSession(session)
+    } else if (event === 'SIGNED_OUT') {
+      handleAuthSignOut()
+    }
+  })
+
+  return supabaseClient
+}
+
+async function checkAuthState() {
+  const sb = initSupabase()
+  if (!sb) return
+  try {
+    const { data: { session } } = await sb.auth.getSession()
+    if (session) {
+      handleAuthSession(session)
+    }
+  } catch (e) {
+    console.error('Auth check failed:', e)
+  }
+}
+
+function handleAuthSession(session) {
+  currentAuthUser = session.user
+  const meta = session.user.user_metadata || {}
+  const displayName = meta.full_name || meta.name || session.user.email?.split('@')[0] || 'Nutzer'
+
+  // Update header UI
+  document.getElementById('auth-logged-out').style.display = 'none'
+  const loggedIn = document.getElementById('auth-logged-in')
+  loggedIn.style.display = 'flex'
+  document.getElementById('auth-user-name').textContent = 'Hallo, ' + displayName
+
+  // Close any open auth modals
+  closeAuthModal('login')
+  closeAuthModal('register')
+
+  // Try to find parent by email and set currentParentId
+  lookupParentByEmail(session.user.email)
+}
+
+function handleAuthSignOut() {
+  currentAuthUser = null
+  currentParentId = null
+  document.getElementById('auth-logged-out').style.display = ''
+  document.getElementById('auth-logged-in').style.display = 'none'
+
+  // Reload current tab to reflect logged-out state
+  if (currentTab === 'my-courses') loadMyCourses()
+  if (currentTab === 'credits') loadCredits()
+}
+
+async function lookupParentByEmail(email) {
+  if (!email || !PROVIDER_SLUG) return
+  try {
+    const parents = await api(`/parents/by-email/${encodeURIComponent(email)}`)
+    if (parents && parents.id) {
+      currentParentId = parents.id
+    } else if (Array.isArray(parents) && parents.length > 0) {
+      currentParentId = parents[0].id
+    }
+    // Reload current tab with auth context
+    if (currentTab === 'my-courses') loadMyCourses()
+    if (currentTab === 'credits') loadCredits()
+  } catch (_) {
+    // Parent not found – that's OK, they may need to register
+  }
+}
+
+// Auth Modal management
+function openAuthModal(type) {
+  const modalId = type === 'register' ? 'auth-register-modal' : 'auth-login-modal'
+  document.getElementById(modalId).classList.add('active')
+
+  // Reset login modal state
+  if (type === 'login') {
+    document.getElementById('login-email-form').classList.add('active')
+    document.getElementById('login-email-sent').classList.remove('active')
+    document.getElementById('login-email').value = ''
+  }
+  // Reset register modal state
+  if (type === 'register') {
+    document.getElementById('register-form-section').style.display = ''
+    document.getElementById('register-success').classList.remove('active')
+    document.getElementById('register-name').value = ''
+    document.getElementById('register-email').value = ''
+    const childrenList = document.getElementById('register-children')
+    childrenList.innerHTML = `
+      <div class="register-child-row">
+        <input type="text" placeholder="Name des Kindes" class="register-child-name">
+        <input type="number" placeholder="Geburtsjahr" min="2005" max="2026" class="register-child-year" style="max-width:110px">
+      </div>`
+  }
+}
+
+function closeAuthModal(type) {
+  const modalId = type === 'register' ? 'auth-register-modal' : 'auth-login-modal'
+  document.getElementById(modalId).classList.remove('active')
+}
+
+// Close modals when clicking overlay
+document.addEventListener('click', (e) => {
+  if (e.target.id === 'auth-login-modal') closeAuthModal('login')
+  if (e.target.id === 'auth-register-modal') closeAuthModal('register')
+})
+
+// Google OAuth
+async function authGoogle() {
+  const sb = initSupabase()
+  if (!sb) { showToast('Anmeldung nicht verf\u00FCgbar. Supabase nicht konfiguriert.', true); return }
+  try {
+    const { error } = await sb.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: window.location.href }
+    })
+    if (error) throw error
+  } catch (e) {
+    showToast(e.message || 'Google-Anmeldung fehlgeschlagen.', true)
+  }
+}
+
+// Apple OAuth
+async function authApple() {
+  const sb = initSupabase()
+  if (!sb) { showToast('Anmeldung nicht verf\u00FCgbar. Supabase nicht konfiguriert.', true); return }
+  try {
+    const { error } = await sb.auth.signInWithOAuth({
+      provider: 'apple',
+      options: { redirectTo: window.location.href }
+    })
+    if (error) throw error
+  } catch (e) {
+    showToast(e.message || 'Apple-Anmeldung fehlgeschlagen.', true)
+  }
+}
+
+// Magic Link
+async function authMagicLink() {
+  const sb = initSupabase()
+  if (!sb) { showToast('Anmeldung nicht verf\u00FCgbar. Supabase nicht konfiguriert.', true); return }
+
+  const email = document.getElementById('login-email').value.trim()
+  if (!email || !email.includes('@')) {
+    showToast('Bitte eine g\u00FCltige E-Mail-Adresse eingeben.', true)
+    return
+  }
+
+  try {
+    const { error } = await sb.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: window.location.href }
+    })
+    if (error) throw error
+
+    // Show success
+    document.getElementById('login-email-form').classList.remove('active')
+    document.getElementById('login-email-sent').classList.add('active')
+    document.getElementById('login-sent-email').textContent = email
+  } catch (e) {
+    showToast(e.message || 'Magic Link konnte nicht gesendet werden.', true)
+  }
+}
+
+// Registration
+function addRegisterChild() {
+  const list = document.getElementById('register-children')
+  const row = document.createElement('div')
+  row.className = 'register-child-row'
+  row.innerHTML = `
+    <input type="text" placeholder="Name des Kindes" class="register-child-name">
+    <input type="number" placeholder="Geburtsjahr" min="2005" max="2026" class="register-child-year" style="max-width:110px">
+    <button class="remove-child-btn" onclick="this.parentElement.remove()">&times;</button>`
+  list.appendChild(row)
+}
+
+async function submitRegistration() {
+  const name = document.getElementById('register-name').value.trim()
+  const email = document.getElementById('register-email').value.trim()
+
+  if (!name) { showToast('Bitte deinen Namen eingeben.', true); return }
+  if (!email || !email.includes('@')) { showToast('Bitte eine g\u00FCltige E-Mail-Adresse eingeben.', true); return }
+
+  // Collect children
+  const childRows = document.querySelectorAll('#register-children .register-child-row')
+  const children = []
+  childRows.forEach(row => {
+    const childName = row.querySelector('.register-child-name').value.trim()
+    const childYear = row.querySelector('.register-child-year').value
+    if (childName) {
+      children.push({ name: childName, birthYear: childYear || null })
+    }
+  })
+
+  // Create parent via API
+  try {
+    const nameParts = name.split(' ')
+    const firstName = nameParts[0]
+    const lastName = nameParts.slice(1).join(' ') || ''
+
+    await api('/parents', {
+      method: 'POST',
+      body: JSON.stringify({
+        firstName,
+        lastName,
+        email,
+        children: children.map(c => ({
+          firstName: c.name.split(' ')[0],
+          lastName: c.name.split(' ').slice(1).join(' ') || lastName,
+          birthYear: c.birthYear ? parseInt(c.birthYear) : undefined,
+        })),
+        providerSlug: PROVIDER_SLUG,
+      }),
+    })
+  } catch (e) {
+    // Parent might already exist – continue with magic link anyway
+    console.log('Parent creation:', e.message)
+  }
+
+  // Send magic link
+  const sb = initSupabase()
+  if (sb) {
+    try {
+      const { error } = await sb.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: window.location.href }
+      })
+      if (error) throw error
+    } catch (e) {
+      showToast(e.message || 'Anmeldelink konnte nicht gesendet werden.', true)
+      return
+    }
+  }
+
+  // Show success
+  document.getElementById('register-form-section').style.display = 'none'
+  document.getElementById('register-success').classList.add('active')
+  document.getElementById('register-sent-email').textContent = email
+}
+
+// Logout
+async function authLogout() {
+  const sb = initSupabase()
+  if (sb) {
+    try {
+      await sb.auth.signOut()
+    } catch (e) {
+      console.error('Logout error:', e)
+    }
+  }
+  handleAuthSignOut()
+  showToast('Du wurdest abgemeldet.')
+}
+
+// Portal link
+function openPortal() {
+  const portalUrl = window.UKC_PORTAL_URL || '/portal'
+  window.location.href = portalUrl
+}
+
+// ============================================================
+// Helpers
+// ============================================================
+function toggleSessions(id, btn) {
+  const el = document.getElementById(id)
+  el.classList.toggle('open')
+  btn.classList.toggle('open')
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return '–'
+  const [y, m, d] = dateStr.split('-')
+  return `${d}.${m}.${y}`
+}
+
+function isFutureDate(dateStr) {
+  return dateStr > new Date().toISOString().split('T')[0]
+}
+
+function esc(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+function escAttr(str) {
+  // For use inside JS string literals in onclick handlers etc.
+  return String(str || '')
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/"/g, '\\"')
+    .replace(/</g, '\\x3c')
+    .replace(/>/g, '\\x3e')
+}
+
+function showToast(msg, isError = false) {
+  const toast = document.getElementById('toast')
+  toast.textContent = msg
+  toast.style.background = isError ? 'var(--danger)' : '#1F2937'
+  toast.classList.add('visible')
+  setTimeout(() => toast.classList.remove('visible'), 3000)
+}
+
+function showConfirmDialog(message, onConfirm) {
+  const overlay = document.createElement('div')
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:1000;display:flex;align-items:center;justify-content:center'
+  overlay.innerHTML = '<div style="background:#fff;border-radius:16px;padding:24px;max-width:340px;width:90%;box-shadow:0 20px 40px rgba(0,0,0,.2)"><p style="font-size:14px;color:#374151;margin-bottom:20px;white-space:pre-line">' + esc(message) + '</p><div style="display:flex;gap:10px"><button id="cfmCancel" style="flex:1;padding:10px;border:1px solid #e5e7eb;border-radius:10px;background:#fff;color:#374151;font-size:13px;cursor:pointer">Abbrechen</button><button id="cfmOk" style="flex:1;padding:10px;border:none;border-radius:10px;background:var(--primary);color:#fff;font-size:13px;cursor:pointer;font-weight:600">Bestätigen</button></div></div>'
+  document.body.appendChild(overlay)
+  overlay.querySelector('#cfmCancel').onclick = () => overlay.remove()
+  overlay.querySelector('#cfmOk').onclick = () => { overlay.remove(); onConfirm() }
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove() }
+}
+
+// ============================================================
+// Init
+// ============================================================
+document.addEventListener('DOMContentLoaded', () => {
+  // Theme von URL lesen
+  const params = new URLSearchParams(window.location.search)
+  if (params.get('theme') === 'dark') document.documentElement.dataset.theme = 'dark'
+
+  // Custom primary color from URL param with hex validation
+  if (params.get('color')) {
+    const color = params.get('color')
+    if (/^#([0-9A-Fa-f]{3}){1,2}$/.test(color)) {
+      document.documentElement.style.setProperty('--primary', color)
+      const hex = color.replace('#', '')
+      const r = Math.max(0, parseInt(hex.substr(0,2), 16) - 20)
+      const g = Math.max(0, parseInt(hex.substr(2,2), 16) - 20)
+      const b = Math.max(0, parseInt(hex.substr(4,2), 16) - 20)
+      document.documentElement.style.setProperty('--primary-hover', '#' + r.toString(16).padStart(2,'0') + g.toString(16).padStart(2,'0') + b.toString(16).padStart(2,'0'))
+    }
+  }
+
+  // Custom logo from URL param
+  if (params.get('logoUrl')) {
+    const logoUrl = params.get('logoUrl')
+    if (/^https?:\/\//.test(logoUrl)) {
+      const container = document.querySelector('.widget-container')
+      if (container) {
+        const logoWrap = document.createElement('div')
+        logoWrap.style.cssText = 'text-align:center;margin-bottom:12px;'
+        const img = document.createElement('img')
+        img.src = logoUrl
+        img.alt = 'Provider Logo'
+        img.style.cssText = 'max-height:48px;max-width:200px;object-fit:contain'
+        logoWrap.appendChild(img)
+        container.insertBefore(logoWrap, container.firstChild)
+      }
+    }
+  }
+
+  if (params.get('parentId')) currentParentId = params.get('parentId')
+  if (params.get('provider')) window.UKC_PROVIDER_SLUG = params.get('provider')
+
+  // Supabase config is injected server-side — URL param override removed for security
+
+  // Check auth state on load
+  checkAuthState()
+
+  // Tab von URL
+  const tab = params.get('tab')
+  if (tab && ['courses', 'my-courses', 'credits'].includes(tab)) {
+    switchTab(tab)
+  } else {
+    loadCourseBlocks()
+  }
+})
+
+// PostMessage API für Host-Kommunikation (Squarespace etc.)
+window.addEventListener('message', (e) => {
+  if (e.data?.type === 'ukc-auth') {
+    currentParentId = e.data.parentId
+    if (currentTab === 'my-courses') loadMyCourses()
+    if (currentTab === 'credits') loadCredits()
+  }
+})
+</script>
+
+</body>
+</html>

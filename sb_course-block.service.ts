@@ -1,0 +1,549 @@
+// ============================================================
+// CourseBlock Service – Supabase-backed
+// ============================================================
+
+import { getServiceClient } from '../../lib/supabase'
+import { courseBlockFromDb, courseBlockToDb, blockSessionFromDb, blockSessionToDb, blockEnrollmentFromDb, blockEnrollmentToDb } from './mappers'
+import type { CourseBlock, BlockSession, BlockEnrollment, DayOfWeek, Currency, ID } from '../../types'
+
+const BLOCK_TABLE = 'course_blocks'
+const SESSION_TABLE = 'block_sessions'
+const ENROLLMENT_TABLE = 'block_enrollments'
+
+const DAY_TO_NUMBER: Record<string, number> = {
+  SU: 0, MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6,
+  sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6,
+  sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6,
+}
+
+function addMinutes(time: string, minutes: number): string {
+  const [h, m] = time.split(':').map(Number)
+  const totalMin = h * 60 + m + minutes
+  const newH = Math.floor(totalMin / 60) % 24
+  const newM = totalMin % 60
+  return `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`
+}
+
+function generateSessionDates(startDate: string, recurringDay: DayOfWeek | string, totalSessions: number): string[] {
+  const targetDay = DAY_TO_NUMBER[recurringDay] ?? DAY_TO_NUMBER[String(recurringDay).toUpperCase()]
+  if (targetDay === undefined) {
+    console.error(`[CourseBlock] Unknown day: ${recurringDay}, defaulting to Monday`)
+    return generateSessionDates(startDate, 'MO' as DayOfWeek, totalSessions)
+  }
+  const dates: string[] = []
+  const current = new Date(startDate + 'T00:00:00Z')
+  // Find the first occurrence of targetDay (max 7 iterations)
+  let guard = 0
+  while (current.getUTCDay() !== targetDay && guard < 7) {
+    current.setUTCDate(current.getUTCDate() + 1)
+    guard++
+  }
+  for (let i = 0; i < totalSessions; i++) {
+    dates.push(current.toISOString().split('T')[0])
+    current.setUTCDate(current.getUTCDate() + 7)
+  }
+  return dates
+}
+
+export const SupabaseCourseBlockService = {
+
+  async list(providerId: ID): Promise<CourseBlock[]> {
+    const sb = getServiceClient()
+    const { data, error } = await sb.from(BLOCK_TABLE).select('*').eq('provider_id', providerId).order('created_at', { ascending: false })
+    if (error) throw error
+    return (data ?? []).map(courseBlockFromDb)
+  },
+
+  async getById(id: ID, providerId?: ID): Promise<CourseBlock | undefined> {
+    const sb = getServiceClient()
+    let query = sb.from(BLOCK_TABLE).select('*').eq('id', id)
+    if (providerId) query = query.eq('provider_id', providerId)
+    const { data, error } = await query.maybeSingle()
+    if (error) throw error
+    return data ? courseBlockFromDb(data) : undefined
+  },
+
+  async create(input: {
+    providerId: ID; activityId: ID; activityType: string; seasonLabel: string;
+    totalSessions?: number; startDate: string; recurringDay: DayOfWeek;
+    recurringTime: string; durationMinutes?: number; pricePerBlock?: number;
+    currency?: Currency; capacity: number; makeupCapacity?: number;
+    maxCreditsPerEnrollment?: number; cancellationDeadlineMinutes?: number;
+  }): Promise<CourseBlock> {
+    const sb = getServiceClient()
+    const totalSessions = input.totalSessions ?? 8
+    const durationMinutes = input.durationMinutes ?? 60
+    const dates = generateSessionDates(input.startDate, input.recurringDay, totalSessions)
+    const endDate = dates[dates.length - 1]
+    const endTime = addMinutes(input.recurringTime, durationMinutes)
+
+    const blockRow = courseBlockToDb({
+      providerId: input.providerId,
+      activityId: input.activityId,
+      activityType: input.activityType,
+      seasonLabel: input.seasonLabel,
+      totalSessions,
+      startDate: dates[0],
+      endDate,
+      recurringDay: input.recurringDay,
+      recurringTime: input.recurringTime,
+      durationMinutes,
+      pricePerBlock: input.pricePerBlock ?? 140,
+      currency: input.currency ?? 'EUR',
+      capacity: input.capacity,
+      makeupCapacity: input.makeupCapacity ?? 2,
+      maxCreditsPerEnrollment: input.maxCreditsPerEnrollment ?? 2,
+      cancellationDeadlineMinutes: input.cancellationDeadlineMinutes ?? 1440,
+      status: 'upcoming',
+    })
+
+    const { data: blockData, error: blockErr } = await sb.from(BLOCK_TABLE).insert(blockRow).select().single()
+    if (blockErr) throw blockErr
+    const block = courseBlockFromDb(blockData)
+
+    // Generate sessions
+    const sessionRows = dates.map((date, i) => blockSessionToDb({
+      blockId: block.id,
+      sessionNumber: i + 1,
+      date,
+      startTime: input.recurringTime,
+      endTime,
+      status: 'scheduled',
+    }))
+
+    const { error: sessErr } = await sb.from(SESSION_TABLE).insert(sessionRows)
+    if (sessErr) throw sessErr
+
+    // Notify waitlisted parents that a new block is available
+    try {
+      const { data: waitlist } = await sb.from('waitlist_entries')
+        .select('id, parent_id').eq('activity_id', input.activityId).eq('status', 'waiting')
+      if (waitlist?.length) {
+        const { data: activity } = await sb.from('activities').select('title').eq('id', input.activityId).single()
+        for (const entry of waitlist) {
+          await sb.from('notifications').insert({
+            recipient_type: 'parent',
+            recipient_id: entry.parent_id,
+            type: 'new_block_available',
+            channel: 'in_app',
+            title: 'Neuer Kursblock verfügbar!',
+            body: `Für "${activity?.title || input.activityType}" gibt es jetzt einen neuen Block: ${input.seasonLabel}. Jetzt buchen!`,
+            data: { blockId: block.id, activityId: input.activityId },
+          })
+        }
+        console.log(`[CourseBlock] ${waitlist.length} waitlisted parents notified about new block ${block.id}`)
+      }
+    } catch (notifyErr) {
+      console.error('[CourseBlock] Waitlist notification failed:', notifyErr)
+    }
+
+    return block
+  },
+
+  async enroll(blockId: ID, input: {
+    parentId: ID; childId: string; childName: string; childAge: number;
+    pricePaid?: number; currency?: Currency; bookingId?: ID;
+  }): Promise<BlockEnrollment | { error: string }> {
+    const sb = getServiceClient()
+    const block = await this.getById(blockId)
+    if (!block) return { error: 'Block nicht gefunden' }
+
+    // Check duplicate
+    const { data: existing } = await sb.from(ENROLLMENT_TABLE)
+      .select('id').eq('block_id', blockId).eq('child_id', input.childId).eq('status', 'active')
+    if (existing?.length) return { error: 'Kind ist bereits in diesem Block eingeschrieben' }
+
+    // Check capacity
+    const { count } = await sb.from(ENROLLMENT_TABLE)
+      .select('*', { count: 'exact', head: true }).eq('block_id', blockId).eq('status', 'active')
+    if ((count ?? 0) >= block.capacity) return { error: `Block ist voll (${block.capacity} Plätze belegt)` }
+
+    const row = blockEnrollmentToDb({
+      blockId,
+      activityType: block.activityType,
+      providerId: block.providerId,
+      parentId: input.parentId,
+      childId: input.childId,
+      childName: input.childName,
+      childAge: input.childAge,
+      bookingId: input.bookingId,
+      status: 'active',
+      pricePaid: input.pricePaid ?? block.pricePerBlock,
+      currency: input.currency ?? block.currency,
+      creditsEarned: 0,
+      creditsUsed: 0,
+    })
+
+    const { data, error } = await sb.from(ENROLLMENT_TABLE).insert(row).select().single()
+    if (error) throw error
+    return blockEnrollmentFromDb(data)
+  },
+
+  async markSessionCompleted(sessionId: ID): Promise<BlockSession | undefined> {
+    const sb = getServiceClient()
+    const { data, error } = await sb.from(SESSION_TABLE)
+      .update({ status: 'completed' }).eq('id', sessionId).select().maybeSingle()
+    if (error) throw error
+    return data ? blockSessionFromDb(data) : undefined
+  },
+
+  async cancelSession(input: { sessionId: ID; reason?: string; compensation?: string; cancelledBy?: string } | ID, reason?: string): Promise<BlockSession | { affected: number; creditsIssued?: number } | undefined> {
+    const sb = getServiceClient()
+    const sessionId = typeof input === 'object' ? input.sessionId : input
+    const cancelReason = typeof input === 'object' ? (input.reason ?? reason ?? '') : (reason ?? '')
+    const compensation = typeof input === 'object' ? input.compensation : undefined
+
+    // Only cancel scheduled sessions (idempotency: already cancelled = no-op)
+    const { data, error } = await sb.from(SESSION_TABLE)
+      .update({ status: 'cancelled_by_provider', cancellation_reason: cancelReason })
+      .eq('id', sessionId).eq('status', 'scheduled')
+      .select().maybeSingle()
+    if (error) throw error
+    if (!data) return { affected: 0 } as any // Already cancelled or not found
+
+    const session = blockSessionFromDb(data)
+
+    // Makeup-Cascade: Wenn Session als Makeup-Target gebucht ist → MakeupBookings cancellen + Credits zurück
+    // Sonst gehen Eltern, die Credit für genau diese Session eingelöst hatten, leer aus.
+    try {
+      const { data: targetingMakeups } = await sb.from('makeup_bookings')
+        .select('id, credit_id, parent_id, child_name')
+        .eq('target_session_id', sessionId)
+        .eq('status', 'confirmed')
+
+      for (const mu of targetingMakeups ?? []) {
+        try {
+          await sb.from('makeup_bookings')
+            .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+            .eq('id', mu.id)
+          // Restore credit
+          await sb.from('session_credits')
+            .update({ status: 'available', used_in_session_id: null, used_at: null })
+            .eq('id', mu.credit_id)
+          console.log(`[CourseBlock] Makeup ${mu.id} cancelled, credit ${mu.credit_id} restored (target session ${sessionId} cancelled)`)
+        } catch (cascadeErr) {
+          console.error(`[CourseBlock] Makeup cascade failed for ${mu.id}:`, cascadeErr)
+        }
+      }
+      if ((targetingMakeups?.length ?? 0) > 0) {
+        console.log(`[CourseBlock] Cascaded ${targetingMakeups!.length} makeup bookings + restored credits for cancelled session ${sessionId}`)
+      }
+    } catch (cascadeErr) {
+      console.error('[CourseBlock] Makeup cascade outer failed:', cascadeErr)
+    }
+
+    // Auto-issue credits to all active enrollments if compensation requested AND makeup is enabled
+    if (compensation === 'credit') {
+      // Check if provider has makeup system enabled
+      const { data: blockData } = await sb.from(BLOCK_TABLE).select('provider_id').eq('id', data.block_id).single()
+      const { data: provSettings } = await sb.from('providers').select('makeup_enabled').eq('id', blockData?.provider_id).single()
+      if (!provSettings?.makeup_enabled) {
+        console.log(`[CourseBlock] Makeup disabled for provider. No credits issued.`)
+        return session
+      }
+      const { data: enrollments } = await sb.from(ENROLLMENT_TABLE)
+        .select('id, block_id, parent_id, child_id, credits_earned')
+        .eq('block_id', data.block_id)
+        .eq('status', 'active')
+
+      let creditsIssued = 0
+      for (const enr of enrollments ?? []) {
+        try {
+          const { data: block } = await sb.from(BLOCK_TABLE).select('provider_id, activity_type, end_date, extended_end_date').eq('id', enr.block_id).single()
+          const validUntil = block?.extended_end_date ?? block?.end_date ?? data.date
+
+          await sb.from('session_credits').insert({
+            enrollment_id: enr.id,
+            block_id: enr.block_id,
+            provider_id: block?.provider_id,
+            parent_id: enr.parent_id,
+            child_id: enr.child_id,
+            activity_type: block?.activity_type ?? 'course',
+            reason: 'provider_cancellation',
+            is_provider_cancellation: true,
+            original_session_id: sessionId,
+            original_session_date: data.date,
+            status: 'available',
+            valid_until: validUntil,
+          })
+
+          // Update enrollment credits_earned
+          await sb.from(ENROLLMENT_TABLE)
+            .update({ credits_earned: (enr.credits_earned ?? 0) + 1, updated_at: new Date().toISOString() })
+            .eq('id', enr.id)
+
+          creditsIssued++
+
+          // Send credit notification email to parent
+          try {
+            const { data: parentRow } = await sb.from('parents').select('name, email').eq('id', enr.parent_id).single()
+            const { data: provRow } = await sb.from('providers').select('company_name').eq('id', block?.provider_id).single()
+            if (parentRow?.email) {
+              const { EmailService } = await import('../../lib/email')
+              if (typeof (EmailService as any).sendCreditNotification === 'function') {
+                const sessDate = new Date(data.date).toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })
+                const validStr = new Date(validUntil).toLocaleDateString('de-DE', { day: 'numeric', month: 'long', year: 'numeric' })
+                await (EmailService as any).sendCreditNotification(parentRow.email, {
+                  parentName: parentRow.name?.split(' ')[0] || '',
+                  childName: enr.child_name || 'Ihr Kind',
+                  sessionDate: sessDate,
+                  validUntil: validStr,
+                  providerName: provRow?.company_name || '',
+                })
+              }
+            }
+          } catch (emailErr) {
+            console.error(`[CourseBlock] Credit email failed for ${enr.parent_id}:`, emailErr)
+          }
+        } catch (creditErr) {
+          console.error(`[CourseBlock] Credit issue failed for enrollment ${enr.id}:`, creditErr)
+        }
+      }
+
+      console.log(`[CourseBlock] Session ${sessionId} cancelled. ${creditsIssued} credits issued to enrollments.`)
+      return { ...session, affected: 1, creditsIssued } as any
+    }
+
+    return session
+  },
+
+  // Routes compatibility aliases
+  async createBlock(input: {
+    providerId: ID; activityId: ID; activityType: string; seasonLabel: string;
+    totalSessions?: number; startDate: string; recurringDay: DayOfWeek;
+    recurringTime: string; durationMinutes?: number; pricePerBlock?: number;
+    currency?: Currency; capacity: number; makeupCapacity?: number;
+    maxCreditsPerEnrollment?: number; cancellationDeadlineMinutes?: number;
+  }): Promise<CourseBlock> {
+    return this.create(input)
+  },
+
+  async getBlock(id: ID, providerId?: ID): Promise<CourseBlock | undefined> {
+    return this.getById(id, providerId)
+  },
+
+  async getBlocksByProvider(providerId: ID): Promise<CourseBlock[]> {
+    return this.list(providerId)
+  },
+
+  async getBlocksByActivityType(activityType: string, activeOnly = false): Promise<CourseBlock[]> {
+    const sb = getServiceClient()
+    let query = sb.from(BLOCK_TABLE).select('*').eq('activity_type', activityType)
+    if (activeOnly) query = query.in('status', ['upcoming', 'active'])
+    const { data, error } = await query
+    if (error) throw error
+    return (data ?? []).map(courseBlockFromDb)
+  },
+
+  async getSessionsByBlock(blockId: ID): Promise<BlockSession[]> {
+    const sb = getServiceClient()
+    const { data, error } = await sb.from(SESSION_TABLE).select('*').eq('block_id', blockId).order('date', { ascending: true })
+    if (error) throw error
+    return (data ?? []).map(blockSessionFromDb)
+  },
+
+  async getSession(sessionId: ID): Promise<BlockSession | undefined> {
+    const sb = getServiceClient()
+    const { data, error } = await sb.from(SESSION_TABLE).select('*').eq('id', sessionId).maybeSingle()
+    if (error) throw error
+    return data ? blockSessionFromDb(data) : undefined
+  },
+
+  async enrollChild(input: {
+    blockId: ID; parentId: ID; childId: string; childName: string; childAge: number;
+    pricePaid?: number; currency?: Currency; bookingId?: ID;
+  }): Promise<BlockEnrollment | { error: string }> {
+    return this.enroll(input.blockId, input)
+  },
+
+  async getEnrollmentsByBlock(blockId: ID): Promise<BlockEnrollment[]> {
+    const sb = getServiceClient()
+    const { data, error } = await sb.from(ENROLLMENT_TABLE).select('*').eq('block_id', blockId).order('created_at', { ascending: false })
+    if (error) throw error
+    return (data ?? []).map(blockEnrollmentFromDb)
+  },
+
+  async getEnrollmentsByParent(parentId: ID): Promise<BlockEnrollment[]> {
+    const sb = getServiceClient()
+    const { data, error } = await sb.from(ENROLLMENT_TABLE).select('*').eq('parent_id', parentId).order('created_at', { ascending: false })
+    if (error) throw error
+    return (data ?? []).map(blockEnrollmentFromDb)
+  },
+
+  async getEnrollmentsByChild(childId: string): Promise<BlockEnrollment[]> {
+    const sb = getServiceClient()
+    const { data, error } = await sb.from(ENROLLMENT_TABLE).select('*').eq('child_id', childId).order('created_at', { ascending: false })
+    if (error) throw error
+    return (data ?? []).map(blockEnrollmentFromDb)
+  },
+
+  async getAttendanceBySession(sessionId: ID): Promise<any[]> {
+    const sb = getServiceClient()
+    const { data, error } = await sb.from('session_attendance_records').select('*').eq('session_id', sessionId)
+    if (error) throw error
+    return data ?? []
+  },
+
+  async markAttendance(attendanceId: ID, status: string): Promise<any> {
+    const sb = getServiceClient()
+    const { data, error } = await sb.from('session_attendance_records')
+      .update({ status, updated_at: new Date().toISOString() })
+      .eq('id', attendanceId).select().maybeSingle()
+    if (error) throw error
+    return data
+  },
+
+  async getAvailableMakeupSlots(activityType: string, validUntil: string, excludeBlockId?: ID): Promise<Array<{
+    blockId: ID; sessionId: ID; date: string; startTime: string; endTime: string; availableSlots: number
+  }>> {
+    const sb = getServiceClient()
+    const today = new Date().toISOString().split('T')[0]
+    let query = sb.from(SESSION_TABLE).select('*, course_blocks!inner(activity_type, makeup_capacity, capacity, provider_id)')
+      .eq('course_blocks.activity_type', activityType)
+      .eq('status', 'scheduled')
+      .gte('date', today)
+      .lte('date', validUntil)
+    if (excludeBlockId) query = query.neq('block_id', excludeBlockId)
+    const { data, error } = await query
+    if (error) throw error
+    const slots = []
+    for (const row of data ?? []) {
+      const block = (row as any).course_blocks
+      const makeupCap = block?.makeup_capacity ?? 2
+      const { count: makeupCount } = await sb.from('makeup_bookings')
+        .select('*', { count: 'exact', head: true })
+        .eq('target_session_id', row.id).eq('status', 'confirmed')
+      if ((makeupCount ?? 0) < makeupCap) {
+        slots.push({
+          blockId: row.block_id,
+          sessionId: row.id,
+          date: row.date,
+          startTime: row.start_time,
+          endTime: row.end_time,
+          availableSlots: makeupCap - (makeupCount ?? 0),
+        })
+      }
+    }
+    return slots
+  },
+
+  async updateBlockStatuses(): Promise<{ activated: number; completed: number }> {
+    const sb = getServiceClient()
+    const today = new Date().toISOString().split('T')[0]
+    // Activate upcoming blocks that have started
+    const { data: activated } = await sb.from(BLOCK_TABLE)
+      .update({ status: 'active', updated_at: new Date().toISOString() })
+      .eq('status', 'upcoming').lte('start_date', today).select('id')
+    // Complete active blocks that have ended
+    const { data: completed } = await sb.from(BLOCK_TABLE)
+      .update({ status: 'completed', updated_at: new Date().toISOString() })
+      .eq('status', 'active').lt('end_date', today).select('id')
+    return { activated: activated?.length ?? 0, completed: completed?.length ?? 0 }
+  },
+
+  async extendBlock(blockId: ID, additionalSessions: number, providerId?: ID): Promise<BlockSession[] | { error: string }> {
+    const block = await this.getById(blockId, providerId)
+    if (!block) return { error: 'Block nicht gefunden' }
+    const sb = getServiceClient()
+    const { data: lastSession } = await sb.from(SESSION_TABLE)
+      .select('date, start_time, end_time, session_number')
+      .eq('block_id', blockId).order('date', { ascending: false }).limit(1).single()
+    if (!lastSession) return { error: 'Keine Sessions gefunden' }
+    const newSessions: BlockSession[] = []
+    const lastDate = new Date(lastSession.date + 'T00:00:00Z')
+    for (let i = 1; i <= additionalSessions; i++) {
+      const nextDate = new Date(lastDate)
+      nextDate.setUTCDate(nextDate.getUTCDate() + 7 * i)
+      const dateStr = nextDate.toISOString().split('T')[0]
+      const { data, error } = await sb.from(SESSION_TABLE).insert(blockSessionToDb({
+        blockId,
+        sessionNumber: (lastSession.session_number ?? 0) + i,
+        date: dateStr,
+        startTime: lastSession.start_time,
+        endTime: lastSession.end_time,
+        status: 'scheduled',
+      })).select().single()
+      if (error) throw error
+      newSessions.push(blockSessionFromDb(data))
+    }
+    // Update block end_date and total_sessions
+    await sb.from(BLOCK_TABLE).update({
+      end_date: newSessions[newSessions.length - 1].date,
+      total_sessions: (block.totalSessions ?? 0) + additionalSessions,
+      updated_at: new Date().toISOString(),
+    }).eq('id', blockId)
+    return newSessions
+  },
+
+  async addSession(
+    blockId: ID,
+    input: { date: string; startTime?: string; endTime?: string; note?: string },
+    providerId?: ID,
+  ): Promise<BlockSession | { error: string }> {
+    const block = await this.getById(blockId, providerId)
+    if (!block) return { error: 'Block nicht gefunden' }
+    if (!input.date || !/^\d{4}-\d{2}-\d{2}$/.test(input.date)) return { error: 'Ungültiges Datum (YYYY-MM-DD erwartet)' }
+    const today = new Date().toISOString().slice(0, 10)
+    if (input.date < today) return { error: 'Datum darf nicht in der Vergangenheit liegen' }
+    // I12: Block muss aktiv/upcoming sein. Cancelled/archived/completed Blöcke bekommen keine neuen Termine
+    const blockStatus = (block as any).status
+    if (blockStatus === 'cancelled' || blockStatus === 'archived') {
+      return { error: 'Block ist ' + blockStatus + ' — keine neuen Termine möglich' }
+    }
+    const sb = getServiceClient()
+    // I3: Duplikat-Datum-Schutz (außer Provider gibt explizit unterschiedliche Uhrzeit an)
+    const { data: existingOnDate } = await sb.from(SESSION_TABLE)
+      .select('id, start_time, end_time')
+      .eq('block_id', blockId).eq('date', input.date)
+    if ((existingOnDate ?? []).length > 0) {
+      const sameTime = (existingOnDate ?? []).some((s: any) =>
+        (!input.startTime || s.start_time === input.startTime) &&
+        (!input.endTime || s.end_time === input.endTime)
+      )
+      if (sameTime) {
+        return { error: 'An diesem Tag existiert bereits ein Termin zur gleichen Uhrzeit. Andere Uhrzeit wählen oder Datum ändern.' }
+      }
+    }
+    const { data: lastSession } = await sb.from(SESSION_TABLE)
+      .select('date, start_time, end_time, session_number')
+      .eq('block_id', blockId).order('session_number', { ascending: false }).limit(1).maybeSingle()
+    // M2: Cascade — explizit > letzte Session > Block-Default > 16:00
+    const blockRecurringTime = (block as any).recurringTime || (block as any).recurring_time
+    const blockDuration = (block as any).durationMinutes || (block as any).duration_minutes || 60
+    const startTime = input.startTime || lastSession?.start_time || blockRecurringTime || '16:00'
+    const endTime = input.endTime || lastSession?.end_time
+      || (blockRecurringTime ? addMinutes(blockRecurringTime, blockDuration) : '17:00')
+    const sessionNumber = (lastSession?.session_number ?? 0) + 1
+    const { data, error } = await sb.from(SESSION_TABLE).insert(blockSessionToDb({
+      blockId,
+      sessionNumber,
+      date: input.date,
+      startTime,
+      endTime,
+      status: 'scheduled',
+      isExtra: true,
+    } as any)).select().single()
+    if (error) {
+      // I2: race condition with concurrent addSession/extendBlock auf gleiche session_number
+      if ((error as any).code === '23505') {
+        return { error: 'Termin-Nummer-Kollision durch parallele Anlage — bitte erneut versuchen' }
+      }
+      return { error: error.message }
+    }
+    // Bump end_date if new session is later than current end_date.
+    // total_sessions wird NICHT erhöht — Extra-Termine zählen nicht zum gebuchten Block-Umfang.
+    // Damit existierende Enrollments nicht automatisch als Teilnehmer angezeigt werden.
+    const currentEnd = (block as any).endDate || (block as any).end_date
+    if (!currentEnd || input.date > currentEnd) {
+      await sb.from(BLOCK_TABLE).update({
+        end_date: input.date,
+        updated_at: new Date().toISOString(),
+      }).eq('id', blockId)
+    } else {
+      await sb.from(BLOCK_TABLE).update({
+        updated_at: new Date().toISOString(),
+      }).eq('id', blockId)
+    }
+    return blockSessionFromDb(data)
+  },
+}

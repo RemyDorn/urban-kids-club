@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kurs &amp; Termine — Socialy</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300;12..96,400;12..96,500;12..96,600;12..96,700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   Socialy · Single-Course Session-Picker (V2)
+   Für iframe-Embed auf socialy.club Kursdetail-Seiten.
+   Liest slug + activityId aus /embed-v2/:slug/course/:activityId
+   ============================================================ */
+:root {
+  --bg: #FBF5EA;
+  --surface: #FFFFFF;
+  --surface-alt: #F4E9D1;
+  --ink: #1F1D18;
+  --ink-muted: #67625A;
+  --muted: rgba(31,29,24,0.55);
+  --primary: #D96C45;
+  --primary-hover: #C45A35;
+  --primary-soft: #F7B79C;
+  --primary-tint: #FCE4D5;
+  --accent: #A8B6A3;
+  --accent-deep: #6A7863;
+  --sage-tint: #E4EBDE;
+  --danger: #B8392A;
+  --warning: #E28862;
+  --success: #6A7863;
+  --border: rgba(31,29,24,0.08);
+  --border-strong: rgba(31,29,24,0.14);
+  --shadow-sm: 0 1px 2px rgba(31,29,24,0.04);
+  --shadow-md: 0 6px 20px rgba(31,29,24,0.08);
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-pill: 999px;
+  --font-body: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  --font-accent: "Instrument Serif", ui-serif, Georgia, serif;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body {
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  line-height: 1.5;
+}
+body { padding: 0; }
+
+.widget {
+  max-width: 560px;
+  margin: 0 auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+}
+
+/* ---- Header ---- */
+.hero {
+  padding: 22px 24px 18px;
+  background: linear-gradient(180deg, var(--primary-tint), var(--surface) 180%);
+  border-bottom: 1px solid var(--border);
+}
+.hero-kicker {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--primary);
+  margin-bottom: 6px;
+}
+.hero-title {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 22px;
+  line-height: 1.2;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+.hero-title em {
+  font-family: var(--font-accent);
+  font-style: italic;
+  font-weight: 400;
+  color: var(--primary);
+}
+
+.meta-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.meta-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  background: rgba(31,29,24,0.05);
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+.meta-chip.primary { background: var(--primary-tint); color: var(--primary-hover); }
+.meta-chip.sage { background: var(--sage-tint); color: var(--accent-deep); }
+
+.description {
+  font-size: 13.5px;
+  color: var(--ink-muted);
+  margin-top: 14px;
+  line-height: 1.6;
+}
+
+/* ---- Sessions-Liste ---- */
+.sessions-head {
+  padding: 14px 24px 4px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.sessions-label {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.sessions-count {
+  font-size: 11.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.sessions-list {
+  padding: 4px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.session {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 14px;
+  align-items: center;
+  padding: 12px 10px;
+  border-radius: var(--radius-md);
+  transition: background 140ms, transform 140ms;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.session:hover {
+  background: var(--surface-alt);
+  border-color: var(--border);
+}
+.session.full {
+  opacity: 0.85;
+  background: repeating-linear-gradient(135deg, transparent, transparent 8px, rgba(31,29,24,0.025) 8px, rgba(31,29,24,0.025) 16px);
+}
+
+.date-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  padding: 6px 4px;
+  border-radius: var(--radius-sm);
+  background: var(--primary-tint);
+  color: var(--primary-hover);
+  line-height: 1;
+}
+.date-month {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.date-day {
+  font-family: var(--font-accent);
+  font-style: italic;
+  font-weight: 400;
+  font-size: 24px;
+  margin: 2px 0 3px;
+  font-variant-numeric: tabular-nums;
+}
+.date-weekday {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ink-muted);
+}
+
+.session-info { min-width: 0; }
+.session-time {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.session-sub {
+  font-size: 12.5px;
+  color: var(--ink-muted);
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.capacity-bar {
+  display: inline-block;
+  width: 50px;
+  height: 3px;
+  background: var(--surface-alt);
+  border-radius: 2px;
+  overflow: hidden;
+  vertical-align: middle;
+}
+.capacity-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-deep));
+  border-radius: 2px;
+  transition: width 300ms cubic-bezier(.2,.8,.2,1);
+}
+.capacity-fill.high { background: linear-gradient(90deg, var(--warning), var(--primary)); }
+.capacity-fill.full { background: linear-gradient(90deg, var(--primary), var(--danger)); }
+
+.session-cta {
+  padding: 8px 16px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--primary);
+  background: var(--primary);
+  color: #FFFFFF;
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 140ms, transform 140ms;
+  white-space: nowrap;
+  min-height: 36px;
+}
+.session-cta:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
+.session-cta:active { transform: scale(0.97); }
+
+.session.full .session-cta {
+  background: transparent;
+  color: var(--accent-deep);
+  border-color: var(--accent-deep);
+}
+.session.full .session-cta:hover { background: var(--accent-deep); color: #FFFFFF; }
+
+/* ---- Footer ---- */
+.foot {
+  padding: 14px 24px 18px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--muted);
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.foot .powered {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.foot .powered em {
+  font-family: var(--font-accent);
+  font-style: italic;
+  color: var(--primary);
+}
+.foot a {
+  color: var(--primary);
+  text-decoration: none;
+  font-weight: 600;
+}
+.foot a:hover { text-decoration: underline; }
+
+/* ---- Loading / Empty ---- */
+.state {
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--ink-muted);
+}
+.state-emoji { font-size: 36px; margin-bottom: 8px; }
+.state-title {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 17px;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+.state-sub { font-size: 13.5px; }
+
+.skeleton {
+  animation: shimmer 1.3s infinite linear;
+  background: linear-gradient(90deg, #F4E9D1 0%, #EBDCC3 50%, #F4E9D1 100%);
+  background-size: 200% 100%;
+  border-radius: var(--radius-sm);
+}
+@keyframes shimmer { to { background-position: -200% 0; } }
+
+.sk-line { height: 14px; margin: 8px 0; }
+.sk-line.long { width: 80%; }
+.sk-line.med  { width: 55%; }
+
+/* ---- Modal ---- */
+.overlay {
+  position: fixed; inset: 0;
+  background: rgba(31,29,24,0.5);
+  backdrop-filter: blur(4px);
+  display: none;
+  align-items: center; justify-content: center;
+  padding: 20px; z-index: 1000;
+}
+.overlay.show { display: flex; animation: fadeIn 200ms; }
+@keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+
+.modal {
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  max-width: 440px; width: 100%;
+  padding: 0; overflow: hidden;
+  box-shadow: 0 24px 64px rgba(31,29,24,0.3);
+  animation: slideUp 240ms cubic-bezier(.2,.8,.2,1);
+}
+@keyframes slideUp {
+  from { transform: translateY(16px); opacity: 0 }
+  to { transform: translateY(0); opacity: 1 }
+}
+.modal-head { padding: 22px 24px 14px; border-bottom: 1px solid var(--border); }
+.modal-kicker {
+  font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--primary); font-weight: 600; margin-bottom: 4px;
+}
+.modal-title {
+  font-family: var(--font-body); font-weight: 600;
+  font-size: 19px; color: var(--ink); line-height: 1.2;
+}
+.modal-title em {
+  font-family: var(--font-accent); font-style: italic; font-weight: 400;
+  color: var(--primary);
+}
+.modal-body { padding: 18px 24px; display: flex; flex-direction: column; gap: 12px; }
+.field { display: flex; flex-direction: column; gap: 5px; }
+.field-label {
+  font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--muted); font-weight: 600;
+}
+.field-input {
+  font-family: inherit; font-size: 14px;
+  padding: 10px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg); color: var(--ink);
+  transition: border 140ms, box-shadow 140ms;
+}
+.field-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(217,108,69,0.2);
+}
+.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.modal-foot {
+  padding: 14px 24px 20px;
+  border-top: 1px solid var(--border);
+  background: rgba(31,29,24,0.02);
+  display: flex; gap: 8px; justify-content: flex-end;
+}
+.btn {
+  padding: 10px 18px; border-radius: var(--radius-pill);
+  font-family: inherit; font-size: 13px; font-weight: 600;
+  border: none; cursor: pointer; transition: all 140ms;
+  min-height: 40px;
+}
+.btn-ghost {
+  background: transparent; color: var(--ink);
+  border: 1px solid var(--border-strong);
+}
+.btn-ghost:hover { background: var(--surface-alt); }
+.btn-primary { background: var(--primary); color: #FFFFFF; }
+.btn-primary:hover { background: var(--primary-hover); }
+
+/* ---- Responsive ---- */
+@media (max-width: 480px) {
+  .widget { border-radius: 0; border-left: 0; border-right: 0; box-shadow: none; }
+  .hero { padding: 18px 18px 14px; }
+  .hero-title { font-size: 20px; }
+  .sessions-head, .foot { padding-left: 18px; padding-right: 18px; }
+  .sessions-list { padding-left: 8px; padding-right: 8px; }
+  .session-cta { padding: 10px 14px; font-size: 12.5px; }
+}
+</style>
+</head>
+<body>
+
+<div class="widget" id="widget">
+  <!-- Skeleton Loading -->
+  <div class="hero">
+    <div class="hero-kicker skeleton sk-line med"></div>
+    <div class="hero-title skeleton sk-line long" style="height:24px"></div>
+    <div class="skeleton sk-line med" style="margin-top:10px"></div>
+  </div>
+  <div class="sessions-list" id="sessions-list">
+    <div class="skeleton" style="height:62px;border-radius:14px;margin:6px 10px"></div>
+    <div class="skeleton" style="height:62px;border-radius:14px;margin:6px 10px"></div>
+    <div class="skeleton" style="height:62px;border-radius:14px;margin:6px 10px"></div>
+  </div>
+</div>
+
+<!-- Booking/Waitlist Modal -->
+<div class="overlay" id="overlay">
+  <div class="modal" role="dialog" aria-labelledby="modal-title">
+    <div class="modal-head">
+      <div class="modal-kicker" id="modal-kicker">Platz sichern</div>
+      <h3 class="modal-title" id="modal-title">Termin buchen</h3>
+    </div>
+    <div class="modal-body">
+      <div class="field-row">
+        <label class="field">
+          <span class="field-label">Vorname Kind</span>
+          <input class="field-input" id="f-childFirst" type="text" autocomplete="given-name" required>
+        </label>
+        <label class="field">
+          <span class="field-label">Geburtsjahr</span>
+          <input class="field-input" id="f-childYear" type="number" min="2018" max="2026" placeholder="2023" required>
+        </label>
+      </div>
+      <div class="field-row">
+        <label class="field">
+          <span class="field-label">Vorname Elternteil</span>
+          <input class="field-input" id="f-parentFirst" type="text" autocomplete="given-name" required>
+        </label>
+        <label class="field">
+          <span class="field-label">Nachname</span>
+          <input class="field-input" id="f-parentLast" type="text" autocomplete="family-name" required>
+        </label>
+      </div>
+      <label class="field">
+        <span class="field-label">E-Mail</span>
+        <input class="field-input" id="f-email" type="email" autocomplete="email" required>
+      </label>
+      <label class="field">
+        <span class="field-label">Telefon (optional)</span>
+        <input class="field-input" id="f-phone" type="tel" autocomplete="tel">
+      </label>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" id="modal-cancel">Abbrechen</button>
+      <button class="btn btn-primary" id="modal-submit">Bestätigen</button>
+    </div>
+  </div>
+</div>
+
+<script src="/assets/socialy-polish.js"></script>
+<script>
+(function () {
+  // Parse URL: /embed-v2/:slug/course/:activityId
+  var path = window.location.pathname.split('/').filter(Boolean);
+  // parts: ['embed-v2', slug, 'course', activityId]
+  var SLUG = path[1] || '';
+  var ACTIVITY_ID = path[3] || '';
+
+  var widgetEl = document.getElementById('widget');
+  var overlay = document.getElementById('overlay');
+  var toast = window.socialyToast || function (m, k) { console.log('toast:', k, m); };
+
+  // --- State ---
+  var activity = null;
+  var blocks = [];
+  var allSessions = [];
+
+  // --- Fetch ---
+  async function fetchData() {
+    try {
+      // 1) Activity
+      var actRes = await fetch('/api/providers/by-slug/' + encodeURIComponent(SLUG) + '/activities');
+      if (!actRes.ok) throw new Error('provider nicht gefunden');
+      var actData = await actRes.json();
+      // Alle nicht-archivierten/stornierten Kurse zeigen. Buchbar nur active/published. Sonst → Warteliste.
+      var allowed = ['published', 'active', 'paused', 'draft', 'planning', 'in_planning'];
+      activity = (actData.data || []).find(function (a) {
+        return a.id === ACTIVITY_ID && allowed.indexOf(a.status) >= 0;
+      });
+      if (!activity) { renderError('Dieser Kurs ist momentan nicht verfügbar.'); return; }
+      window.__isBookable = activity.status === 'published' || activity.status === 'active';
+      window.__isUnpublished = activity.status === 'draft' || activity.status === 'planning' || activity.status === 'in_planning';
+
+      // Pausierte oder unveröffentlichte Kurse: keine Sessions/Blocks laden, direkt mit Warteliste-Variante rendern
+      if (activity.status === 'paused' || activity.pausedAt || window.__isUnpublished) {
+        allSessions = [];
+        blocks = [];
+        render();
+        return;
+      }
+
+      // 2) Course-Blocks für diesen Provider + Activity
+      var blocksRes = await fetch('/api/widget/providers/' + encodeURIComponent(SLUG) + '/course-blocks');
+      var blocksData = await blocksRes.json();
+      blocks = (blocksData.data || []).filter(function (b) { return b.activityId === ACTIVITY_ID && b.status === 'active' && b.visible !== false; });
+
+      // 3) Sessions laden für aktive Blocks
+      allSessions = [];
+      for (var i = 0; i < blocks.length; i++) {
+        var block = blocks[i];
+        try {
+          var sRes = await fetch('/api/widget/course-blocks/' + encodeURIComponent(block.id) + '/sessions');
+          var sData = await sRes.json();
+          var sessions = (sData.data || []).map(function (s) {
+            return { block: block, session: s };
+          });
+          allSessions = allSessions.concat(sessions);
+        } catch (e) { /* skip failed block */ }
+      }
+
+      // Sortieren: chronologisch
+      allSessions.sort(function (a, b) {
+        var da = (a.session.date || '') + 'T' + (a.session.startTime || '00:00');
+        var db = (b.session.date || '') + 'T' + (b.session.startTime || '00:00');
+        return da.localeCompare(db);
+      });
+
+      // Nur zukünftige
+      var now = new Date();
+      allSessions = allSessions.filter(function (x) {
+        if (!x.session.date) return true;
+        var d = new Date(x.session.date + 'T' + (x.session.startTime || '23:59'));
+        return d >= now;
+      }).slice(0, 8);
+
+      render();
+    } catch (e) {
+      renderError('Kurs-Daten konnten nicht geladen werden.');
+    }
+  }
+
+  // --- Render ---
+  function render() {
+    if (!activity) return;
+    var price = priceText(activity);
+    var ageUnit = activity.ageRange && activity.ageRange.unit === 'months' ? 'Monate' : 'Jahre';
+    var age = activity.ageRange ? (activity.ageRange.min + '–' + activity.ageRange.max + ' ' + ageUnit) : '';
+
+    var previewBannerHtml = window.__isUnpublished
+      ? '<div style="background:#F4E9D1;color:#8B4A2A;padding:10px 14px;border-radius:10px;font-size:12.5px;margin:0 0 14px;font-weight:500;">📝 Kurs in Vorbereitung &mdash; lass dich vormerken, wir informieren dich beim Start.</div>'
+      : '';
+    var heroHtml =
+      '<div class="hero">' +
+        previewBannerHtml +
+        '<div class="hero-kicker">Kurs buchen</div>' +
+        '<h1 class="hero-title">' + esc(activity.title).replace(/(.+)(\s+[^\s]+)$/, '$1 <em>$2</em>') + '</h1>' +
+        '<div class="meta-row">' +
+          (age ? '<span class="meta-chip">' + age + '</span>' : '') +
+          (price ? '<span class="meta-chip sage">' + esc(price) + '</span>' : '') +
+        '</div>' +
+        (activity.description ? '<p class="description">' + esc(activity.description) + '</p>' : '') +
+      '</div>';
+
+    var sessionsHtml;
+    var isPaused = activity.status === 'paused' || activity.pausedAt;
+    var isUnpublished = window.__isUnpublished;
+    if (isPaused) {
+      sessionsHtml =
+        '<div class="state">' +
+          '<div class="state-emoji">⏸</div>' +
+          '<div class="state-title">Kurs aktuell pausiert</div>' +
+          '<div class="state-sub">Trag dich auf die <strong>Warteliste</strong> ein &mdash; sobald der Kurs wieder startet, melden wir uns mit den neuen Terminen.</div>' +
+          '<button id="paused-waitlist-btn" class="session" style="margin-top:18px;justify-content:center;display:inline-flex;width:auto;padding:14px 28px;border-radius:999px;background:var(--apricot,#D96C45);color:#FBF5EA;font-weight:600;cursor:pointer;border:0;">Auf die Warteliste</button>' +
+        '</div>';
+    } else if (isUnpublished) {
+      sessionsHtml =
+        '<div class="state">' +
+          '<div class="state-emoji">📝</div>' +
+          '<div class="state-title">Kurs in Vorbereitung</div>' +
+          '<div class="state-sub">Lass dich <strong>vormerken</strong> &mdash; sobald der Kurs startet, melden wir uns mit den ersten Terminen.</div>' +
+          '<button id="paused-waitlist-btn" class="session" style="margin-top:18px;justify-content:center;display:inline-flex;width:auto;padding:14px 28px;border-radius:999px;background:var(--apricot,#D96C45);color:#FBF5EA;font-weight:600;cursor:pointer;border:0;">Vormerken lassen</button>' +
+        '</div>';
+    } else if (allSessions.length === 0) {
+      sessionsHtml =
+        '<div class="state">' +
+          '<div class="state-emoji">📭</div>' +
+          '<div class="state-title">Aktuell keine freien Termine</div>' +
+          '<div class="state-sub">Schreib uns kurz &mdash; wir informieren dich beim nächsten Block.</div>' +
+          '<button id="paused-waitlist-btn" class="session" style="margin-top:18px;justify-content:center;display:inline-flex;width:auto;padding:14px 28px;border-radius:999px;background:var(--apricot,#D96C45);color:#FBF5EA;font-weight:600;cursor:pointer;border:0;">Auf die Warteliste</button>' +
+        '</div>';
+    } else {
+      var items = allSessions.map(function (entry, idx) {
+        return renderSession(entry, idx);
+      }).join('');
+      sessionsHtml =
+        '<div class="sessions-head">' +
+          '<div class="sessions-label">Nächste Termine</div>' +
+          '<div class="sessions-count">' + allSessions.length + ' Termin' + (allSessions.length !== 1 ? 'e' : '') + '</div>' +
+        '</div>' +
+        '<div class="sessions-list">' + items + '</div>';
+    }
+
+    var footHtml =
+      '<div class="foot">' +
+        '<span class="powered">Kurs von <em>' + esc(SLUG) + '</em></span>' +
+        '<a href="/widget/' + esc(SLUG) + '" target="_top">Alle Kurse &rarr;</a>' +
+      '</div>';
+
+    widgetEl.innerHTML = heroHtml + sessionsHtml + footHtml;
+    bindSessionClicks();
+  }
+
+  function renderSession(entry, idx) {
+    var s = entry.session;
+    var b = entry.block;
+    var dt = s.date ? new Date(s.date) : null;
+    var day = dt ? String(dt.getDate()).padStart(2, '0') : '?';
+    var month = dt ? ['JAN','FEB','MÄR','APR','MAI','JUN','JUL','AUG','SEP','OKT','NOV','DEZ'][dt.getMonth()] : '';
+    var weekday = dt ? ['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag'][dt.getDay()] : '';
+    var trim = function(t){ return t ? String(t).split(':').slice(0,2).join(':') : ''; };
+    var time = (trim(s.startTime) || trim(b.recurringTime) || '??:??') + (s.endTime ? ' – ' + trim(s.endTime) : '') + ' Uhr';
+    var capTotal = b.capacity || activity.capacity || 10;
+    var capBooked = s.bookedCount || 0;
+    var capFree = Math.max(0, capTotal - capBooked);
+    var capPct = Math.min(100, Math.round((capBooked / capTotal) * 100));
+    var isFull = capFree === 0;
+    var capClass = isFull ? 'full' : (capPct >= 75 ? 'high' : '');
+
+    return '<button class="session' + (isFull ? ' full' : '') + '" data-idx="' + idx + '">' +
+      '<span class="date-box"><span class="date-month">' + month + '</span><span class="date-day">' + day + '</span><span class="date-weekday">' + weekday + '</span></span>' +
+      '<span class="session-info">' +
+        '<div class="session-time">' + esc(time) + '</div>' +
+        '<div class="session-sub">' +
+          '<span class="capacity-bar"><span class="capacity-fill ' + capClass + '" style="width:' + capPct + '%"></span></span>' +
+          '<span>' + (isFull ? 'Warteliste' : (capFree + ' von ' + capTotal + ' frei')) + '</span>' +
+        '</div>' +
+      '</span>' +
+      '<span class="session-cta">' + (isFull ? 'Warteliste' : 'Buchen') + '</span>' +
+    '</button>';
+  }
+
+  function priceText(a) {
+    if (!a.pricing || !a.pricing[0]) return '';
+    var p = a.pricing[0];
+    var amount = p.amount ? p.amount.toFixed(2).replace('.', ',') + ' €' : '';
+    var pkg = p.packageSize ? ' · ' + p.packageSize + '× Block' : '';
+    return amount + pkg;
+  }
+
+  function renderError(msg) {
+    widgetEl.innerHTML = '<div class="state">' +
+      '<div class="state-emoji">😔</div>' +
+      '<div class="state-title">' + esc(msg) + '</div>' +
+      '<div class="state-sub">Bitte lade die Seite neu oder kontaktiere den Anbieter direkt.</div>' +
+    '</div>';
+  }
+
+  function bindSessionClicks() {
+    widgetEl.querySelectorAll('.session[data-idx]').forEach(function (el) {
+      el.addEventListener('click', function () {
+        var idx = parseInt(el.dataset.idx, 10);
+        openModal(allSessions[idx]);
+      });
+    });
+    var pausedBtn = widgetEl.querySelector('#paused-waitlist-btn');
+    if (pausedBtn) {
+      pausedBtn.addEventListener('click', function() {
+        // Synthetic entry for paused / no-sessions waitlist signup
+        openModal({ paused: true, session: { bookedCount: 0 }, block: { id: null, capacity: 0 } });
+      });
+    }
+  }
+
+  // --- Modal ---
+  var currentEntry = null;
+  function openModal(entry) {
+    currentEntry = entry;
+    var isPaused = !!entry.paused;
+    var isFull = isPaused || (entry.session.bookedCount || 0) >= ((entry.block.capacity || activity.capacity || 10));
+    document.getElementById('modal-kicker').textContent = isPaused ? 'Vormerken bei Wieder-Start' : (isFull ? 'Warteliste eintragen' : 'Platz sichern');
+    document.getElementById('modal-title').innerHTML = isPaused ? 'Auf die <em>Warteliste</em>' : (isFull ? 'Auf die <em>Warteliste</em>' : 'Termin <em>buchen</em>');
+    document.getElementById('modal-submit').textContent = isPaused ? 'Vormerken' : (isFull ? 'Auf Warteliste' : 'Jetzt buchen');
+    overlay.classList.add('show');
+    setTimeout(function () { document.getElementById('f-childFirst').focus(); }, 100);
+  }
+  function closeModal() { overlay.classList.remove('show'); currentEntry = null; }
+
+  document.getElementById('modal-cancel').addEventListener('click', closeModal);
+  overlay.addEventListener('click', function (e) { if (e.target === overlay) closeModal(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && overlay.classList.contains('show')) closeModal(); });
+
+  document.getElementById('modal-submit').addEventListener('click', async function () {
+    if (!currentEntry) return;
+    var btn = this;
+    var childFirst = document.getElementById('f-childFirst').value.trim();
+    var childYear = parseInt(document.getElementById('f-childYear').value, 10);
+    var parentFirst = document.getElementById('f-parentFirst').value.trim();
+    var parentLast = document.getElementById('f-parentLast').value.trim();
+    var email = document.getElementById('f-email').value.trim();
+    var phone = document.getElementById('f-phone').value.trim();
+
+    if (!childFirst || !childYear || !parentFirst || !parentLast || !email) {
+      toast('Bitte alle Pflichtfelder ausfüllen', 'warning', 2400);
+      return;
+    }
+    // Age-Validation gegen activity.ageRange (nur wenn nicht Warteliste/Vormerkung)
+    var isPaused_av = !!currentEntry.paused;
+    if (!isPaused_av && activity && activity.ageRange) {
+      var ar = activity.ageRange;
+      if (ar.min != null || ar.max != null) {
+        var unitAV = ar.unit || 'years';
+        var nowY = new Date().getFullYear();
+        var ageY = nowY - childYear;
+        var minY = unitAV === 'months' ? (ar.min || 0) / 12 : (ar.min || 0);
+        var maxY = unitAV === 'months' ? (ar.max || 0) / 12 : (ar.max || 99);
+        var ageLabel = unitAV === 'months' ? (ar.min + '–' + ar.max + ' Monate') : (ar.min + '–' + ar.max + ' Jahre');
+        if (ageY > maxY + 1) {
+          toast(childFirst + ' (geb. ' + childYear + ') ist zu alt für diesen Kurs (' + ageLabel + ').', 'error', 4200);
+          return;
+        }
+        if (ageY < minY - 1) {
+          toast(childFirst + ' (geb. ' + childYear + ') ist zu jung für diesen Kurs (' + ageLabel + ').', 'error', 4200);
+          return;
+        }
+      }
+    }
+    if (window.socialyButtonLoading) window.socialyButtonLoading(btn, true, 'Einen Moment…');
+
+    var isPaused = !!currentEntry.paused;
+    var isFull = isPaused || (currentEntry.session.bookedCount || 0) >= ((currentEntry.block.capacity || activity.capacity || 10));
+    var endpoint = isFull ? '/api/widget/waitlist' : '/api/widget/bookings';
+    var body = {
+      slug: SLUG,
+      activityId: ACTIVITY_ID,
+      blockId: isPaused ? null : currentEntry.block.id,
+      sessionId: isPaused ? null : (currentEntry.session.id || null),
+      sessionDate: isPaused ? null : (currentEntry.session.date || null),
+      child: { firstName: childFirst, lastName: parentLast, birthYear: childYear },
+      parent: { firstName: parentFirst, lastName: parentLast, email: email, phone: phone },
+    };
+
+    try {
+      var r = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      var j = await r.json().catch(function () { return {}; });
+      if (window.socialyButtonLoading) window.socialyButtonLoading(btn, false);
+
+      if (!r.ok) {
+        toast(j.error || j.message || 'Buchung fehlgeschlagen', 'error', 3000);
+        return;
+      }
+      closeModal();
+      toast(isPaused ? 'Du wirst beim nächsten Kursstart benachrichtigt · Bestätigung per Mail' : (isFull ? 'Du stehst auf der Warteliste · Bestätigung per Mail' : 'Platz reserviert · Bestätigung per Mail'), 'success', 3400);
+      // Refresh nach kurzer Pause
+      setTimeout(fetchData, 800);
+    } catch (err) {
+      if (window.socialyButtonLoading) window.socialyButtonLoading(btn, false);
+      toast('Netzwerk-Fehler — bitte erneut versuchen', 'error', 2800);
+    }
+  });
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c];
+    });
+  }
+
+  // --- Auto-resize iframe (for embed host) ---
+  function postHeight() {
+    try {
+      var h = document.documentElement.offsetHeight;
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({ type: 'socialy:widget-height', height: h }, '*');
+      }
+    } catch (e) {}
+  }
+  new ResizeObserver(postHeight).observe(document.body);
+
+  // --- Boot ---
+  if (!SLUG || !ACTIVITY_ID) {
+    renderError('Widget-Konfiguration unvollständig. Erwartet: /embed-v2/:slug/course/:activityId');
+  } else {
+    fetchData();
+  }
+})();
+</script>
+</body>
+</html>
